@@ -1,0 +1,28 @@
+# Build output
+bin/
+obj/
+artifacts/
+
+# Local Vintage Story SDK/client dependency cache
+.vintagestory/
+
+# Packaged mod archives
+*.zip
+
+# IDE/editor files
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Logs and test output
+*.log
+TestResults/
+coverage/
+*.trx
+
+# OS files
+.DS_Store
+Thumbs.db

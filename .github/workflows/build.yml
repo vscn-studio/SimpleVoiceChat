@@ -1,0 +1,82 @@
+name: Build and package
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: 10.0.x
+  VINTAGE_STORY_VERSION: 1.22.2
+  MOD_VERSION: 0.1.0
+  VINTAGE_STORY_DOWNLOAD_URL: ${{ vars.VINTAGE_STORY_DOWNLOAD_URL }}
+
+jobs:
+  build:
+    name: Build mod zip
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Download Vintage Story assemblies
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          vs_url="${VINTAGE_STORY_DOWNLOAD_URL:-https://cdn.vintagestory.at/gamefiles/stable/vs_client_linux-x64_${VINTAGE_STORY_VERSION}.tar.gz}"
+          mkdir -p .vintagestory artifacts
+
+          curl --fail --location --retry 3 --retry-delay 5 "$vs_url" --output artifacts/vintagestory.tar.gz
+          tar -xzf artifacts/vintagestory.tar.gz -C .vintagestory
+
+          api_dll="$(find .vintagestory -type f -name VintagestoryAPI.dll | head -n 1)"
+          if [ -z "$api_dll" ]; then
+            echo "Could not find VintagestoryAPI.dll after extraction." >&2
+            find .vintagestory -maxdepth 5 -type f | sort >&2
+            exit 1
+          fi
+
+          vintage_story_path="$(cd "$(dirname "$api_dll")" && pwd)"
+          echo "VINTAGE_STORY=$vintage_story_path" >> "$GITHUB_ENV"
+
+      - name: Build Release
+        run: dotnet build SimpleVoiceChat.csproj -c Release
+
+      - name: Package mod
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          package_dir="$GITHUB_WORKSPACE/bin/Release/Mods/mod"
+          zip_path="$GITHUB_WORKSPACE/artifacts/SimpleVoiceChat-v${MOD_VERSION}.zip"
+
+          test -f "$package_dir/modinfo.json"
+          test -f "$package_dir/SimpleVoiceChat.dll"
+          test -f "$package_dir/README.md"
+          test -f "$package_dir/assets/simplevoicechat/textures/gui/haojiao.png"
+          test -f "$package_dir/assets/simplevoicechat/textures/gui/nohaojiao.png"
+
+          rm -f "$zip_path"
+          (
+            cd "$package_dir"
+            zip -r "$zip_path" .
+          )
+
+          unzip -l "$zip_path"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SimpleVoiceChat-v${{ env.MOD_VERSION }}
+          path: artifacts/SimpleVoiceChat-v${{ env.MOD_VERSION }}.zip
+          if-no-files-found: error

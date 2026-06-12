@@ -1,0 +1,13 @@
+{
+  "type": "code",
+  "modid": "simplevoicechat",
+  "name": "简单语音对话",
+  "authors": [
+    "VSCN"
+  ],
+  "description": "Proximity voice chat with lightweight OpenAL audio for Vintage Story.",
+  "version": "0.1.0",
+  "dependencies": {
+    "game": "1.22.2"
+  }
+}
