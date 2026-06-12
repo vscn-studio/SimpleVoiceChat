@@ -4,6 +4,7 @@ using SimpleVoiceChat.Gui;
 using SimpleVoiceChat.Networking;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
+using Vintagestory.API.Common.Entities;
 using Vintagestory.API.Config;
 using Vintagestory.API.MathTools;
 
@@ -50,6 +51,8 @@ public sealed class ClientVoiceController : IDisposable
     private long lastStateSentMs;
     private float lastMicLevel;
     private float lastRemoteVoiceLevel;
+    private long lastVoiceLevelMs;
+    private VoiceHudSquadMember[] squadHudMembers = Array.Empty<VoiceHudSquadMember>();
 
     public ClientVoiceController(ICoreClientAPI capi, SimpleVoiceChatClientConfig config)
     {
@@ -87,7 +90,11 @@ public sealed class ClientVoiceController : IDisposable
             .RegisterMessageType<ClientVoiceStatePacket>()
             .RegisterMessageType<ServerVoiceConfigPacket>()
             .RegisterMessageType<MutePlayerPacket>()
-            .SetMessageHandler<ServerVoiceConfigPacket>(OnServerConfig);
+            .RegisterMessageType<SquadBindPacket>()
+            .RegisterMessageType<AdminVoiceControlPacket>()
+            .RegisterMessageType<SquadHudPacket>()
+            .SetMessageHandler<ServerVoiceConfigPacket>(OnServerConfig)
+            .SetMessageHandler<SquadHudPacket>(OnSquadHud);
 
         voiceChannel = capi.Network.RegisterUdpChannel(VoiceConstants.VoiceChannelName)
             .RegisterMessageType<VoiceFramePacket>()
@@ -260,14 +267,80 @@ public sealed class ClientVoiceController : IDisposable
                 return TextCommandResult.Success($"已{(muted ? "屏蔽" : "取消屏蔽")} {player.PlayerName}。");
             }
 
+            case "bind":
+            {
+                IPlayer? target = GetSelectedPlayer();
+                if (target == null)
+                {
+                    return TextCommandResult.Error("请面对近处玩家后输入 /svc bind。");
+                }
+
+                controlChannel?.SendPacket(new SquadBindPacket { TargetPlayerUid = target.PlayerUID });
+                return TextCommandResult.Success($"已请求与 {target.PlayerName} 绑定小队频道。");
+            }
+
+            case "unbind":
+                controlChannel?.SendPacket(new SquadBindPacket { LeaveSquad = true });
+                return TextCommandResult.Success("已请求离开当前小队频道。");
+
+            case "squad":
+                controlChannel?.SendPacket(new SquadBindPacket { RequestStatus = true });
+                return TextCommandResult.Success("已请求小队频道状态。");
+
+            case "adminmute":
+            case "adminunmute":
+            case "forceblock":
+            case "unforceblock":
+            {
+                string nameOrUid = args.RawArgs.PopWord("");
+                if (string.IsNullOrWhiteSpace(nameOrUid))
+                {
+                    return TextCommandResult.Error($"用法：/svc {sub} <玩家名或UID>");
+                }
+
+                controlChannel?.SendPacket(new AdminVoiceControlPacket { Action = sub, TargetNameOrUid = nameOrUid });
+                return TextCommandResult.Success("已发送管理员语音控制请求。");
+            }
+
+            case "adminmutes":
+                controlChannel?.SendPacket(new AdminVoiceControlPacket { Action = sub });
+                return TextCommandResult.Success("已请求管理员语音屏蔽列表。");
+
             default:
-                return TextCommandResult.Error("用法：/svc status|volume|mute|unmute");
+                return TextCommandResult.Error("用法：/svc status|volume|mute|unmute|bind|unbind|squad");
         }
+    }
+
+    private IPlayer? GetSelectedPlayer()
+    {
+        Entity? selected = capi.World.Player.CurrentEntitySelection?.Entity;
+        if (selected == null)
+        {
+            return null;
+        }
+
+        return capi.World.AllOnlinePlayers.FirstOrDefault(p =>
+            p.Entity != null
+            && p.Entity.EntityId == selected.EntityId
+            && p.PlayerUID != capi.World.Player.PlayerUID);
     }
 
     private void OnServerConfig(ServerVoiceConfigPacket packet)
     {
         serverConfig = packet;
+        hud?.Refresh();
+    }
+
+    private void OnSquadHud(SquadHudPacket packet)
+    {
+        int count = Math.Min(packet.MemberNames.Length, packet.Speaking.Length);
+        VoiceHudSquadMember[] members = new VoiceHudSquadMember[count];
+        for (int i = 0; i < count; i++)
+        {
+            members[i] = new VoiceHudSquadMember(packet.MemberNames[i], packet.Speaking[i]);
+        }
+
+        squadHudMembers = members;
         hud?.Refresh();
     }
 
@@ -284,8 +357,9 @@ public sealed class ClientVoiceController : IDisposable
             return;
         }
 
-        playback?.Enqueue(packet);
+        playback?.Enqueue(packet, serverConfig);
         lastRemoteVoiceLevel = Math.Max(lastRemoteVoiceLevel, NormalizeRemoteVoiceLevel(packet));
+        lastVoiceLevelMs = capi.World.ElapsedMilliseconds;
         hud?.Refresh();
     }
 
@@ -315,11 +389,7 @@ public sealed class ClientVoiceController : IDisposable
 
         if (!canSpeak)
         {
-            lastMicLevel *= 0.82f;
-            if (lastMicLevel < 0.01f)
-            {
-                lastMicLevel = 0f;
-            }
+            lastMicLevel = 0f;
         }
 
         lastPressed = canSpeak;
@@ -338,10 +408,14 @@ public sealed class ClientVoiceController : IDisposable
         SendState(force: false);
         if (!lastSpeaking)
         {
-            lastMicLevel *= 0.86f;
+            lastMicLevel = 0f;
         }
         lastRemoteVoiceLevel *= 0.72f;
         if (lastRemoteVoiceLevel < 0.01f)
+        {
+            lastRemoteVoiceLevel = 0f;
+        }
+        if (capi.World.ElapsedMilliseconds - lastVoiceLevelMs > 350)
         {
             lastRemoteVoiceLevel = 0f;
         }
@@ -356,11 +430,14 @@ public sealed class ClientVoiceController : IDisposable
         }
 
         VoiceFrameStats stats = AudioPreprocessor.Process(captureBuffer, config.MicGain, config.NoiseGate);
-        lastMicLevel = NormalizeVoiceLevel(stats.Rms);
         if (!stats.Active)
         {
+            lastMicLevel = 0f;
             return;
         }
+
+        lastMicLevel = NormalizeVoiceLevel(stats.Rms, mode);
+        lastVoiceLevelMs = capi.World.ElapsedMilliseconds;
 
         byte[] payload = ImaAdpcmCodec.Encode(captureBuffer);
         if (payload.Length + 64 > VoiceConstants.MaxUdpPacketBytes)
@@ -505,13 +582,19 @@ public sealed class ClientVoiceController : IDisposable
         }
 
         float voiceLevel = Math.Max(lastMicLevel, lastRemoteVoiceLevel);
-        return new VoiceHudSnapshot(micEnabled, lastSpeaking || lastRemoteVoiceLevel > 0.04f, voiceLevel, status, FormatMode(mode), detail);
+        if (voiceLevel < 0.015f)
+        {
+            voiceLevel = 0f;
+        }
+
+        return new VoiceHudSnapshot(micEnabled, voiceLevel > 0f, voiceLevel, status, FormatMode(mode), detail, squadHudMembers);
     }
 
-    private float NormalizeVoiceLevel(float rms)
+    private float NormalizeVoiceLevel(float rms, VoiceMode voiceMode)
     {
         float baseline = Math.Max(config.NoiseGate * 3f, 0.025f);
-        return Math.Clamp((rms - baseline) / 0.22f, 0f, 1f);
+        float raw = Math.Clamp((rms - baseline) / 0.22f, 0f, 1f);
+        return Math.Clamp(raw * ModeLevelMultiplier(voiceMode), 0f, 1f);
     }
 
     private float NormalizeRemoteVoiceLevel(VoiceFramePacket packet)
@@ -520,7 +603,21 @@ public sealed class ClientVoiceController : IDisposable
         double distance = listener.DistanceTo(packet.X, packet.Y, packet.Z);
         float range = Math.Min(serverConfig.GetRange(packet.Mode), serverConfig.MaxRange);
         float distanceGain = VoiceMath.DistanceGain(distance, range);
-        return Math.Clamp(NormalizeVoiceLevel(packet.Rms) * distanceGain * config.OutputVolume, 0f, 1f);
+        if (packet.SquadRelay && distance > range)
+        {
+            distanceGain = 0.62f;
+        }
+        return Math.Clamp(NormalizeVoiceLevel(packet.Rms, packet.Mode) * distanceGain, 0f, 1f);
+    }
+
+    private static float ModeLevelMultiplier(VoiceMode voiceMode)
+    {
+        return voiceMode switch
+        {
+            VoiceMode.Whisper => 0.42f,
+            VoiceMode.Shout => 1f,
+            _ => 0.72f
+        };
     }
 
     private string BuildHudStatus(bool captureAvailable)
@@ -572,7 +669,7 @@ public sealed class ClientVoiceController : IDisposable
             $"切换模式：{cycle} / {cycleAlt}\n" +
             $"麦克风静音：{localMute}    全局开关：{globalMute}\n" +
             $"打开状态/设置窗口：{settings}\n" +
-            $"命令：/svc volume <0-200>, /svc mute <玩家名>, /svc unmute <玩家名>";
+            $"命令：/svc volume <0-200>, /svc mute <玩家名>, /svc bind, /svc unbind";
     }
 
     private string BuildSettingsWindowSummary()

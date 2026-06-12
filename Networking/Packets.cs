@@ -37,6 +37,9 @@ public sealed class VoiceFramePacket
 
     [ProtoMember(11)]
     public float Z;
+
+    [ProtoMember(12)]
+    public bool SquadRelay;
 }
 
 [ProtoContract]
@@ -110,4 +113,40 @@ public sealed class MutePlayerPacket
 
     [ProtoMember(2)]
     public bool Muted;
+}
+
+[ProtoContract]
+public sealed class SquadBindPacket
+{
+    [ProtoMember(1)]
+    public string TargetPlayerUid = string.Empty;
+
+    [ProtoMember(2)]
+    public bool LeaveSquad;
+
+    [ProtoMember(3)]
+    public bool RequestStatus;
+}
+
+[ProtoContract]
+public sealed class AdminVoiceControlPacket
+{
+    [ProtoMember(1)]
+    public string Action = string.Empty;
+
+    [ProtoMember(2)]
+    public string TargetNameOrUid = string.Empty;
+}
+
+[ProtoContract]
+public sealed class SquadHudPacket
+{
+    [ProtoMember(1)]
+    public string[] MemberUids = Array.Empty<string>();
+
+    [ProtoMember(2)]
+    public string[] MemberNames = Array.Empty<string>();
+
+    [ProtoMember(3)]
+    public bool[] Speaking = Array.Empty<bool>();
 }

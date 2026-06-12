@@ -54,7 +54,7 @@ public sealed class OpenAlPlaybackService : IDisposable
         }
     }
 
-    public void Enqueue(VoiceFramePacket packet)
+    public void Enqueue(VoiceFramePacket packet, ServerVoiceConfigPacket serverConfig)
     {
         if (!hasContext || packet.Payload.Length == 0)
         {
@@ -84,7 +84,19 @@ public sealed class OpenAlPlaybackService : IDisposable
 
             stream.Position = new Vec3f(packet.X, packet.Y, packet.Z);
             stream.Mode = packet.Mode;
+            stream.SquadRelay = packet.SquadRelay;
             stream.LastPacketMilliseconds = capi.World.ElapsedMilliseconds;
+            Entity? speakerEntity = capi.World.GetEntityById(packet.SenderEntityId);
+            VoiceEnvironmentSnapshot env = VoiceEnvironment.Evaluate(
+                capi,
+                capi.World.Player.Entity.Pos.XYZ,
+                stream.Position,
+                speakerEntity,
+                clientConfig,
+                serverConfig,
+                packet.Mode,
+                packet.SquadRelay);
+            stream.Effects.Process(decoded, env);
             stream.Buffer.Enqueue(packet.Sequence, decoded);
         }
     }
@@ -165,8 +177,13 @@ public sealed class OpenAlPlaybackService : IDisposable
         double distance = listener.DistanceTo(stream.Position.X, stream.Position.Y, stream.Position.Z);
         float range = Math.Min(serverConfig.GetRange(stream.Mode), serverConfig.MaxRange);
         float gain = VoiceMath.DistanceGain(distance, range) * clientConfig.OutputVolume;
+        if (stream.SquadRelay && distance > range)
+        {
+            gain = Math.Max(gain, 0.62f * clientConfig.OutputVolume);
+        }
 
-        VoiceEnvironmentSnapshot env = VoiceEnvironment.Evaluate(capi, listener, stream.Position, clientConfig, serverConfig);
+        Entity? speakerEntity = capi.World.GetEntityById(stream.EntityId);
+        VoiceEnvironmentSnapshot env = VoiceEnvironment.Evaluate(capi, listener, stream.Position, speakerEntity, clientConfig, serverConfig, stream.Mode, stream.SquadRelay);
         gain *= env.VolumeMultiplier;
 
         AL.Source(stream.Source, ALSource3f.Position, stream.Position.X, stream.Position.Y, stream.Position.Z);
@@ -247,6 +264,8 @@ public sealed class OpenAlPlaybackService : IDisposable
         public long LastPacketMilliseconds { get; set; }
         public Vec3f Position { get; set; } = new();
         public VoiceMode Mode { get; set; } = VoiceMode.Talk;
+        public bool SquadRelay { get; set; }
+        public VoiceEffectsProcessor Effects { get; } = new();
 
         public void Initialize()
         {

@@ -8,7 +8,8 @@ public readonly struct VoiceHudSnapshot
         float voiceLevel,
         string status,
         string mode,
-        string detail)
+        string detail,
+        VoiceHudSquadMember[] squadMembers)
     {
         MicrophoneEnabled = microphoneEnabled;
         Speaking = speaking;
@@ -16,6 +17,7 @@ public readonly struct VoiceHudSnapshot
         Status = status;
         Mode = mode;
         Detail = detail;
+        SquadMembers = squadMembers;
     }
 
     public bool MicrophoneEnabled { get; }
@@ -24,4 +26,17 @@ public readonly struct VoiceHudSnapshot
     public string Status { get; }
     public string Mode { get; }
     public string Detail { get; }
+    public VoiceHudSquadMember[] SquadMembers { get; }
+}
+
+public readonly struct VoiceHudSquadMember
+{
+    public VoiceHudSquadMember(string name, bool speaking)
+    {
+        Name = name;
+        Speaking = speaking;
+    }
+
+    public string Name { get; }
+    public bool Speaking { get; }
 }

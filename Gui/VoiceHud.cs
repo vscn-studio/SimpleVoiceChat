@@ -9,12 +9,14 @@ public sealed class VoiceHud : HudElement
 {
     private static readonly AssetLocation MicEnabledIcon = new("simplevoicechat", "gui/haojiao.png");
     private static readonly AssetLocation MicDisabledIcon = new("simplevoicechat", "gui/nohaojiao.png");
+    private static readonly AssetLocation SquadSpeakingIcon = new("simplevoicechat", "gui/phone-volume-solid.png");
 
     private readonly Func<VoiceHudSnapshot> snapshotProvider;
     private readonly Func<bool> shouldShowProvider;
     private VoiceHudSnapshot lastSnapshot;
     private ImageSurface? micEnabledSurface;
     private ImageSurface? micDisabledSurface;
+    private ImageSurface? squadSpeakingSurface;
     private long lastUpdateMs;
 
     public override double DrawOrder => 0.09;
@@ -66,15 +68,25 @@ public sealed class VoiceHud : HudElement
             return;
         }
 
+        bool relayout = GetSquadLineCount(next) != GetSquadLineCount(lastSnapshot);
         lastSnapshot = next;
+        if (relayout)
+        {
+            Compose();
+            TryOpen();
+            return;
+        }
+
         SingleComposer?.GetCustomDraw("hud")?.Redraw();
     }
 
     private void Compose()
     {
         lastSnapshot = snapshotProvider();
-        ElementBounds bounds = ElementBounds.Fixed(EnumDialogArea.RightBottom, -18, -128, 230, 94);
-        ElementBounds drawBounds = ElementBounds.Fixed(0, 0, 230, 94);
+        double width = 258;
+        double height = CalculateHudHeight(lastSnapshot);
+        ElementBounds bounds = ElementBounds.Fixed(EnumDialogArea.RightBottom, -18, -34 - height, width, height);
+        ElementBounds drawBounds = ElementBounds.Fixed(0, 0, width, height);
         SingleComposer = capi.Gui.CreateCompo("simplevoicechat-hud", bounds)
             .AddDynamicCustomDraw(drawBounds, DrawHud, "hud")
             .Compose();
@@ -92,7 +104,7 @@ public sealed class VoiceHud : HudElement
         GuiElement.RoundRectangle(ctx, 0, 0, width, height, GuiElement.scaled(8));
         ctx.Fill();
 
-        DrawIcon(ctx, snapshot.MicrophoneEnabled ? MicEnabledIcon : MicDisabledIcon, pad, (height - iconSize) / 2, iconSize);
+        DrawIcon(ctx, snapshot.MicrophoneEnabled ? MicEnabledIcon : MicDisabledIcon, pad, GuiElement.scaled(20), iconSize);
 
         double textX = pad + iconSize + GuiElement.scaled(10);
         double statusY = GuiElement.scaled(22);
@@ -101,10 +113,15 @@ public sealed class VoiceHud : HudElement
         DrawText(ctx, snapshot.Detail, textX, statusY + GuiElement.scaled(33), 12, new[] { 0.88, 0.91, 0.94, 0.94 }, bold: true);
 
         double barX = textX + GuiElement.scaled(32);
-        double barY = height - GuiElement.scaled(18);
+        double barY = GuiElement.scaled(72);
         double barWidth = width - barX - pad;
-        DrawText(ctx, "音量", textX, barY + GuiElement.scaled(8), 11, new[] { 0.80, 0.84, 0.88, 0.92 }, bold: true);
-        DrawLevelBlocks(ctx, barX, barY, barWidth, GuiElement.scaled(9), snapshot.VoiceLevel);
+        if (snapshot.VoiceLevel > 0.001f)
+        {
+            DrawText(ctx, "音量", textX, barY + GuiElement.scaled(9), 11, new[] { 0.80, 0.84, 0.88, 0.92 }, bold: true);
+            DrawLevelLines(ctx, barX, barY, barWidth, GuiElement.scaled(10), snapshot.VoiceLevel);
+        }
+
+        DrawSquadMembers(ctx, snapshot, textX, GuiElement.scaled(96), width - textX - pad);
     }
 
     private void DrawIcon(Context ctx, AssetLocation icon, double x, double y, double size)
@@ -129,10 +146,15 @@ public sealed class VoiceHud : HudElement
         return micDisabledSurface ??= GuiElement.getImageSurfaceFromAsset(capi, MicDisabledIcon);
     }
 
+    private ImageSurface GetSquadSpeakingSurface()
+    {
+        return squadSpeakingSurface ??= GuiElement.getImageSurfaceFromAsset(capi, SquadSpeakingIcon);
+    }
+
     private static void DrawText(Context ctx, string text, double x, double y, double fontSize, double[] color, bool bold)
     {
         ctx.Save();
-        ctx.SelectFontFace(GuiStyle.StandardFontName, FontSlant.Normal, bold ? FontWeight.Bold : FontWeight.Bold);
+        ctx.SelectFontFace(GuiStyle.StandardFontName, FontSlant.Normal, bold ? FontWeight.Bold : FontWeight.Normal);
         ctx.SetFontSize(GuiElement.scaled(fontSize));
         ctx.SetSourceRGBA(0, 0, 0, 0.72);
         ctx.MoveTo(x + GuiElement.scaled(1), y + GuiElement.scaled(1));
@@ -143,25 +165,25 @@ public sealed class VoiceHud : HudElement
         ctx.Restore();
     }
 
-    private static void DrawLevelBlocks(Context ctx, double x, double y, double width, double height, float level)
+    private static void DrawLevelLines(Context ctx, double x, double y, double width, double height, float level)
     {
-        const int blockCount = 12;
+        const int lineCount = 28;
         double gap = Math.Round(GuiElement.scaled(2));
-        double blockWidth = Math.Floor(Math.Min(GuiElement.scaled(8), (width - gap * (blockCount - 1)) / blockCount));
-        double blockHeight = Math.Round(height);
-        double blockY = Math.Round(y);
+        double lineWidth = Math.Max(1, Math.Floor(Math.Min(GuiElement.scaled(2), (width - gap * (lineCount - 1)) / lineCount)));
+        double lineHeight = Math.Round(height);
+        double lineY = Math.Round(y);
         double clamped = Math.Clamp(level, 0f, 1f);
-        int activeBlocks = (int)Math.Round(clamped * blockCount, MidpointRounding.AwayFromZero);
+        int activeLines = (int)Math.Ceiling(clamped * lineCount);
 
-        for (int i = 0; i < blockCount; i++)
+        for (int i = 0; i < lineCount; i++)
         {
-            double px = Math.Round(x + i * (blockWidth + gap));
-            bool active = i < activeBlocks;
-            double ratio = (i + 1) / (double)blockCount;
+            double px = Math.Round(x + i * (lineWidth + gap));
+            bool active = i < activeLines;
+            double ratio = (i + 1) / (double)lineCount;
 
             if (!active)
             {
-                ctx.SetSourceRGBA(0.48, 0.50, 0.52, 0.46);
+                ctx.SetSourceRGBA(0.48, 0.50, 0.52, 0.36);
             }
             else if (ratio >= 0.75)
             {
@@ -172,9 +194,107 @@ public sealed class VoiceHud : HudElement
                 ctx.SetSourceRGBA(0.30, 0.95, 0.44, 0.92);
             }
 
-            ctx.Rectangle(px, blockY, blockWidth, blockHeight);
+            ctx.Rectangle(px, lineY, lineWidth, lineHeight);
             ctx.Fill();
         }
+    }
+
+    private void DrawSquadMembers(Context ctx, VoiceHudSnapshot snapshot, double x, double y, double maxWidth)
+    {
+        if (snapshot.SquadMembers.Length == 0)
+        {
+            return;
+        }
+
+        double cursorX = x;
+        double cursorY = y;
+        double rowHeight = GuiElement.scaled(17);
+        double gap = GuiElement.scaled(10);
+        double iconSize = GuiElement.scaled(11);
+        ImageSurface icon = GetSquadSpeakingSurface();
+
+        foreach (VoiceHudSquadMember member in snapshot.SquadMembers)
+        {
+            string name = member.Name;
+            double textWidth = MeasureText(ctx, name, 11, bold: true);
+            double itemWidth = iconSize + GuiElement.scaled(4) + textWidth + gap;
+            if (cursorX > x && cursorX + itemWidth > x + maxWidth)
+            {
+                cursorX = x;
+                cursorY += rowHeight;
+            }
+
+            if (member.Speaking)
+            {
+                DrawImage(ctx, icon, cursorX, cursorY - GuiElement.scaled(10), iconSize, iconSize);
+            }
+            else
+            {
+                DrawSmallStatusDot(ctx, cursorX + iconSize * 0.5, cursorY - GuiElement.scaled(5), GuiElement.scaled(3), 0.38, 0.42, 0.45, 0.72);
+            }
+
+            DrawText(ctx, name, cursorX + iconSize + GuiElement.scaled(4), cursorY, 11, member.Speaking ? new[] { 0.62, 1.0, 0.68, 0.96 } : new[] { 0.68, 0.72, 0.76, 0.78 }, bold: true);
+            cursorX += itemWidth;
+        }
+    }
+
+    private static void DrawImage(Context ctx, ImageSurface icon, double x, double y, double width, double height)
+    {
+        ctx.Save();
+        ctx.Translate(x, y);
+        ctx.Scale(width / icon.Width, height / icon.Height);
+        ctx.SetSourceSurface(icon, 0, 0);
+        ctx.Rectangle(0, 0, icon.Width, icon.Height);
+        ctx.Fill();
+        ctx.Restore();
+    }
+
+    private static void DrawSmallStatusDot(Context ctx, double x, double y, double radius, double r, double g, double b, double a)
+    {
+        ctx.Save();
+        ctx.SetSourceRGBA(r, g, b, a);
+        ctx.Arc(x, y, radius, 0, Math.PI * 2);
+        ctx.Fill();
+        ctx.Restore();
+    }
+
+    private static double MeasureText(Context ctx, string text, double fontSize, bool bold)
+    {
+        ctx.Save();
+        ctx.SelectFontFace(GuiStyle.StandardFontName, FontSlant.Normal, bold ? FontWeight.Bold : FontWeight.Normal);
+        ctx.SetFontSize(GuiElement.scaled(fontSize));
+        TextExtents extents = ctx.TextExtents(text);
+        ctx.Restore();
+        return extents.Width;
+    }
+
+    private static double CalculateHudHeight(VoiceHudSnapshot snapshot)
+    {
+        return 94 + GetSquadLineCount(snapshot) * 17;
+    }
+
+    private static int GetSquadLineCount(VoiceHudSnapshot snapshot)
+    {
+        if (snapshot.SquadMembers.Length == 0)
+        {
+            return 0;
+        }
+
+        int lines = 1;
+        int cursor = 0;
+        foreach (VoiceHudSquadMember member in snapshot.SquadMembers)
+        {
+            int width = Math.Min(14, member.Name.Length) + 3;
+            if (cursor > 0 && cursor + width > 24)
+            {
+                lines++;
+                cursor = 0;
+            }
+
+            cursor += width;
+        }
+
+        return Math.Clamp(lines, 1, 4);
     }
 
     private static bool SnapshotEquals(VoiceHudSnapshot left, VoiceHudSnapshot right)
@@ -184,15 +304,36 @@ public sealed class VoiceHud : HudElement
             && Math.Abs(left.VoiceLevel - right.VoiceLevel) < 0.01f
             && left.Status == right.Status
             && left.Mode == right.Mode
-            && left.Detail == right.Detail;
+            && left.Detail == right.Detail
+            && SquadMembersEqual(left.SquadMembers, right.SquadMembers);
+    }
+
+    private static bool SquadMembersEqual(VoiceHudSquadMember[] left, VoiceHudSquadMember[] right)
+    {
+        if (left.Length != right.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < left.Length; i++)
+        {
+            if (left[i].Name != right[i].Name || left[i].Speaking != right[i].Speaking)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public override void Dispose()
     {
         micEnabledSurface?.Dispose();
         micDisabledSurface?.Dispose();
+        squadSpeakingSurface?.Dispose();
         micEnabledSurface = null;
         micDisabledSurface = null;
+        squadSpeakingSurface = null;
         base.Dispose();
     }
 }

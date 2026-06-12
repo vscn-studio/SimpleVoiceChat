@@ -3,20 +3,31 @@ using SimpleVoiceChat.Networking;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
+using Vintagestory.API.Config;
 using Vintagestory.API.MathTools;
 
 namespace SimpleVoiceChat.Audio;
 
 public readonly struct VoiceEnvironmentSnapshot
 {
-    public VoiceEnvironmentSnapshot(float volumeMultiplier, float pitch)
+    public VoiceEnvironmentSnapshot(float volumeMultiplier, float pitch, float lowPass, float distortion, float echo, int echoDelaySamples, float flutter)
     {
         VolumeMultiplier = volumeMultiplier;
         Pitch = pitch;
+        LowPass = lowPass;
+        Distortion = distortion;
+        Echo = echo;
+        EchoDelaySamples = echoDelaySamples;
+        Flutter = flutter;
     }
 
     public float VolumeMultiplier { get; }
     public float Pitch { get; }
+    public float LowPass { get; }
+    public float Distortion { get; }
+    public float Echo { get; }
+    public int EchoDelaySamples { get; }
+    public float Flutter { get; }
 }
 
 public static class VoiceEnvironment
@@ -25,16 +36,39 @@ public static class VoiceEnvironment
         ICoreClientAPI capi,
         Vec3d listener,
         Vec3f speaker,
+        Entity? speakerEntity,
         SimpleVoiceChatClientConfig clientConfig,
-        ServerVoiceConfigPacket serverConfig)
+        ServerVoiceConfigPacket serverConfig,
+        VoiceMode mode,
+        bool squadRelay)
     {
         float volume = 1f;
         float pitch = 1f;
+        float lowPass = 0f;
+        float distortion = 0f;
+        float echo = 0f;
+        int echoDelaySamples = 1280;
+        float flutter = 0f;
+        double distance = listener.DistanceTo(speaker.X, speaker.Y, speaker.Z);
+        float range = Math.Min(serverConfig.GetRange(mode), serverConfig.MaxRange);
 
         if (clientConfig.EnableOcclusionEffects && serverConfig.EnableOcclusion)
         {
             float occlusion = EstimateOcclusion(capi.World.BlockAccessor, listener, speaker, clientConfig.PerformanceMode ? 5 : 9);
             volume *= 1f - 0.45f * occlusion;
+            lowPass += 0.55f * occlusion;
+        }
+
+        if (range > 0)
+        {
+            float far = (float)Math.Clamp((distance - range * 0.35) / Math.Max(1f, range * 0.65f), 0.0, 1.0);
+            lowPass += 0.38f * far;
+        }
+
+        if (squadRelay && distance > range)
+        {
+            volume *= 0.68f;
+            lowPass += 0.32f;
         }
 
         bool listenerInLiquid = IsInLiquid(capi.World.BlockAccessor, listener);
@@ -43,6 +77,25 @@ public static class VoiceEnvironment
         {
             volume *= listenerInLiquid && speakerInLiquid ? 0.72f : 0.84f;
             pitch *= listenerInLiquid && speakerInLiquid ? 0.96f : 0.98f;
+            lowPass += listenerInLiquid && speakerInLiquid ? 0.78f : 0.48f;
+            distortion += listenerInLiquid && speakerInLiquid ? 0.12f : 0.06f;
+        }
+
+        float enclosure = EstimateEnclosure(capi.World.BlockAccessor, listener, clientConfig.PerformanceMode);
+        if (enclosure > 0.25f)
+        {
+            echo += 0.04f + 0.12f * enclosure;
+            echoDelaySamples = (int)(920 + 980 * enclosure);
+            lowPass += 0.08f * enclosure;
+        }
+
+        if (serverConfig.EnableWeatherEffects)
+        {
+            WeatherSnapshot weather = EvaluateWeather(capi, listener, speaker);
+            volume *= 1f - 0.16f * weather.Storm;
+            lowPass += 0.22f * weather.Storm;
+            distortion += 0.045f * weather.Wind;
+            flutter += 0.018f * weather.Wind;
         }
 
         Entity playerEntity = capi.World.Player.Entity;
@@ -52,15 +105,27 @@ public static class VoiceEnvironment
             float factor = (float)(1.0 - stability / 0.35);
             pitch *= 1f - 0.04f * factor;
             volume *= 1f - 0.12f * factor;
+            lowPass += 0.22f * factor;
+            flutter += 0.035f * factor;
         }
 
-        if (IsLikelyPoisoned(playerEntity))
+        if (IsLikelyPoisoned(speakerEntity) || IsLikelyPoisoned(playerEntity))
         {
             volume *= 0.94f;
             pitch *= 0.985f;
+            lowPass += 0.18f;
+            distortion += 0.04f;
+            flutter += 0.02f;
         }
 
-        return new VoiceEnvironmentSnapshot(Math.Clamp(volume, 0f, 1.5f), Math.Clamp(pitch, 0.85f, 1.1f));
+        return new VoiceEnvironmentSnapshot(
+            Math.Clamp(volume, 0f, 1.5f),
+            Math.Clamp(pitch, 0.85f, 1.1f),
+            Math.Clamp(lowPass, 0f, 0.95f),
+            Math.Clamp(distortion, 0f, 0.45f),
+            Math.Clamp(echo, 0f, 0.22f),
+            Math.Clamp(echoDelaySamples, 640, 3200),
+            Math.Clamp(flutter, 0f, 0.1f));
     }
 
     private static float EstimateOcclusion(IBlockAccessor blockAccessor, Vec3d listener, Vec3f speaker, int samples)
@@ -98,6 +163,68 @@ public static class VoiceEnvironment
         return blockAccessor.GetBlock(blockPos, 2).IsLiquid();
     }
 
+    private static float EstimateEnclosure(IBlockAccessor blockAccessor, Vec3d listener, bool performanceMode)
+    {
+        BlockPos center = new((int)Math.Floor(listener.X), (int)Math.Floor(listener.Y + 1.2), (int)Math.Floor(listener.Z));
+        int solid = 0;
+        int total = 0;
+        int radius = performanceMode ? 3 : 4;
+
+        for (int i = 0; i < EnclosureDirections.Length; i++)
+        {
+            Vec3i dir = EnclosureDirections[i];
+            for (int step = 1; step <= radius; step++)
+            {
+                total++;
+                BlockPos pos = center.AddCopy(dir.X * step, dir.Y * step, dir.Z * step);
+                Block block = blockAccessor.GetBlock(pos);
+                if (block.Id != 0 && block.SideSolid.SidesAndBase && !block.IsLiquid())
+                {
+                    solid++;
+                    break;
+                }
+            }
+        }
+
+        int sun = blockAccessor.GetLightLevel(center, EnumLightLevelType.OnlySunLight);
+        float surround = total <= 0 ? 0f : solid / (float)EnclosureDirections.Length;
+        float lowSun = 1f - Math.Clamp(sun / 24f, 0f, 1f);
+        return Math.Clamp(surround * 0.75f + lowSun * 0.25f, 0f, 1f);
+    }
+
+    private static WeatherSnapshot EvaluateWeather(ICoreClientAPI capi, Vec3d listener, Vec3f speaker)
+    {
+        try
+        {
+            IBlockAccessor blockAccessor = capi.World.BlockAccessor;
+            BlockPos listenerPos = new((int)Math.Floor(listener.X), (int)Math.Floor(listener.Y + 1), (int)Math.Floor(listener.Z));
+            BlockPos speakerPos = new((int)Math.Floor(speaker.X), (int)Math.Floor(speaker.Y + 1), (int)Math.Floor(speaker.Z));
+            bool listenerOutdoor = IsOutdoor(blockAccessor, listenerPos);
+            bool speakerOutdoor = IsOutdoor(blockAccessor, speakerPos);
+            if (!listenerOutdoor && !speakerOutdoor)
+            {
+                return default;
+            }
+
+            ClimateCondition? climate = blockAccessor.GetClimateAt(listenerPos, EnumGetClimateMode.NowValues, capi.World.Calendar.TotalDays);
+            float rain = climate == null ? 0f : Math.Clamp(climate.Rainfall, 0f, 1f);
+            Vec3d windVec = blockAccessor.GetWindSpeedAt(listener);
+            float wind = (float)Math.Clamp(windVec.Length() / 2.2, 0.0, 1.0);
+            float exposure = listenerOutdoor && speakerOutdoor ? 1f : 0.55f;
+            float storm = Math.Clamp((rain * 0.65f + wind * 0.35f) * exposure, 0f, 1f);
+            return new WeatherSnapshot(storm, wind * exposure);
+        }
+        catch
+        {
+            return default;
+        }
+    }
+
+    private static bool IsOutdoor(IBlockAccessor blockAccessor, BlockPos pos)
+    {
+        return blockAccessor.GetRainMapHeightAt(pos.X, pos.Z) <= pos.Y + 1;
+    }
+
     private static double TryReadTemporalStability(Entity entity)
     {
         try
@@ -119,16 +246,56 @@ public static class VoiceEnvironment
         return -1;
     }
 
-    private static bool IsLikelyPoisoned(Entity entity)
+    private static bool IsLikelyPoisoned(Entity? entity)
     {
+        if (entity == null)
+        {
+            return false;
+        }
+
         try
         {
-            string tree = entity.WatchedAttributes.ToJsonToken()?.ToString() ?? string.Empty;
-            return tree.IndexOf("poison", StringComparison.OrdinalIgnoreCase) >= 0;
+            string watched = entity.WatchedAttributes.ToJsonToken()?.ToString() ?? string.Empty;
+            string attrs = entity.Attributes.ToJsonToken()?.ToString() ?? string.Empty;
+            return ContainsPoisonKeyword(watched) || ContainsPoisonKeyword(attrs);
         }
         catch
         {
             return false;
         }
+    }
+
+    private static bool ContainsPoisonKeyword(string text)
+    {
+        return text.IndexOf("poison", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("poisoned", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("intox", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("toxin", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static readonly Vec3i[] EnclosureDirections =
+    {
+        new(1, 0, 0),
+        new(-1, 0, 0),
+        new(0, 0, 1),
+        new(0, 0, -1),
+        new(0, 1, 0),
+        new(0, -1, 0),
+        new(1, 0, 1),
+        new(-1, 0, 1),
+        new(1, 0, -1),
+        new(-1, 0, -1)
+    };
+
+    private readonly struct WeatherSnapshot
+    {
+        public WeatherSnapshot(float storm, float wind)
+        {
+            Storm = storm;
+            Wind = wind;
+        }
+
+        public float Storm { get; }
+        public float Wind { get; }
     }
 }
