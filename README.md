@@ -32,12 +32,12 @@
 - 麦克风启用时显示 `haojiao.png`。
 - 麦克风禁用、静音、语音关闭或麦克风不可用时显示 `nohaojiao.png`。
 - 图片右侧显示麦克风状态、当前中文语音模式和 UDP/麦克风状态。
-- UDP/麦克风状态下方只在真实有语音输入/接收时显示细竖线音量：灰色表示未达到，绿色表示正常音量，红色表示输入过大。
+- UDP/麦克风状态下方常驻显示音量：没有语音输入/接收时显示 0 音量图片，灰色表示未达到，绿色表示正常音量，柔和红色表示输入过大；音量条使用 2 倍大小、40 格带间距的透明背景预渲染 PNG 帧，并降低红色视觉重量以减少暗色 HUD 上的视觉漂移。
 - 音量按当前语音模式和游戏内传播计算，耳语显示更小，正常说话居中，大喊更高；无输入或未开启语音时不显示音量条。
 - 绑定小队频道后，音量下方会显示小队成员；成员正在说话时显示绿色电话图标。
 - 该麦克风状态属于本地测试/控制提示，不受服务器 HUD 指示开关影响；客户端可用 `ShowMicrophoneHud` 关闭。
 
-图片已打包在模组内：`assets/simplevoicechat/textures/gui/haojiao.png`、`assets/simplevoicechat/textures/gui/nohaojiao.png` 和 `assets/simplevoicechat/textures/gui/phone-volume-solid.png`。
+图片已打包在模组内：`assets/simplevoicechat/textures/gui/haojiao.png`、`assets/simplevoicechat/textures/gui/nohaojiao.png`、`assets/simplevoicechat/textures/gui/phone-volume-solid.png` 和 `assets/simplevoicechat/textures/gui/volume/volume-00.png` 到 `volume-40.png`。
 
 ## 状态/设置窗口
 

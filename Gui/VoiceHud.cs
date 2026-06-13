@@ -7,6 +7,10 @@ namespace SimpleVoiceChat.Gui;
 
 public sealed class VoiceHud : HudElement
 {
+    private const int VolumeFrameCount = 40;
+    private const double VolumeImageWidth = 242;
+    private const double VolumeImageHeight = 28;
+
     private static readonly AssetLocation MicEnabledIcon = new("simplevoicechat", "gui/haojiao.png");
     private static readonly AssetLocation MicDisabledIcon = new("simplevoicechat", "gui/nohaojiao.png");
     private static readonly AssetLocation SquadSpeakingIcon = new("simplevoicechat", "gui/phone-volume-solid.png");
@@ -17,6 +21,7 @@ public sealed class VoiceHud : HudElement
     private ImageSurface? micEnabledSurface;
     private ImageSurface? micDisabledSurface;
     private ImageSurface? squadSpeakingSurface;
+    private readonly ImageSurface?[] volumeSurfaces = new ImageSurface?[VolumeFrameCount + 1];
     private long lastUpdateMs;
 
     public override double DrawOrder => 0.09;
@@ -83,7 +88,7 @@ public sealed class VoiceHud : HudElement
     private void Compose()
     {
         lastSnapshot = snapshotProvider();
-        double width = 258;
+        double width = 386;
         double height = CalculateHudHeight(lastSnapshot);
         ElementBounds bounds = ElementBounds.Fixed(EnumDialogArea.RightBottom, -18, -34 - height, width, height);
         ElementBounds drawBounds = ElementBounds.Fixed(0, 0, width, height);
@@ -114,14 +119,10 @@ public sealed class VoiceHud : HudElement
 
         double barX = textX + GuiElement.scaled(32);
         double barY = GuiElement.scaled(72);
-        double barWidth = width - barX - pad;
-        if (snapshot.VoiceLevel > 0.001f)
-        {
-            DrawText(ctx, "音量", textX, barY + GuiElement.scaled(9), 11, new[] { 0.80, 0.84, 0.88, 0.92 }, bold: true);
-            DrawLevelLines(ctx, barX, barY, barWidth, GuiElement.scaled(10), snapshot.VoiceLevel);
-        }
+        DrawText(ctx, "音量", textX, barY + GuiElement.scaled(16), 11, new[] { 0.80, 0.84, 0.88, 0.92 }, bold: true);
+        DrawVolumeImage(ctx, barX, barY - GuiElement.scaled(2), snapshot.VoiceLevel);
 
-        DrawSquadMembers(ctx, snapshot, textX, GuiElement.scaled(96), width - textX - pad);
+        DrawSquadMembers(ctx, snapshot, textX, GuiElement.scaled(112), width - textX - pad);
     }
 
     private void DrawIcon(Context ctx, AssetLocation icon, double x, double y, double size)
@@ -151,6 +152,12 @@ public sealed class VoiceHud : HudElement
         return squadSpeakingSurface ??= GuiElement.getImageSurfaceFromAsset(capi, SquadSpeakingIcon);
     }
 
+    private ImageSurface GetVolumeSurface(int frame)
+    {
+        frame = Math.Clamp(frame, 0, VolumeFrameCount);
+        return volumeSurfaces[frame] ??= GuiElement.getImageSurfaceFromAsset(capi, new AssetLocation("simplevoicechat", $"gui/volume/volume-{frame:00}.png"));
+    }
+
     private static void DrawText(Context ctx, string text, double x, double y, double fontSize, double[] color, bool bold)
     {
         ctx.Save();
@@ -165,38 +172,10 @@ public sealed class VoiceHud : HudElement
         ctx.Restore();
     }
 
-    private static void DrawLevelLines(Context ctx, double x, double y, double width, double height, float level)
+    private void DrawVolumeImage(Context ctx, double x, double y, float level)
     {
-        const int lineCount = 28;
-        double gap = Math.Round(GuiElement.scaled(2));
-        double lineWidth = Math.Max(1, Math.Floor(Math.Min(GuiElement.scaled(2), (width - gap * (lineCount - 1)) / lineCount)));
-        double lineHeight = Math.Round(height);
-        double lineY = Math.Round(y);
-        double clamped = Math.Clamp(level, 0f, 1f);
-        int activeLines = (int)Math.Ceiling(clamped * lineCount);
-
-        for (int i = 0; i < lineCount; i++)
-        {
-            double px = Math.Round(x + i * (lineWidth + gap));
-            bool active = i < activeLines;
-            double ratio = (i + 1) / (double)lineCount;
-
-            if (!active)
-            {
-                ctx.SetSourceRGBA(0.48, 0.50, 0.52, 0.36);
-            }
-            else if (ratio >= 0.75)
-            {
-                ctx.SetSourceRGBA(1.0, 0.24, 0.20, 0.92);
-            }
-            else
-            {
-                ctx.SetSourceRGBA(0.30, 0.95, 0.44, 0.92);
-            }
-
-            ctx.Rectangle(px, lineY, lineWidth, lineHeight);
-            ctx.Fill();
-        }
+        int frame = Math.Clamp((int)Math.Ceiling(Math.Clamp(level, 0f, 1f) * VolumeFrameCount), 0, VolumeFrameCount);
+        DrawImage(ctx, GetVolumeSurface(frame), Math.Round(x), Math.Round(y), GuiElement.scaled(VolumeImageWidth), GuiElement.scaled(VolumeImageHeight));
     }
 
     private void DrawSquadMembers(Context ctx, VoiceHudSnapshot snapshot, double x, double y, double maxWidth)
@@ -270,7 +249,7 @@ public sealed class VoiceHud : HudElement
 
     private static double CalculateHudHeight(VoiceHudSnapshot snapshot)
     {
-        return 94 + GetSquadLineCount(snapshot) * 17;
+        return 110 + GetSquadLineCount(snapshot) * 17;
     }
 
     private static int GetSquadLineCount(VoiceHudSnapshot snapshot)
@@ -331,6 +310,11 @@ public sealed class VoiceHud : HudElement
         micEnabledSurface?.Dispose();
         micDisabledSurface?.Dispose();
         squadSpeakingSurface?.Dispose();
+        foreach (ImageSurface? surface in volumeSurfaces)
+        {
+            surface?.Dispose();
+        }
+
         micEnabledSurface = null;
         micDisabledSurface = null;
         squadSpeakingSurface = null;
