@@ -889,6 +889,7 @@ public sealed class ClientVoiceController : IDisposable
             $"麦克风静音：{localMute}    全局开关：{globalMute}\n" +
             $"打开状态/设置窗口：{settings}\n" +
             $"调试录音：{BuildDebugRecordingStatus()}\n" +
+            $"{playback?.BuildDebugStatus() ?? "播放：未初始化"}\n" +
             $"{VoiceEnvironment.BuildDebugSummary(capi, config, serverConfig)}\n" +
             $"命令：/svc volume <0-200>, /svc mute <玩家名>, /svc bind, /svc unbind";
     }
