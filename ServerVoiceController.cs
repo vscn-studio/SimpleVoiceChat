@@ -56,8 +56,7 @@ public sealed class ServerVoiceController
     private void RegisterCommands()
     {
         sapi.ChatCommands.Create("svc")
-            .WithDescription("SimpleVoiceChat server controls")
-            .RequiresPrivilege(Privilege.controlserver)
+            .WithDescription("简单语音对话命令")
             .IgnoreAdditionalArgs()
             .HandleWith(HandleServerCommand);
     }
@@ -71,18 +70,39 @@ public sealed class ServerVoiceController
                 return TextCommandResult.Success(
                     $"SimpleVoiceChat enabled={config.Enabled}, ranges whisper/talk/shout={config.WhisperRange:0.#}/{config.TalkRange:0.#}/{config.ShoutRange:0.#}, max={config.MaxRange:0.#}, squads={squadMembersByUid.Count}, adminMuted={config.GloballyMutedPlayerUids.Count}, forceBlocked={config.ForceBlockedPlayerUids.Count}");
 
+            case "bind":
+                return HandleSquadBindCommand(args);
+
+            case "unbind":
+                return HandleSquadLeaveCommand(args);
+
+            case "squad":
+                return HandleSquadStatusCommand(args);
+
             case "reload":
+                if (!HasServerControl(args))
+                {
+                    return NoServerControl();
+                }
                 config = LoadConfig(sapi);
                 BroadcastConfig();
                 return TextCommandResult.Success("SimpleVoiceChat config reloaded.");
 
             case "enable":
+                if (!HasServerControl(args))
+                {
+                    return NoServerControl();
+                }
                 config.Enabled = true;
                 SaveConfig();
                 BroadcastConfig();
                 return TextCommandResult.Success("SimpleVoiceChat enabled.");
 
             case "disable":
+                if (!HasServerControl(args))
+                {
+                    return NoServerControl();
+                }
                 config.Enabled = false;
                 SaveConfig();
                 BroadcastConfig();
@@ -90,6 +110,10 @@ public sealed class ServerVoiceController
 
             case "setrange":
             {
+                if (!HasServerControl(args))
+                {
+                    return NoServerControl();
+                }
                 string mode = args.RawArgs.PopWord("").ToLowerInvariant();
                 float range = args.RawArgs.PopFloat(-1f) ?? -1f;
                 if (range <= 0)
@@ -123,6 +147,10 @@ public sealed class ServerVoiceController
             case "forceblock":
             case "unforceblock":
             {
+                if (!HasServerControl(args))
+                {
+                    return NoServerControl();
+                }
                 string target = args.RawArgs.PopWord("");
                 if (string.IsNullOrWhiteSpace(target))
                 {
@@ -133,11 +161,62 @@ public sealed class ServerVoiceController
             }
 
             case "adminmutes":
+                if (!HasServerControl(args))
+                {
+                    return NoServerControl();
+                }
                 return TextCommandResult.Success(BuildAdminMuteList());
 
             default:
-                return TextCommandResult.Error("Usage: /svc status|reload|enable|disable|setrange|adminmute|adminunmute|forceblock|unforceblock|adminmutes");
+                return TextCommandResult.Error("用法：/svc status|bind|unbind|squad|reload|enable|disable|setrange|adminmute|adminunmute|forceblock|unforceblock|adminmutes");
         }
+    }
+
+    private TextCommandResult HandleSquadBindCommand(TextCommandCallingArgs args)
+    {
+        if (!config.EnableSquadChannels)
+        {
+            return TextCommandResult.Error("简单语音对话：服务器未启用小队频道。");
+        }
+
+        if (GetCommandPlayer(args) is not { Entity: not null } player)
+        {
+            return TextCommandResult.Error("简单语音对话：该命令只能由游戏内玩家使用。");
+        }
+
+        string targetNameOrUid = args.RawArgs.PopWord("");
+        IServerPlayer? target = !string.IsNullOrWhiteSpace(targetNameOrUid)
+            ? FindOnlinePlayer(targetNameOrUid)
+            : FindSelectedSquadTarget(player) ?? FindOnlyNearbySquadTarget(player);
+
+        if (target == null)
+        {
+            return TextCommandResult.Error($"简单语音对话：请面对 {config.SquadBindRange:0.#} 格内玩家后输入 /svc bind，或使用 /svc bind <玩家名>。");
+        }
+
+        return BindSquadPlayers(player, target);
+    }
+
+    private TextCommandResult HandleSquadLeaveCommand(TextCommandCallingArgs args)
+    {
+        if (GetCommandPlayer(args) is not { Entity: not null } player)
+        {
+            return TextCommandResult.Error("简单语音对话：该命令只能由游戏内玩家使用。");
+        }
+
+        LeaveSquad(player.PlayerUID);
+        SendSquadHud(player);
+        return TextCommandResult.Success("简单语音对话：你已离开小队频道。");
+    }
+
+    private TextCommandResult HandleSquadStatusCommand(TextCommandCallingArgs args)
+    {
+        if (GetCommandPlayer(args) is not { Entity: not null } player)
+        {
+            return TextCommandResult.Error("简单语音对话：该命令只能由游戏内玩家使用。");
+        }
+
+        return TextCommandResult.Success(BuildSquadStatusText(player));
     }
 
     private void OnPlayerJoin(IServerPlayer player)
@@ -204,24 +283,8 @@ public sealed class ServerVoiceController
         }
 
         IServerPlayer? target = FindOnlinePlayer(packet.TargetPlayerUid);
-        if (target == null || target == fromPlayer || target.Entity == null || fromPlayer.Entity == null)
-        {
-            SendPlayerMessage(fromPlayer, "简单语音对话：没有找到可绑定的目标玩家。");
-            return;
-        }
-
-        double distance = fromPlayer.Entity.Pos.XYZ.DistanceTo(target.Entity.Pos.XYZ);
-        if (distance > config.SquadBindRange)
-        {
-            SendPlayerMessage(fromPlayer, $"简单语音对话：目标太远，需要 {config.SquadBindRange:0.#} 格内面对绑定。");
-            return;
-        }
-
-        BindSquads(fromPlayer.PlayerUID, target.PlayerUID);
-        SendPlayerMessage(fromPlayer, $"简单语音对话：已与 {target.PlayerName} 绑定小队频道。");
-        SendPlayerMessage(target, $"简单语音对话：{fromPlayer.PlayerName} 已与你绑定小队频道。");
-        SendSquadHud(fromPlayer);
-        SendSquadHud(target);
+        TextCommandResult result = BindSquadPlayers(fromPlayer, target);
+        SendPlayerMessage(fromPlayer, result.StatusMessage);
     }
 
     private void OnSlowTick(float dt)
@@ -447,14 +510,105 @@ public sealed class ServerVoiceController
 
     private void SendSquadStatus(IServerPlayer player)
     {
+        SendPlayerMessage(player, BuildSquadStatusText(player));
+    }
+
+    private string BuildSquadStatusText(IServerPlayer player)
+    {
         if (!squadMembersByUid.TryGetValue(player.PlayerUID, out HashSet<string>? members) || members.Count == 0)
         {
-            SendPlayerMessage(player, "简单语音对话：你当前没有绑定小队频道。");
-            return;
+            return "简单语音对话：你当前没有绑定小队频道。";
         }
 
         string names = string.Join("、", members.Select(uid => FindOnlinePlayer(uid)?.PlayerName ?? uid));
-        SendPlayerMessage(player, $"简单语音对话：当前小队成员：{names}");
+        return $"简单语音对话：当前小队成员：{names}";
+    }
+
+    private TextCommandResult BindSquadPlayers(IServerPlayer fromPlayer, IServerPlayer? target)
+    {
+        if (target == null || target == fromPlayer || target.Entity == null || fromPlayer.Entity == null)
+        {
+            return TextCommandResult.Error("简单语音对话：没有找到可绑定的目标玩家。");
+        }
+
+        double distance = fromPlayer.Entity.Pos.XYZ.DistanceTo(target.Entity.Pos.XYZ);
+        if (distance > config.SquadBindRange)
+        {
+            return TextCommandResult.Error($"简单语音对话：目标太远，需要 {config.SquadBindRange:0.#} 格内面对绑定。");
+        }
+
+        BindSquads(fromPlayer.PlayerUID, target.PlayerUID);
+        SendPlayerMessage(target, $"简单语音对话：{fromPlayer.PlayerName} 已与你绑定小队频道。");
+        SendSquadHud(fromPlayer);
+        SendSquadHud(target);
+        return TextCommandResult.Success($"简单语音对话：已与 {target.PlayerName} 绑定小队频道。");
+    }
+
+    private IServerPlayer? FindSelectedSquadTarget(IServerPlayer player)
+    {
+        long selectedEntityId = player.CurrentEntitySelection?.Entity?.EntityId ?? 0;
+        if (selectedEntityId <= 0)
+        {
+            return null;
+        }
+
+        return sapi.World.AllOnlinePlayers
+            .OfType<IServerPlayer>()
+            .FirstOrDefault(candidate =>
+                candidate != player
+                && candidate.Entity != null
+                && candidate.Entity.EntityId == selectedEntityId);
+    }
+
+    private IServerPlayer? FindOnlyNearbySquadTarget(IServerPlayer player)
+    {
+        if (player.Entity == null)
+        {
+            return null;
+        }
+
+        IServerPlayer? nearest = null;
+        double nearestDistance = double.MaxValue;
+        int nearbyCount = 0;
+        Vec3d playerPos = player.Entity.Pos.XYZ;
+
+        foreach (IServerPlayer candidate in sapi.World.AllOnlinePlayers.OfType<IServerPlayer>())
+        {
+            if (candidate == player || candidate.Entity == null)
+            {
+                continue;
+            }
+
+            double distance = playerPos.DistanceTo(candidate.Entity.Pos.XYZ);
+            if (distance > config.SquadBindRange)
+            {
+                continue;
+            }
+
+            nearbyCount++;
+            if (distance < nearestDistance)
+            {
+                nearestDistance = distance;
+                nearest = candidate;
+            }
+        }
+
+        return nearbyCount == 1 ? nearest : null;
+    }
+
+    private static IServerPlayer? GetCommandPlayer(TextCommandCallingArgs args)
+    {
+        return args.Caller.Player as IServerPlayer;
+    }
+
+    private static bool HasServerControl(TextCommandCallingArgs args)
+    {
+        return args.Caller.HasPrivilege(Privilege.controlserver);
+    }
+
+    private static TextCommandResult NoServerControl()
+    {
+        return TextCommandResult.Error("简单语音对话：你没有服务器语音管理权限。");
     }
 
     private IServerPlayer? FindOnlinePlayer(string nameOrUid)

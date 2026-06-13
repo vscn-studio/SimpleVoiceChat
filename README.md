@@ -75,7 +75,7 @@
 - `/svc volume <0-200>` 调整本地播放音量。
 - `/svc mute <玩家名>` 屏蔽指定在线玩家。
 - `/svc unmute <玩家名>` 取消屏蔽指定在线玩家。
-- `/svc bind` 面对近处玩家时绑定小队频道；绑定后距离外也能听到小队成员语音。
+- `/svc bind` 面对近处玩家时绑定小队频道，也可使用 `/svc bind <玩家名>`；如果绑定范围内只有一个其他玩家，会自动作为目标。绑定后距离外也能听到小队成员语音。
 - `/svc unbind` 离开当前小队频道。
 - `/svc squad` 查看当前小队成员。
 
@@ -115,6 +115,7 @@
 
 - `/svc adminmute` 管理员全局禁言指定玩家，该玩家语音不会被服务器转发。
 - `/svc forceblock` 管理员强制屏蔽指定玩家，全服不会听到该玩家。
+- `reload`、`enable`、`disable`、`setrange`、`adminmute`、`forceblock` 等管理命令需要服务器管理权限；普通玩家仍可使用 `/svc bind`、`/svc unbind`、`/svc squad`。
 - `adminmute` 和 `forceblock` 都会写入服务器配置并持久化。
 
 ## 配置文件
