@@ -5,7 +5,7 @@
   "authors": [
     "VSCN-Studio"
   ],
-  "description": "为 Vintage Story 提供双端接近度语音聊天，支持耳语、正常说话、大喊三档模式，3D 空间定位、环境音效、小队频道、静音控制和右下角麦克风状态显示。",
+  "description": "为 Vintage Story 提供双端接近度语音聊天，支持耳语、正常说话、大喊三档模式，3D 空间定位、语音传播修正、小队频道、静音控制和右下角麦克风状态显示。",
   "version": "0.1.1",
   "dependencies": {
     "game": "1.22.2"

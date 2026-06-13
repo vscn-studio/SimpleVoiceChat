@@ -10,24 +10,21 @@ namespace SimpleVoiceChat.Audio;
 
 public readonly struct VoiceEnvironmentSnapshot
 {
-    public VoiceEnvironmentSnapshot(float volumeMultiplier, float pitch, float lowPass, float distortion, float echo, int echoDelaySamples, float flutter)
+    public VoiceEnvironmentSnapshot(float volumeMultiplier, float pitch, float lowPass)
     {
         VolumeMultiplier = volumeMultiplier;
         Pitch = pitch;
         LowPass = lowPass;
-        Distortion = distortion;
-        Echo = echo;
-        EchoDelaySamples = echoDelaySamples;
-        Flutter = flutter;
     }
 
     public float VolumeMultiplier { get; }
     public float Pitch { get; }
+
+    /// <summary>
+    /// 0 = unchanged, 1 = heavily muffled. Playback applies this with OpenAL EFX when available,
+    /// falling back to a simple low-pass on PCM only when the device lacks EFX.
+    /// </summary>
     public float LowPass { get; }
-    public float Distortion { get; }
-    public float Echo { get; }
-    public int EchoDelaySamples { get; }
-    public float Flutter { get; }
 }
 
 public static class VoiceEnvironment
@@ -45,10 +42,6 @@ public static class VoiceEnvironment
         float volume = 1f;
         float pitch = 1f;
         float lowPass = 0f;
-        float distortion = 0f;
-        float echo = 0f;
-        int echoDelaySamples = 1280;
-        float flutter = 0f;
         double distance = listener.DistanceTo(speaker.X, speaker.Y, speaker.Z);
         float range = Math.Min(serverConfig.GetRange(mode), serverConfig.MaxRange);
 
@@ -75,28 +68,16 @@ public static class VoiceEnvironment
         bool speakerInLiquid = IsInLiquid(capi.World.BlockAccessor, speaker);
         if (listenerInLiquid || speakerInLiquid)
         {
-            volume *= listenerInLiquid && speakerInLiquid ? 0.62f : 0.78f;
-            pitch *= listenerInLiquid && speakerInLiquid ? 0.93f : 0.965f;
-            lowPass += listenerInLiquid && speakerInLiquid ? 0.92f : 0.68f;
-            distortion += listenerInLiquid && speakerInLiquid ? 0.24f : 0.12f;
-            flutter += listenerInLiquid && speakerInLiquid ? 0.035f : 0.018f;
-        }
-
-        float enclosure = EstimateEnclosure(capi.World.BlockAccessor, listener, clientConfig.PerformanceMode);
-        if (enclosure > 0.25f)
-        {
-            echo += 0.08f + 0.22f * enclosure;
-            echoDelaySamples = (int)(720 + 1320 * enclosure);
-            lowPass += 0.12f * enclosure;
+            volume *= listenerInLiquid && speakerInLiquid ? 0.70f : 0.84f;
+            pitch *= listenerInLiquid && speakerInLiquid ? 0.94f : 0.975f;
+            lowPass += listenerInLiquid && speakerInLiquid ? 0.90f : 0.58f;
         }
 
         if (serverConfig.EnableWeatherEffects)
         {
             WeatherSnapshot weather = EvaluateWeather(capi, listener, speaker);
-            volume *= 1f - 0.28f * weather.Storm;
-            lowPass += 0.38f * weather.Storm;
-            distortion += 0.09f * weather.Wind;
-            flutter += 0.045f * weather.Wind;
+            volume *= 1f - 0.18f * weather.Storm;
+            lowPass += 0.22f * weather.Storm;
         }
 
         Entity playerEntity = capi.World.Player.Entity;
@@ -104,29 +85,22 @@ public static class VoiceEnvironment
         if (stability >= 0 && stability < 0.35)
         {
             float factor = (float)(1.0 - stability / 0.35);
-            pitch *= 1f - 0.075f * factor;
-            volume *= 1f - 0.18f * factor;
-            lowPass += 0.36f * factor;
-            flutter += 0.075f * factor;
+            pitch *= 1f - 0.04f * factor;
+            volume *= 1f - 0.12f * factor;
+            lowPass += 0.18f * factor;
         }
 
         if (IsLikelyPoisoned(speakerEntity) || IsLikelyPoisoned(playerEntity))
         {
-            volume *= 0.88f;
-            pitch *= 0.965f;
-            lowPass += 0.32f;
-            distortion += 0.11f;
-            flutter += 0.055f;
+            volume *= 0.92f;
+            pitch *= 0.98f;
+            lowPass += 0.16f;
         }
 
         return new VoiceEnvironmentSnapshot(
             Math.Clamp(volume, 0f, 1.5f),
-            Math.Clamp(pitch, 0.85f, 1.1f),
-            Math.Clamp(lowPass, 0f, 0.95f),
-            Math.Clamp(distortion, 0f, 0.45f),
-            Math.Clamp(echo, 0f, 0.38f),
-            Math.Clamp(echoDelaySamples, 640, 3200),
-            Math.Clamp(flutter, 0f, 0.18f));
+            Math.Clamp(pitch, 0.9f, 1.05f),
+            Math.Clamp(lowPass, 0f, 0.92f));
     }
 
     public static string BuildDebugSummary(
@@ -141,12 +115,11 @@ public static class VoiceEnvironment
             Vec3f speaker = new((float)listener.X, (float)listener.Y, (float)listener.Z);
             VoiceEnvironmentSnapshot snapshot = Evaluate(capi, listener, speaker, playerEntity, clientConfig, serverConfig, VoiceMode.Talk, false);
             bool inLiquid = IsInLiquid(capi.World.BlockAccessor, listener);
-            float enclosure = EstimateEnclosure(capi.World.BlockAccessor, listener, clientConfig.PerformanceMode);
             WeatherSnapshot weather = serverConfig.EnableWeatherEffects ? EvaluateWeather(capi, listener, speaker) : default;
             double stability = TryReadTemporalStability(playerEntity);
             string stabilityText = stability < 0 ? "不可读" : stability.ToString("0.00");
             string poisoned = IsLikelyPoisoned(playerEntity) ? "是" : "否";
-            return $"环境：水下={(inLiquid ? "是" : "否")} 室内/洞穴={enclosure:0.00} 风雨={weather.Storm:0.00}/{weather.Wind:0.00} 稳定={stabilityText} 中毒={poisoned} 低通={snapshot.LowPass:0.00} 回音={snapshot.Echo:0.00}";
+            return $"环境修正：水下={(inLiquid ? "是" : "否")} 风雨={weather.Storm:0.00}/{weather.Wind:0.00} 稳定={stabilityText} 中毒={poisoned} 低通={snapshot.LowPass:0.00}；语音不额外叠加室内/洞穴回音";
         }
         catch (Exception ex)
         {
@@ -187,35 +160,6 @@ public static class VoiceEnvironment
     {
         BlockPos blockPos = new((int)Math.Floor(pos.X), (int)Math.Floor(pos.Y + 0.1f), (int)Math.Floor(pos.Z));
         return blockAccessor.GetBlock(blockPos, 2).IsLiquid();
-    }
-
-    private static float EstimateEnclosure(IBlockAccessor blockAccessor, Vec3d listener, bool performanceMode)
-    {
-        BlockPos center = new((int)Math.Floor(listener.X), (int)Math.Floor(listener.Y + 1.2), (int)Math.Floor(listener.Z));
-        int solid = 0;
-        int total = 0;
-        int radius = performanceMode ? 3 : 4;
-
-        for (int i = 0; i < EnclosureDirections.Length; i++)
-        {
-            Vec3i dir = EnclosureDirections[i];
-            for (int step = 1; step <= radius; step++)
-            {
-                total++;
-                BlockPos pos = center.AddCopy(dir.X * step, dir.Y * step, dir.Z * step);
-                Block block = blockAccessor.GetBlock(pos);
-                if (block.Id != 0 && block.SideSolid.SidesAndBase && !block.IsLiquid())
-                {
-                    solid++;
-                    break;
-                }
-            }
-        }
-
-        int sun = blockAccessor.GetLightLevel(center, EnumLightLevelType.OnlySunLight);
-        float surround = total <= 0 ? 0f : solid / (float)EnclosureDirections.Length;
-        float lowSun = 1f - Math.Clamp(sun / 24f, 0f, 1f);
-        return Math.Clamp(surround * 0.75f + lowSun * 0.25f, 0f, 1f);
     }
 
     private static WeatherSnapshot EvaluateWeather(ICoreClientAPI capi, Vec3d listener, Vec3f speaker)
@@ -298,21 +242,6 @@ public static class VoiceEnvironment
             || text.IndexOf("intox", StringComparison.OrdinalIgnoreCase) >= 0
             || text.IndexOf("toxin", StringComparison.OrdinalIgnoreCase) >= 0;
     }
-
-    private static readonly Vec3i[] EnclosureDirections =
-    {
-        new(1, 0, 0),
-        new(-1, 0, 0),
-        new(0, 0, 1),
-        new(0, 0, -1),
-        new(0, 1, 0),
-        new(0, -1, 0),
-        new(1, 0, 1),
-        new(-1, 0, 1),
-        new(1, 0, -1),
-        new(-1, 0, -1)
-    };
-
     private readonly struct WeatherSnapshot
     {
         public WeatherSnapshot(float storm, float wind)

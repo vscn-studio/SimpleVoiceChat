@@ -681,7 +681,7 @@ public sealed class ClientVoiceController : IDisposable
             debugPlaybackEntityId = InitialDebugPlaybackEntityId;
         }
 
-        capi.ShowChatMessage($"简单语音对话：开始播放调试录音（{debugRecordingFrames.Count} 帧）。当前位置的水下、洞穴、风雨、遮挡等环境效果会参与处理。");
+        capi.ShowChatMessage($"简单语音对话：开始播放调试录音（{debugRecordingFrames.Count} 帧）。播放会使用游戏 OpenAL 3D 声场，并叠加语音传播所需的距离/遮挡/水下低通修正。");
         return true;
     }
 
@@ -809,12 +809,24 @@ public sealed class ClientVoiceController : IDisposable
         Vec3d listener = capi.World.Player.Entity.Pos.XYZ;
         double distance = listener.DistanceTo(packet.X, packet.Y, packet.Z);
         float range = Math.Min(serverConfig.GetRange(packet.Mode), serverConfig.MaxRange);
-        float distanceGain = VoiceMath.DistanceGain(distance, range);
+        float distanceGain = EstimateOpenAlDistanceGain(distance, range);
         if (packet.SquadRelay && distance > range)
         {
             distanceGain = 0.62f;
         }
         return Math.Clamp(NormalizeVoiceLevel(packet.Rms, packet.Mode) * distanceGain, 0f, 1f);
+    }
+
+    private static float EstimateOpenAlDistanceGain(double distance, float range)
+    {
+        float referenceDistance = (float)Math.Max(3.0, Math.Pow(Math.Max(range, 1f), 0.5) - 2.0);
+        if (distance <= referenceDistance)
+        {
+            return 1f;
+        }
+
+        float rolloff = range > 1f ? (float)(0.0 - Math.Log(0.01) / Math.Log(range)) : 1f;
+        return (float)Math.Clamp(Math.Pow(distance / referenceDistance, -rolloff), 0f, 1f);
     }
 
     private static float ModeLevelMultiplier(VoiceMode voiceMode)

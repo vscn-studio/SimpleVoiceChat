@@ -16,7 +16,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private const string PerformanceModeKey = "performanceMode";
 
     private readonly SimpleVoiceChatClientConfig config;
-    private readonly Func<string> summaryProvider;
     private readonly Action saveConfig;
     private readonly Action refreshHud;
     private readonly Action reinitializeCapture;
@@ -35,7 +34,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
         : base(capi)
     {
         this.config = config;
-        this.summaryProvider = summaryProvider;
         this.saveConfig = saveConfig;
         this.refreshHud = refreshHud;
         this.reinitializeCapture = reinitializeCapture;
@@ -55,10 +53,9 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     public void Compose()
     {
-        ElementBounds dialogBounds = ElementBounds.Fixed(EnumDialogArea.CenterMiddle, -330, -330, 660, 660);
-        ElementBounds bgBounds = ElementBounds.Fixed(0, 0, 660, 660);
-        ElementBounds statusBounds = ElementBounds.Fixed(28, 48, 604, 146);
-        ElementBounds closeBounds = ElementBounds.Fixed(275, 610, 110, 32);
+        ElementBounds dialogBounds = ElementBounds.Fixed(EnumDialogArea.CenterMiddle, -330, -250, 660, 500);
+        ElementBounds bgBounds = ElementBounds.Fixed(0, 0, 660, 500);
+        ElementBounds closeBounds = ElementBounds.Fixed(275, 450, 110, 32);
         string[] inputDeviceValues = GetInputDeviceValues();
         string[] inputDeviceNames = GetInputDeviceNames(inputDeviceValues);
         int selectedInputDeviceIndex = GetSelectedInputDeviceIndex(inputDeviceValues);
@@ -67,14 +64,13 @@ public sealed class VoiceSettingsDialog : GuiDialog
         double controlX = 260;
         double labelWidth = 210;
         double controlWidth = 350;
-        double y = 216;
+        double y = 64;
         double row = 46;
 
         SingleComposer = capi.Gui.CreateCompo("simplevoicechat-settings", dialogBounds)
             .AddShadedDialogBG(bgBounds)
             .AddDialogTitleBar("简单语音对话", () => TryClose())
             .BeginChildElements(bgBounds)
-            .AddStaticText(summaryProvider(), CairoFont.WhiteSmallText(), statusBounds)
             .AddStaticText("输入设备", CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y + 4, labelWidth, 24))
             .AddDropDown(inputDeviceValues, inputDeviceNames, selectedInputDeviceIndex, OnInputDeviceChanged, ElementBounds.Fixed(controlX, y, controlWidth, 32), InputDeviceKey)
             .AddStaticText("播放音量", CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row, labelWidth, 24))
@@ -85,7 +81,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             .AddSlider(OnNoiseGateChanged, ElementBounds.Fixed(controlX, y, controlWidth, 24), NoiseGateKey)
             .AddStaticText("右下角麦克风显示", CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row + 8, labelWidth, 24))
             .AddSwitch(OnShowMicrophoneHudChanged, ElementBounds.Fixed(controlX, y - 6, 36, 32), ShowMicrophoneHudKey, 26, 3)
-            .AddStaticText("遮挡/环境音效", CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row, labelWidth, 24))
+            .AddStaticText("遮挡/传播修正", CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row, labelWidth, 24))
             .AddSwitch(OnOcclusionChanged, ElementBounds.Fixed(controlX, y - 6, 36, 32), OcclusionKey, 26, 3)
             .AddStaticText("性能模式", CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row, labelWidth, 24))
             .AddSwitch(OnPerformanceModeChanged, ElementBounds.Fixed(controlX, y - 6, 36, 32), PerformanceModeKey, 26, 3)

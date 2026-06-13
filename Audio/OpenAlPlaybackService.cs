@@ -17,6 +17,8 @@ public sealed class OpenAlPlaybackService : IDisposable
     private ALDevice device;
     private ALContext context;
     private bool hasContext;
+    private bool hasEffectsExtension;
+    private bool contextWarningShown;
     private bool disposed;
 
     public OpenAlPlaybackService(ICoreClientAPI capi, SimpleVoiceChatClientConfig clientConfig)
@@ -27,24 +29,39 @@ public sealed class OpenAlPlaybackService : IDisposable
 
     public bool Initialize()
     {
+        return TryUseCurrentContext(logIfMissing: true);
+    }
+
+    private bool EnsureContext()
+    {
+        if (hasContext)
+        {
+            return true;
+        }
+
+        return TryUseCurrentContext(logIfMissing: false);
+    }
+
+    private bool TryUseCurrentContext(bool logIfMissing)
+    {
         try
         {
-            device = ALC.OpenDevice(null);
-            if (device.Handle == IntPtr.Zero)
+            context = ALC.GetCurrentContext();
+            if (context.Handle == IntPtr.Zero)
             {
-                capi.Logger.Warning("SimpleVoiceChat: OpenAL playback device could not be opened.");
+                if (logIfMissing || !contextWarningShown)
+                {
+                    contextWarningShown = true;
+                    capi.Logger.Warning("SimpleVoiceChat: game OpenAL context is not ready yet; voice playback will retry later.");
+                }
                 return false;
             }
 
-            context = ALC.CreateContext(device, Array.Empty<int>());
-            if (context.Handle == IntPtr.Zero || !ALC.MakeContextCurrent(context))
-            {
-                capi.Logger.Warning("SimpleVoiceChat: OpenAL playback context could not be created.");
-                return false;
-            }
-
+            device = ALC.GetContextsDevice(context);
             hasContext = true;
-            AL.DistanceModel(ALDistanceModel.None);
+            hasEffectsExtension = device.Handle != IntPtr.Zero && ALC.EFX.IsExtensionPresent(device);
+            AL.DistanceModel(ALDistanceModel.ExponentDistanceClamped);
+            capi.Logger.Notification("SimpleVoiceChat: voice playback using game OpenAL context, effects={0}.", hasEffectsExtension);
             return true;
         }
         catch (Exception ex)
@@ -56,7 +73,7 @@ public sealed class OpenAlPlaybackService : IDisposable
 
     public void Enqueue(VoiceFramePacket packet, ServerVoiceConfigPacket serverConfig)
     {
-        if (!hasContext || packet.Payload.Length == 0)
+        if (!EnsureContext() || packet.Payload.Length == 0)
         {
             return;
         }
@@ -78,7 +95,7 @@ public sealed class OpenAlPlaybackService : IDisposable
             if (!streams.TryGetValue(packet.SenderEntityId, out RemoteVoiceStream? stream))
             {
                 stream = new RemoteVoiceStream(packet.SenderEntityId);
-                stream.Initialize();
+                stream.Initialize(hasEffectsExtension);
                 streams[packet.SenderEntityId] = stream;
             }
 
@@ -96,14 +113,17 @@ public sealed class OpenAlPlaybackService : IDisposable
                 serverConfig,
                 packet.Mode,
                 packet.SquadRelay);
-            stream.Effects.Process(decoded, env);
+            if (!hasEffectsExtension)
+            {
+                stream.Effects.Process(decoded, env);
+            }
             stream.Buffer.Enqueue(packet.Sequence, decoded);
         }
     }
 
     public void Update(ServerVoiceConfigPacket serverConfig)
     {
-        if (!hasContext)
+        if (!EnsureContext())
         {
             return;
         }
@@ -111,7 +131,6 @@ public sealed class OpenAlPlaybackService : IDisposable
         try
         {
             ALC.MakeContextCurrent(context);
-            UpdateListener();
 
             lock (gate)
             {
@@ -154,19 +173,6 @@ public sealed class OpenAlPlaybackService : IDisposable
         }
     }
 
-    private void UpdateListener()
-    {
-        Entity playerEntity = capi.World.Player.Entity;
-        Vec3d pos = playerEntity.Pos.XYZ;
-        AL.Listener(ALListener3f.Position, (float)pos.X, (float)(pos.Y + playerEntity.LocalEyePos.Y), (float)pos.Z);
-
-        float yaw = playerEntity.Pos.Yaw;
-        Vector3 at = new((float)-Math.Sin(yaw), 0f, (float)-Math.Cos(yaw));
-        Vector3 up = Vector3.UnitY;
-        float[] orientation = { at.X, at.Y, at.Z, up.X, up.Y, up.Z };
-        AL.Listener(ALListenerfv.Orientation, ref orientation[0]);
-    }
-
     private void UpdateStream(RemoteVoiceStream stream, ServerVoiceConfigPacket serverConfig)
     {
         RecycleProcessedBuffers(stream);
@@ -176,10 +182,10 @@ public sealed class OpenAlPlaybackService : IDisposable
         Vec3d listener = playerEntity.Pos.XYZ;
         double distance = listener.DistanceTo(stream.Position.X, stream.Position.Y, stream.Position.Z);
         float range = Math.Min(serverConfig.GetRange(stream.Mode), serverConfig.MaxRange);
-        float gain = VoiceMath.DistanceGain(distance, range) * clientConfig.OutputVolume;
+        float gain = clientConfig.OutputVolume;
         if (stream.SquadRelay && distance > range)
         {
-            gain = Math.Max(gain, 0.62f * clientConfig.OutputVolume);
+            gain = 0.62f * clientConfig.OutputVolume;
         }
 
         Entity? speakerEntity = capi.World.GetEntityById(stream.EntityId);
@@ -188,9 +194,11 @@ public sealed class OpenAlPlaybackService : IDisposable
 
         AL.Source(stream.Source, ALSource3f.Position, stream.Position.X, stream.Position.Y, stream.Position.Z);
         AL.Source(stream.Source, ALSourcef.Gain, Math.Clamp(gain, 0f, 2f));
-        AL.Source(stream.Source, ALSourcef.ReferenceDistance, 2f);
-        AL.Source(stream.Source, ALSourcef.MaxDistance, range);
+        AL.Source(stream.Source, ALSourcef.RolloffFactor, CalculateRolloff(range));
+        AL.Source(stream.Source, ALSourcef.ReferenceDistance, CalculateReferenceDistance(range));
+        AL.Source(stream.Source, ALSourcef.MaxDistance, 9999f);
         AL.Source(stream.Source, ALSourcef.Pitch, env.Pitch);
+        ApplyLowPass(stream, env.LowPass);
 
         if (stream.QueuedBuffers > 0 && AL.GetSource(stream.Source, ALGetSourcei.SourceState) != (int)ALSourceState.Playing)
         {
@@ -237,15 +245,48 @@ public sealed class OpenAlPlaybackService : IDisposable
             streams.Clear();
         }
 
-        if (hasContext)
+        if (hasContext && ALC.GetCurrentContext() != context)
         {
-            ALC.MakeContextCurrent(ALContext.Null);
-            ALC.DestroyContext(context);
+            ALC.MakeContextCurrent(context);
         }
 
-        if (device.Handle != IntPtr.Zero)
+        hasContext = false;
+        context = ALContext.Null;
+        device = ALDevice.Null;
+    }
+
+    private static float CalculateRolloff(float range)
+    {
+        return range > 1f ? (float)(0.0 - Math.Log(0.01) / Math.Log(range)) : 1f;
+    }
+
+    private static float CalculateReferenceDistance(float range)
+    {
+        return (float)Math.Max(3.0, Math.Pow(Math.Max(range, 1f), 0.5) - 2.0);
+    }
+
+    private void ApplyLowPass(RemoteVoiceStream stream, float amount)
+    {
+        if (!hasEffectsExtension || stream.LowPassFilter == 0)
         {
-            ALC.CloseDevice(device);
+            return;
+        }
+
+        float gainHf = Math.Clamp(1f - amount * 0.94f, 0.06f, 1f);
+        if (Math.Abs(gainHf - stream.LastLowPassGainHf) < 0.015f)
+        {
+            return;
+        }
+
+        stream.LastLowPassGainHf = gainHf;
+        if (gainHf < 0.985f)
+        {
+            ALC.EFX.Filter(stream.LowPassFilter, FilterFloat.LowpassGainHF, gainHf);
+            AL.Source(stream.Source, ALSourcei.EfxDirectFilter, stream.LowPassFilter);
+        }
+        else
+        {
+            AL.Source(stream.Source, ALSourcei.EfxDirectFilter, 0);
         }
     }
 
@@ -266,14 +307,23 @@ public sealed class OpenAlPlaybackService : IDisposable
         public VoiceMode Mode { get; set; } = VoiceMode.Talk;
         public bool SquadRelay { get; set; }
         public VoiceEffectsProcessor Effects { get; } = new();
+        public float LastLowPassGainHf { get; set; } = 1f;
+        public int LowPassFilter { get; private set; }
 
-        public void Initialize()
+        public void Initialize(bool hasEffectsExtension)
         {
             Source = AL.GenSource();
             AL.Source(Source, ALSourceb.Looping, false);
             AL.Source(Source, ALSourcef.Gain, 1f);
             AL.Source(Source, ALSourcef.ReferenceDistance, 2f);
             AL.Source(Source, ALSourcef.RolloffFactor, 1f);
+            if (hasEffectsExtension)
+            {
+                LowPassFilter = ALC.EFX.GenFilter();
+                ALC.EFX.Filter(LowPassFilter, FilterInteger.FilterType, 1);
+                ALC.EFX.Filter(LowPassFilter, FilterFloat.LowpassGain, 1f);
+                ALC.EFX.Filter(LowPassFilter, FilterFloat.LowpassGainHF, 1f);
+            }
 
             int[] buffers = AL.GenBuffers(5);
             foreach (int buffer in buffers)
@@ -295,6 +345,12 @@ public sealed class OpenAlPlaybackService : IDisposable
                 }
                 AL.DeleteSource(Source);
                 Source = 0;
+            }
+
+            if (LowPassFilter != 0)
+            {
+                ALC.EFX.DeleteFilter(LowPassFilter);
+                LowPassFilter = 0;
             }
 
             while (FreeBuffers.Count > 0)
