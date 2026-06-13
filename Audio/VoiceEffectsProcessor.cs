@@ -4,6 +4,11 @@ public sealed class VoiceEffectsProcessor
 {
     private float lowPassState;
 
+    public void Reset()
+    {
+        lowPassState = 0f;
+    }
+
     public void Process(short[] samples, VoiceEnvironmentSnapshot environment)
     {
         if (samples.Length == 0)

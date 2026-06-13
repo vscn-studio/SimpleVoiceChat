@@ -12,6 +12,8 @@ public sealed class OpenAlPlaybackService : IDisposable
 {
     private const int MaxPendingDecodedFrames = 384;
     private const int MaxDecodedFramesPerTick = 160;
+    private const int TargetQueuedBuffers = 5;
+    private const int StreamBufferCount = 8;
 
     private readonly ICoreClientAPI capi;
     private readonly SimpleVoiceChatClientConfig clientConfig;
@@ -96,6 +98,7 @@ public sealed class OpenAlPlaybackService : IDisposable
 
         DecodedVoiceFrame frame = new(
             packet.SenderEntityId,
+            packet.SessionId,
             packet.Sequence,
             packet.Mode,
             packet.Rms,
@@ -223,6 +226,16 @@ public sealed class OpenAlPlaybackService : IDisposable
                 streams[frame.EntityId] = stream;
             }
 
+            if (stream.SessionId > frame.SessionId)
+            {
+                continue;
+            }
+
+            if (stream.SessionId != frame.SessionId)
+            {
+                stream.ResetForSession(frame.SessionId);
+            }
+
             stream.Position = frame.Position;
             stream.Mode = frame.Mode;
             stream.SquadRelay = frame.SquadRelay;
@@ -266,7 +279,7 @@ public sealed class OpenAlPlaybackService : IDisposable
 
     private static void QueuePendingBuffers(RemoteVoiceStream stream)
     {
-        while (stream.QueuedBuffers < 3 && stream.FreeBuffers.Count > 0 && stream.Buffer.TryDequeue(out short[] samples))
+        while (stream.QueuedBuffers < TargetQueuedBuffers && stream.FreeBuffers.Count > 0 && stream.Buffer.TryDequeue(out short[] samples))
         {
             int buffer = stream.FreeBuffers.Dequeue();
             AL.BufferData(buffer, ALFormat.Mono16, samples, VoiceConstants.SampleRate);
@@ -349,6 +362,7 @@ public sealed class OpenAlPlaybackService : IDisposable
         public Queue<int> FreeBuffers { get; } = new();
         public JitterBuffer Buffer { get; } = new();
         public int QueuedBuffers { get; set; }
+        public int SessionId { get; private set; } = -1;
         public long LastPacketMilliseconds { get; set; }
         public Vec3f Position { get; set; } = new();
         public VoiceMode Mode { get; set; } = VoiceMode.Talk;
@@ -372,11 +386,36 @@ public sealed class OpenAlPlaybackService : IDisposable
                 ALC.EFX.Filter(LowPassFilter, FilterFloat.LowpassGainHF, 1f);
             }
 
-            int[] buffers = AL.GenBuffers(5);
+            int[] buffers = AL.GenBuffers(StreamBufferCount);
             foreach (int buffer in buffers)
             {
                 FreeBuffers.Enqueue(buffer);
             }
+        }
+
+        public void ResetForSession(int sessionId)
+        {
+            SessionId = sessionId;
+            Buffer.Reset();
+            Effects.Reset();
+            LastLowPassGainHf = 1f;
+
+            if (Source == 0)
+            {
+                QueuedBuffers = 0;
+                return;
+            }
+
+            AL.SourceStop(Source);
+            AL.Source(Source, ALSourcei.EfxDirectFilter, 0);
+            int queued = AL.GetSource(Source, ALGetSourcei.BuffersQueued);
+            while (queued-- > 0)
+            {
+                int buffer = AL.SourceUnqueueBuffer(Source);
+                FreeBuffers.Enqueue(buffer);
+            }
+
+            QueuedBuffers = 0;
         }
 
         public void Dispose()
@@ -409,6 +448,7 @@ public sealed class OpenAlPlaybackService : IDisposable
 
     private readonly record struct DecodedVoiceFrame(
         long EntityId,
+        int SessionId,
         ushort Sequence,
         VoiceMode Mode,
         float Rms,

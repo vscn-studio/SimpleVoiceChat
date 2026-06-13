@@ -6,9 +6,10 @@ namespace SimpleVoiceChat.Audio;
 
 public sealed class OpenAlCaptureService : IDisposable
 {
+    private const int CaptureBufferFrames = 32;
+
     private readonly ICoreClientAPI capi;
     private readonly SimpleVoiceChatClientConfig config;
-    private readonly short[] discardBuffer = new short[VoiceConstants.SamplesPerFrame];
     private ALCaptureDevice captureDevice;
     private bool captureStarted;
     private bool disposed;
@@ -27,7 +28,7 @@ public sealed class OpenAlCaptureService : IDisposable
         try
         {
             string? deviceName = string.IsNullOrWhiteSpace(config.InputDeviceName) ? null : config.InputDeviceName;
-            captureDevice = ALC.CaptureOpenDevice(deviceName, VoiceConstants.SampleRate, ALFormat.Mono16, VoiceConstants.SamplesPerFrame * 8);
+            captureDevice = ALC.CaptureOpenDevice(deviceName, VoiceConstants.SampleRate, ALFormat.Mono16, VoiceConstants.SamplesPerFrame * CaptureBufferFrames);
             if (captureDevice.Handle == IntPtr.Zero)
             {
                 FailureReason = "OpenAL capture device could not be opened.";
@@ -84,12 +85,6 @@ public sealed class OpenAlCaptureService : IDisposable
         }
 
         int available = ALC.GetInteger(captureDevice, AlcGetInteger.CaptureSamples);
-        while (available >= VoiceConstants.SamplesPerFrame * 4)
-        {
-            ALC.CaptureSamples(captureDevice, discardBuffer, VoiceConstants.SamplesPerFrame);
-            available -= VoiceConstants.SamplesPerFrame;
-        }
-
         if (available < VoiceConstants.SamplesPerFrame)
         {
             return false;

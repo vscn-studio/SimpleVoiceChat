@@ -13,6 +13,7 @@ namespace SimpleVoiceChat;
 public sealed class ClientVoiceController : IDisposable
 {
     private const int DebugRecordingMilliseconds = 3000;
+    private const int MaxCaptureFramesPerTick = 8;
     private const long InitialDebugPlaybackEntityId = -900001;
 
     private readonly ICoreClientAPI capi;
@@ -64,14 +65,16 @@ public sealed class ClientVoiceController : IDisposable
     private long debugRecordingEndMs;
     private long debugPlaybackStartMs;
     private long debugPlaybackEntityId = InitialDebugPlaybackEntityId;
+    private int debugPlaybackSessionId;
     private int debugPlaybackIndex;
     private ushort debugPlaybackSequence;
+    private int nextSessionId = 1;
 
     public ClientVoiceController(ICoreClientAPI capi, SimpleVoiceChatClientConfig config)
     {
         this.capi = capi;
         this.config = config;
-        sessionId = Random.Shared.Next(1, int.MaxValue);
+        sessionId = NextSessionId();
     }
 
     public void Start()
@@ -400,12 +403,14 @@ public sealed class ClientVoiceController : IDisposable
         {
             if (!lastPressed)
             {
+                BeginVoiceSession();
                 capture?.Start();
             }
             CaptureAndSend();
         }
         else if (lastPressed)
         {
+            CaptureAndSend();
             capture?.Stop();
         }
 
@@ -457,68 +462,17 @@ public sealed class ClientVoiceController : IDisposable
 
     private void CaptureAndSend()
     {
-        if (!TryReadActiveEncodedFrame(out byte[] payload, out VoiceFrameStats stats))
-        {
-            return;
-        }
-
-        RecordDebugFrame(payload, stats.Rms, mode);
-
-        Vec3d pos = capi.World.Player.Entity.Pos.XYZ;
-        voiceChannel?.SendPacket(new VoiceFramePacket
-        {
-            SenderUidHash = VoiceMath.StableUidHash(capi.World.Player.PlayerUID),
-            SenderEntityId = capi.World.Player.Entity.EntityId,
-            SessionId = sessionId,
-            Sequence = sequence++,
-            Mode = mode,
-            Rms = stats.Rms,
-            Flags = 0,
-            Payload = payload,
-            X = (float)pos.X,
-            Y = (float)pos.Y,
-            Z = (float)pos.Z
-        });
+        DrainCapturedFrames(sendFrames: true);
     }
 
     private void CaptureDebugFrameOnly()
     {
-        if (!EnsureDebugCaptureRunning() || !TryReadActiveEncodedFrame(out byte[] payload, out VoiceFrameStats stats))
+        if (!EnsureDebugCaptureRunning())
         {
             return;
         }
 
-        RecordDebugFrame(payload, stats.Rms, mode);
-    }
-
-    private bool TryReadActiveEncodedFrame(out byte[] payload, out VoiceFrameStats stats)
-    {
-        payload = Array.Empty<byte>();
-        stats = default;
-        if (capture?.TryReadFrame(captureBuffer) != true)
-        {
-            return false;
-        }
-
-        stats = AudioPreprocessor.Process(captureBuffer, config.MicGain, config.NoiseGate);
-        if (!stats.Active)
-        {
-            lastMicLevel = 0f;
-            return false;
-        }
-
-        lastMicLevel = NormalizeVoiceLevel(stats.Rms, mode);
-        lastVoiceLevelMs = capi.World.ElapsedMilliseconds;
-
-        payload = ImaAdpcmCodec.Encode(captureBuffer);
-        if (payload.Length + 64 > VoiceConstants.MaxUdpPacketBytes)
-        {
-            capi.Logger.Warning("SimpleVoiceChat: encoded voice frame too large ({0} bytes), skipping.", payload.Length);
-            payload = Array.Empty<byte>();
-            return false;
-        }
-
-        return true;
+        DrainCapturedFrames(sendFrames: false);
     }
 
     private bool IsPushToTalkPressed()
@@ -673,6 +627,7 @@ public sealed class ClientVoiceController : IDisposable
 
         debugPlaybackActive = true;
         debugPlaybackIndex = 0;
+        debugPlaybackSessionId = NextSessionId();
         debugPlaybackSequence = 0;
         debugPlaybackStartMs = capi.World.ElapsedMilliseconds;
         debugPlaybackEntityId--;
@@ -760,7 +715,7 @@ public sealed class ClientVoiceController : IDisposable
         {
             SenderUidHash = VoiceMath.StableUidHash(capi.World.Player.PlayerUID + ":debug"),
             SenderEntityId = debugPlaybackEntityId,
-            SessionId = sessionId,
+            SessionId = debugPlaybackSessionId,
             Sequence = debugPlaybackSequence++,
             Mode = frame.Mode,
             Rms = frame.Rms,
@@ -775,6 +730,81 @@ public sealed class ClientVoiceController : IDisposable
         lastRemoteVoiceLevel = Math.Max(lastRemoteVoiceLevel, NormalizeRemoteVoiceLevel(packet));
         lastVoiceLevelMs = capi.World.ElapsedMilliseconds;
         hud?.Refresh();
+    }
+
+    private void DrainCapturedFrames(bool sendFrames)
+    {
+        int processedFrames = 0;
+        bool hadFrame = false;
+        float peakMicLevel = 0f;
+
+        while (processedFrames < MaxCaptureFramesPerTick && capture?.TryReadFrame(captureBuffer) == true)
+        {
+            hadFrame = true;
+            processedFrames++;
+
+            VoiceFrameStats stats = AudioPreprocessor.Process(captureBuffer, config.MicGain, config.NoiseGate);
+            if (!stats.Active)
+            {
+                continue;
+            }
+
+            peakMicLevel = Math.Max(peakMicLevel, NormalizeVoiceLevel(stats.Rms, mode));
+            lastVoiceLevelMs = capi.World.ElapsedMilliseconds;
+
+            byte[] payload = ImaAdpcmCodec.Encode(captureBuffer);
+            if (payload.Length + 64 > VoiceConstants.MaxUdpPacketBytes)
+            {
+                capi.Logger.Warning("SimpleVoiceChat: encoded voice frame too large ({0} bytes), skipping.", payload.Length);
+                continue;
+            }
+
+            RecordDebugFrame(payload, stats.Rms, mode);
+            if (sendFrames)
+            {
+                SendCapturedFrame(payload, stats);
+            }
+        }
+
+        if (hadFrame)
+        {
+            lastMicLevel = peakMicLevel;
+        }
+    }
+
+    private void SendCapturedFrame(byte[] payload, VoiceFrameStats stats)
+    {
+        Vec3d pos = capi.World.Player.Entity.Pos.XYZ;
+        voiceChannel?.SendPacket(new VoiceFramePacket
+        {
+            SenderUidHash = VoiceMath.StableUidHash(capi.World.Player.PlayerUID),
+            SenderEntityId = capi.World.Player.Entity.EntityId,
+            SessionId = sessionId,
+            Sequence = sequence++,
+            Mode = mode,
+            Rms = stats.Rms,
+            Flags = 0,
+            Payload = payload,
+            X = (float)pos.X,
+            Y = (float)pos.Y,
+            Z = (float)pos.Z
+        });
+    }
+
+    private void BeginVoiceSession()
+    {
+        sessionId = NextSessionId();
+        sequence = 0;
+    }
+
+    private int NextSessionId()
+    {
+        if (nextSessionId == int.MaxValue)
+        {
+            nextSessionId = 1;
+        }
+
+        return nextSessionId++;
     }
 
     private VoiceHudSnapshot BuildHudSnapshot()
