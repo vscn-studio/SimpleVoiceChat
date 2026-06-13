@@ -1,11 +1,6 @@
 name: Build and package
 
 on:
-  push:
-    branches:
-      - main
-      - master
-  pull_request:
   workflow_dispatch:
     inputs:
       mod_version:
