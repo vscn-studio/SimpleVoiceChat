@@ -12,6 +12,9 @@ namespace SimpleVoiceChat;
 
 public sealed class ClientVoiceController : IDisposable
 {
+    private const int DebugRecordingMilliseconds = 3000;
+    private const long InitialDebugPlaybackEntityId = -900001;
+
     private readonly ICoreClientAPI capi;
     private readonly SimpleVoiceChatClientConfig config;
     private IClientNetworkChannel? controlChannel;
@@ -53,6 +56,16 @@ public sealed class ClientVoiceController : IDisposable
     private float lastRemoteVoiceLevel;
     private long lastVoiceLevelMs;
     private VoiceHudSquadMember[] squadHudMembers = Array.Empty<VoiceHudSquadMember>();
+    private readonly List<DebugVoiceFrame> debugRecordingFrames = new();
+    private bool debugRecording;
+    private bool debugCaptureStartedByTool;
+    private bool debugPlaybackActive;
+    private long debugRecordingStartMs;
+    private long debugRecordingEndMs;
+    private long debugPlaybackStartMs;
+    private long debugPlaybackEntityId = InitialDebugPlaybackEntityId;
+    private int debugPlaybackIndex;
+    private ushort debugPlaybackSequence;
 
     public ClientVoiceController(ICoreClientAPI capi, SimpleVoiceChatClientConfig config)
     {
@@ -75,7 +88,15 @@ public sealed class ClientVoiceController : IDisposable
 
         hud = new VoiceHud(capi, BuildHudSnapshot, ShouldShowHud);
         capi.Gui.RegisterDialog(hud);
-        settingsDialog = new VoiceSettingsDialog(capi, config, BuildSettingsWindowSummary, SaveConfig, () => hud?.Refresh(), ReinitializeCapture);
+        settingsDialog = new VoiceSettingsDialog(
+            capi,
+            config,
+            BuildSettingsWindowSummary,
+            SaveConfig,
+            () => hud?.Refresh(),
+            ReinitializeCapture,
+            StartDebugRecording,
+            PlayDebugRecording);
 
         capi.Event.KeyUp += OnKeyUp;
         capi.Event.RegisterGameTickListener(OnFastTick, VoiceConstants.FrameMilliseconds);
@@ -388,12 +409,18 @@ public sealed class ClientVoiceController : IDisposable
             capture?.Stop();
         }
 
+        if (debugRecording && !canSpeak)
+        {
+            CaptureDebugFrameOnly();
+        }
+
         if (!canSpeak)
         {
             lastMicLevel = 0f;
         }
 
         lastPressed = canSpeak;
+        UpdateDebugRecording();
         bool speaking = canSpeak;
         if (speaking != lastSpeaking)
         {
@@ -424,35 +451,21 @@ public sealed class ClientVoiceController : IDisposable
 
     private void OnPlaybackTick(float dt)
     {
+        UpdateDebugPlayback();
         playback?.Update(serverConfig);
     }
 
     private void CaptureAndSend()
     {
-        if (capture?.TryReadFrame(captureBuffer) != true || voiceChannel?.Connected != true)
+        if (!TryReadActiveEncodedFrame(out byte[] payload, out VoiceFrameStats stats))
         {
             return;
         }
 
-        VoiceFrameStats stats = AudioPreprocessor.Process(captureBuffer, config.MicGain, config.NoiseGate);
-        if (!stats.Active)
-        {
-            lastMicLevel = 0f;
-            return;
-        }
-
-        lastMicLevel = NormalizeVoiceLevel(stats.Rms, mode);
-        lastVoiceLevelMs = capi.World.ElapsedMilliseconds;
-
-        byte[] payload = ImaAdpcmCodec.Encode(captureBuffer);
-        if (payload.Length + 64 > VoiceConstants.MaxUdpPacketBytes)
-        {
-            capi.Logger.Warning("SimpleVoiceChat: encoded voice frame too large ({0} bytes), skipping.", payload.Length);
-            return;
-        }
+        RecordDebugFrame(payload, stats.Rms, mode);
 
         Vec3d pos = capi.World.Player.Entity.Pos.XYZ;
-        voiceChannel.SendPacket(new VoiceFramePacket
+        voiceChannel?.SendPacket(new VoiceFramePacket
         {
             SenderUidHash = VoiceMath.StableUidHash(capi.World.Player.PlayerUID),
             SenderEntityId = capi.World.Player.Entity.EntityId,
@@ -466,6 +479,46 @@ public sealed class ClientVoiceController : IDisposable
             Y = (float)pos.Y,
             Z = (float)pos.Z
         });
+    }
+
+    private void CaptureDebugFrameOnly()
+    {
+        if (!EnsureDebugCaptureRunning() || !TryReadActiveEncodedFrame(out byte[] payload, out VoiceFrameStats stats))
+        {
+            return;
+        }
+
+        RecordDebugFrame(payload, stats.Rms, mode);
+    }
+
+    private bool TryReadActiveEncodedFrame(out byte[] payload, out VoiceFrameStats stats)
+    {
+        payload = Array.Empty<byte>();
+        stats = default;
+        if (capture?.TryReadFrame(captureBuffer) != true)
+        {
+            return false;
+        }
+
+        stats = AudioPreprocessor.Process(captureBuffer, config.MicGain, config.NoiseGate);
+        if (!stats.Active)
+        {
+            lastMicLevel = 0f;
+            return false;
+        }
+
+        lastMicLevel = NormalizeVoiceLevel(stats.Rms, mode);
+        lastVoiceLevelMs = capi.World.ElapsedMilliseconds;
+
+        payload = ImaAdpcmCodec.Encode(captureBuffer);
+        if (payload.Length + 64 > VoiceConstants.MaxUdpPacketBytes)
+        {
+            capi.Logger.Warning("SimpleVoiceChat: encoded voice frame too large ({0} bytes), skipping.", payload.Length);
+            payload = Array.Empty<byte>();
+            return false;
+        }
+
+        return true;
     }
 
     private bool IsPushToTalkPressed()
@@ -575,6 +628,155 @@ public sealed class ClientVoiceController : IDisposable
         capi.ShowChatMessage($"简单语音对话：麦克风输入设备已切换为 {(string.IsNullOrWhiteSpace(config.InputDeviceName) ? "默认麦克风" : config.InputDeviceName)}。");
     }
 
+    private bool StartDebugRecording()
+    {
+        if (capture?.IsAvailable != true)
+        {
+            capi.ShowChatMessage($"简单语音对话：无法开始调试录音，麦克风不可用。{capture?.FailureReason}");
+            return true;
+        }
+
+        debugPlaybackActive = false;
+        debugRecordingFrames.Clear();
+        debugRecording = true;
+        debugCaptureStartedByTool = !lastPressed;
+        debugRecordingStartMs = capi.World.ElapsedMilliseconds;
+        debugRecordingEndMs = debugRecordingStartMs + DebugRecordingMilliseconds;
+        if (debugCaptureStartedByTool)
+        {
+            capture.Start();
+        }
+
+        capi.ShowChatMessage("简单语音对话：开始调试录音 3 秒。本地录制将经过发送前处理与 ADPCM 编码，但不会发给服务器。");
+        return true;
+    }
+
+    private bool PlayDebugRecording()
+    {
+        if (debugRecording)
+        {
+            capi.ShowChatMessage("简单语音对话：调试录音仍在进行，请录制完成后再播放。");
+            return true;
+        }
+
+        if (debugRecordingFrames.Count == 0)
+        {
+            capi.ShowChatMessage("简单语音对话：还没有可播放的调试录音，或录音期间没有超过噪声门的麦克风输入。");
+            return true;
+        }
+
+        if (playback == null)
+        {
+            capi.ShowChatMessage("简单语音对话：播放服务未初始化，无法播放调试录音。");
+            return true;
+        }
+
+        debugPlaybackActive = true;
+        debugPlaybackIndex = 0;
+        debugPlaybackSequence = 0;
+        debugPlaybackStartMs = capi.World.ElapsedMilliseconds;
+        debugPlaybackEntityId--;
+        if (debugPlaybackEntityId >= 0)
+        {
+            debugPlaybackEntityId = InitialDebugPlaybackEntityId;
+        }
+
+        capi.ShowChatMessage($"简单语音对话：开始播放调试录音（{debugRecordingFrames.Count} 帧）。当前位置的水下、洞穴、风雨、遮挡等环境效果会参与处理。");
+        return true;
+    }
+
+    private bool EnsureDebugCaptureRunning()
+    {
+        if (capture?.IsAvailable != true)
+        {
+            return false;
+        }
+
+        if (!lastPressed && !debugCaptureStartedByTool)
+        {
+            debugCaptureStartedByTool = true;
+            capture.Start();
+        }
+
+        return true;
+    }
+
+    private void RecordDebugFrame(byte[] payload, float rms, VoiceMode frameMode)
+    {
+        if (!debugRecording || payload.Length == 0)
+        {
+            return;
+        }
+
+        Vec3d pos = capi.World.Player.Entity.Pos.XYZ;
+        Vec3f speakerPosition = new((float)pos.X, (float)pos.Y, (float)pos.Z);
+        int offsetMs = (int)Math.Clamp(capi.World.ElapsedMilliseconds - debugRecordingStartMs, 0, DebugRecordingMilliseconds);
+        debugRecordingFrames.Add(new DebugVoiceFrame(payload, rms, frameMode, offsetMs, speakerPosition));
+    }
+
+    private void UpdateDebugRecording()
+    {
+        if (!debugRecording || capi.World.ElapsedMilliseconds < debugRecordingEndMs)
+        {
+            return;
+        }
+
+        debugRecording = false;
+        if (debugCaptureStartedByTool && !lastPressed)
+        {
+            capture?.Stop();
+        }
+
+        debugCaptureStartedByTool = false;
+        string suffix = debugRecordingFrames.Count == 0 ? "没有捕获到超过噪声门的声音。" : $"捕获 {debugRecordingFrames.Count} 帧，可在状态窗口点击播放录音。";
+        capi.ShowChatMessage($"简单语音对话：调试录音完成，{suffix}");
+    }
+
+    private void UpdateDebugPlayback()
+    {
+        if (!debugPlaybackActive || playback == null)
+        {
+            return;
+        }
+
+        long elapsed = capi.World.ElapsedMilliseconds - debugPlaybackStartMs;
+        while (debugPlaybackIndex < debugRecordingFrames.Count && debugRecordingFrames[debugPlaybackIndex].OffsetMilliseconds <= elapsed)
+        {
+            EnqueueDebugPlaybackFrame(debugRecordingFrames[debugPlaybackIndex]);
+            debugPlaybackIndex++;
+        }
+
+        int lastOffset = debugRecordingFrames.Count == 0 ? 0 : debugRecordingFrames[^1].OffsetMilliseconds;
+        if (debugPlaybackIndex >= debugRecordingFrames.Count && elapsed > lastOffset + 500)
+        {
+            debugPlaybackActive = false;
+            capi.ShowChatMessage("简单语音对话：调试录音播放结束。");
+        }
+    }
+
+    private void EnqueueDebugPlaybackFrame(DebugVoiceFrame frame)
+    {
+        VoiceFramePacket packet = new()
+        {
+            SenderUidHash = VoiceMath.StableUidHash(capi.World.Player.PlayerUID + ":debug"),
+            SenderEntityId = debugPlaybackEntityId,
+            SessionId = sessionId,
+            Sequence = debugPlaybackSequence++,
+            Mode = frame.Mode,
+            Rms = frame.Rms,
+            Flags = 0,
+            Payload = frame.Payload,
+            X = frame.Position.X,
+            Y = frame.Position.Y,
+            Z = frame.Position.Z
+        };
+
+        playback?.Enqueue(packet, serverConfig);
+        lastRemoteVoiceLevel = Math.Max(lastRemoteVoiceLevel, NormalizeRemoteVoiceLevel(packet));
+        lastVoiceLevelMs = capi.World.ElapsedMilliseconds;
+        hud?.Refresh();
+    }
+
     private VoiceHudSnapshot BuildHudSnapshot()
     {
         bool captureAvailable = capture?.IsAvailable == true;
@@ -674,6 +876,7 @@ public sealed class ClientVoiceController : IDisposable
             $"切换模式：{cycle} / {cycleAlt}\n" +
             $"麦克风静音：{localMute}    全局开关：{globalMute}\n" +
             $"打开状态/设置窗口：{settings}\n" +
+            $"调试录音：{BuildDebugRecordingStatus()}\n" +
             $"{VoiceEnvironment.BuildDebugSummary(capi, config, serverConfig)}\n" +
             $"命令：/svc volume <0-200>, /svc mute <玩家名>, /svc bind, /svc unbind";
     }
@@ -692,7 +895,30 @@ public sealed class ClientVoiceController : IDisposable
             $"按住说话：{ptt}    持续说话：{toggleTalk}（{(toggleTalkEnabled ? "开" : "关")}）\n" +
             $"切换模式：{cycle} / {cycleAlt}\n" +
             $"麦克风静音：{localMute}    全局开关：{globalMute}\n" +
+            $"调试录音：{BuildDebugRecordingStatus()}\n" +
             VoiceEnvironment.BuildDebugSummary(capi, config, serverConfig);
+    }
+
+    private string BuildDebugRecordingStatus()
+    {
+        if (debugRecording)
+        {
+            float remaining = Math.Max(0, debugRecordingEndMs - capi.World.ElapsedMilliseconds) / 1000f;
+            return $"录制中，剩余 {remaining:0.0}s，已捕获 {debugRecordingFrames.Count} 帧";
+        }
+
+        if (debugPlaybackActive)
+        {
+            return $"播放中 {debugPlaybackIndex}/{debugRecordingFrames.Count} 帧";
+        }
+
+        if (debugRecordingFrames.Count > 0)
+        {
+            int duration = Math.Min(DebugRecordingMilliseconds, debugRecordingFrames[^1].OffsetMilliseconds + VoiceConstants.FrameMilliseconds);
+            return $"已录制 {debugRecordingFrames.Count} 帧，约 {duration / 1000f:0.0}s";
+        }
+
+        return "未录制";
     }
 
     private static string FormatMode(VoiceMode voiceMode)
@@ -731,4 +957,6 @@ public sealed class ClientVoiceController : IDisposable
         hud?.TryClose();
         settingsDialog?.TryClose();
     }
+
+    private readonly record struct DebugVoiceFrame(byte[] Payload, float Rms, VoiceMode Mode, int OffsetMilliseconds, Vec3f Position);
 }

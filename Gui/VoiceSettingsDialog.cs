@@ -20,6 +20,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private readonly Action saveConfig;
     private readonly Action refreshHud;
     private readonly Action reinitializeCapture;
+    private readonly Func<bool> startDebugRecording;
+    private readonly Func<bool> playDebugRecording;
 
     public VoiceSettingsDialog(
         ICoreClientAPI capi,
@@ -27,7 +29,9 @@ public sealed class VoiceSettingsDialog : GuiDialog
         Func<string> summaryProvider,
         Action saveConfig,
         Action refreshHud,
-        Action reinitializeCapture)
+        Action reinitializeCapture,
+        Func<bool> startDebugRecording,
+        Func<bool> playDebugRecording)
         : base(capi)
     {
         this.config = config;
@@ -35,6 +39,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
         this.saveConfig = saveConfig;
         this.refreshHud = refreshHud;
         this.reinitializeCapture = reinitializeCapture;
+        this.startDebugRecording = startDebugRecording;
+        this.playDebugRecording = playDebugRecording;
         Compose();
     }
 
@@ -49,10 +55,10 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     public void Compose()
     {
-        ElementBounds dialogBounds = ElementBounds.Fixed(EnumDialogArea.CenterMiddle, -330, -300, 660, 600);
-        ElementBounds bgBounds = ElementBounds.Fixed(0, 0, 660, 600);
+        ElementBounds dialogBounds = ElementBounds.Fixed(EnumDialogArea.CenterMiddle, -330, -330, 660, 660);
+        ElementBounds bgBounds = ElementBounds.Fixed(0, 0, 660, 660);
         ElementBounds statusBounds = ElementBounds.Fixed(28, 48, 604, 146);
-        ElementBounds closeBounds = ElementBounds.Fixed(275, 550, 110, 32);
+        ElementBounds closeBounds = ElementBounds.Fixed(275, 610, 110, 32);
         string[] inputDeviceValues = GetInputDeviceValues();
         string[] inputDeviceNames = GetInputDeviceNames(inputDeviceValues);
         int selectedInputDeviceIndex = GetSelectedInputDeviceIndex(inputDeviceValues);
@@ -83,6 +89,9 @@ public sealed class VoiceSettingsDialog : GuiDialog
             .AddSwitch(OnOcclusionChanged, ElementBounds.Fixed(controlX, y - 6, 36, 32), OcclusionKey, 26, 3)
             .AddStaticText("性能模式", CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row, labelWidth, 24))
             .AddSwitch(OnPerformanceModeChanged, ElementBounds.Fixed(controlX, y - 6, 36, 32), PerformanceModeKey, 26, 3)
+            .AddStaticText("调试录音", CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row, labelWidth, 24))
+            .AddSmallButton("录制3秒", OnDebugRecordClicked, ElementBounds.Fixed(controlX, y - 6, 104, 32))
+            .AddSmallButton("播放录音", OnDebugPlayClicked, ElementBounds.Fixed(controlX + 124, y - 6, 104, 32))
             .AddSmallButton("关闭", () => TryClose(), closeBounds)
             .EndChildElements()
             .Compose();
@@ -150,6 +159,16 @@ public sealed class VoiceSettingsDialog : GuiDialog
     {
         config.PerformanceMode = enabled;
         ApplyConfig();
+    }
+
+    private bool OnDebugRecordClicked()
+    {
+        return startDebugRecording();
+    }
+
+    private bool OnDebugPlayClicked()
+    {
+        return playDebugRecording();
     }
 
     private void ApplyConfig()
