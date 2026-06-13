@@ -1,6 +1,7 @@
 using OpenTK.Audio.OpenAL;
 using SimpleVoiceChat.Config;
 using Vintagestory.API.Client;
+using Vintagestory.API.Config;
 
 namespace SimpleVoiceChat.Gui;
 
@@ -85,31 +86,31 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
         SingleComposer = capi.Gui.CreateCompo("simplevoicechat-settings", dialogBounds)
             .AddShadedDialogBG(bgBounds)
-            .AddDialogTitleBar("简单语音对话", () => TryClose())
+            .AddDialogTitleBar(SVCLang.Get("title"), () => TryClose())
             .BeginChildElements(bgBounds)
-            .AddStaticText("输入设备", CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y + 4, labelWidth, 24))
+            .AddStaticText(SVCLang.Get("label-input-device"), CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y + 4, labelWidth, 24))
             .AddDropDown(inputDeviceValues, inputDeviceNames, selectedInputDeviceIndex, OnInputDeviceChanged, ElementBounds.Fixed(controlX, y, controlWidth, 32), InputDeviceKey)
-            .AddStaticText("播放音量", CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row, labelWidth, 24))
+            .AddStaticText(SVCLang.Get("label-output-volume"), CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row, labelWidth, 24))
             .AddSlider(OnOutputVolumeChanged, ElementBounds.Fixed(controlX, y, controlWidth, 24), OutputVolumeKey)
-            .AddStaticText("麦克风增益", CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row, labelWidth, 24))
+            .AddStaticText(SVCLang.Get("label-mic-gain"), CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row, labelWidth, 24))
             .AddSlider(OnMicGainChanged, ElementBounds.Fixed(controlX, y, controlWidth, 24), MicGainKey)
-            .AddStaticText("噪声门", CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row, labelWidth, 24))
+            .AddStaticText(SVCLang.Get("label-noise-gate"), CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row, labelWidth, 24))
             .AddSlider(OnNoiseGateChanged, ElementBounds.Fixed(controlX, y, controlWidth, 24), NoiseGateKey)
-            .AddStaticText("右下角麦克风显示", CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row + 8, labelWidth, 24))
+            .AddStaticText(SVCLang.Get("label-show-mic-hud"), CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row + 8, labelWidth, 24))
             .AddSwitch(OnShowMicrophoneHudChanged, ElementBounds.Fixed(controlX, y - 6, 36, 32), ShowMicrophoneHudKey, 26, 3)
-            .AddStaticText("遮挡/传播修正", CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row, labelWidth, 24))
+            .AddStaticText(SVCLang.Get("label-occlusion"), CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row, labelWidth, 24))
             .AddSwitch(OnOcclusionChanged, ElementBounds.Fixed(controlX, y - 6, 36, 32), OcclusionKey, 26, 3)
-            .AddStaticText("性能模式", CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row, labelWidth, 24))
+            .AddStaticText(SVCLang.Get("label-performance-mode"), CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row, labelWidth, 24))
             .AddSwitch(OnPerformanceModeChanged, ElementBounds.Fixed(controlX, y - 6, 36, 32), PerformanceModeKey, 26, 3)
-            .AddStaticText("调试录音", CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row, labelWidth, 24))
-            .AddSmallButton("录制3秒", OnDebugRecordClicked, ElementBounds.Fixed(controlX, y - 6, 104, 32))
-            .AddSmallButton("播放录音", OnDebugPlayClicked, ElementBounds.Fixed(controlX + 124, y - 6, 104, 32))
-            .AddStaticText("小组频道", CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row + 6, labelWidth, 24))
+            .AddStaticText(SVCLang.Get("label-debug-recording"), CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row, labelWidth, 24))
+            .AddSmallButton(SVCLang.Get("button-record-3s"), OnDebugRecordClicked, ElementBounds.Fixed(controlX, y - 6, 104, 32))
+            .AddSmallButton(SVCLang.Get("button-play-recording"), OnDebugPlayClicked, ElementBounds.Fixed(controlX + 124, y - 6, 104, 32))
+            .AddStaticText(SVCLang.Get("label-squad-channel"), CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row + 6, labelWidth, 24))
             .AddDynamicText("", CairoFont.WhiteSmallText(), ElementBounds.Fixed(controlX, y - 2, controlWidth, 46), SquadStatusKey)
-            .AddSmallButton("离开小组", OnLeaveSquadClicked, ElementBounds.Fixed(controlX, y + 34, 104, 32))
-            .AddSmallButton("解散小组", OnDisbandSquadClicked, ElementBounds.Fixed(controlX + 124, y + 34, 104, 32))
-            .AddSmallButton("刷新状态", OnRefreshSquadClicked, ElementBounds.Fixed(controlX + 248, y + 34, 104, 32))
-            .AddSmallButton("关闭", () => TryClose(), closeBounds)
+            .AddSmallButton(SVCLang.Get("button-leave-squad"), OnLeaveSquadClicked, ElementBounds.Fixed(controlX, y + 34, 104, 32))
+            .AddSmallButton(SVCLang.Get("button-disband-squad"), OnDisbandSquadClicked, ElementBounds.Fixed(controlX + 124, y + 34, 104, 32))
+            .AddSmallButton(SVCLang.Get("button-refresh-status"), OnRefreshSquadClicked, ElementBounds.Fixed(controlX + 248, y + 34, 104, 32))
+            .AddSmallButton(SVCLang.Get("button-close"), () => TryClose(), closeBounds)
             .EndChildElements()
             .Compose();
 
@@ -254,7 +255,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         string[] names = new string[values.Length];
         for (int i = 0; i < values.Length; i++)
         {
-            names[i] = values[i] == DefaultInputDeviceValue ? "默认麦克风" : values[i];
+            names[i] = values[i] == DefaultInputDeviceValue ? SVCLang.Get("default-microphone") : values[i];
         }
 
         return names;

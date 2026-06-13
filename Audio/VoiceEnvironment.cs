@@ -158,13 +158,13 @@ public static class VoiceEnvironment
             bool inLiquid = IsInLiquid(capi.World.BlockAccessor, listener);
             WeatherSnapshot weather = serverConfig.EnableWeatherEffects ? EvaluateWeather(capi, listener, speaker) : default;
             double stability = TryReadTemporalStability(playerEntity);
-            string stabilityText = stability < 0 ? "不可读" : stability.ToString("0.00");
-            string poisoned = IsLikelyPoisoned(playerEntity) ? "是" : "否";
-            return $"环境修正：水下={(inLiquid ? "是" : "否")} 风雨={weather.Storm:0.00}/{weather.Wind:0.00} 稳定={stabilityText} 中毒={poisoned} 低通={snapshot.LowPass:0.00}；语音不额外叠加室内/洞穴回音";
+            string stabilityText = stability < 0 ? SVCLang.Get("env-unreadable") : stability.ToString("0.00");
+            string poisoned = IsLikelyPoisoned(playerEntity) ? SVCLang.Get("env-yes") : SVCLang.Get("env-no");
+            return SVCLang.Get("env-summary", inLiquid ? SVCLang.Get("env-yes") : SVCLang.Get("env-no"), weather.Storm.ToString("0.00"), weather.Wind.ToString("0.00"), stabilityText, poisoned, snapshot.LowPass.ToString("0.00"));
         }
         catch (Exception ex)
         {
-            return $"环境：无法读取（{ex.Message}）";
+            return SVCLang.Get("env-unavailable", ex.Message);
         }
     }
 

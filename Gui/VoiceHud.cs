@@ -23,7 +23,6 @@ public sealed class VoiceHud : HudElement
     private ImageSurface? squadSpeakingSurface;
     private readonly ImageSurface?[] volumeSurfaces = new ImageSurface?[VolumeFrameCount + 1];
     private long lastUpdateMs;
-
     public override double DrawOrder => 0.09;
 
     public VoiceHud(ICoreClientAPI capi, Func<VoiceHudSnapshot> snapshotProvider, Func<bool> shouldShowProvider)
@@ -119,7 +118,7 @@ public sealed class VoiceHud : HudElement
 
         double barX = textX + GuiElement.scaled(32);
         double barY = GuiElement.scaled(72);
-        DrawText(ctx, "音量", textX, barY + GuiElement.scaled(16), 11, new[] { 0.80, 0.84, 0.88, 0.92 }, bold: true);
+        DrawText(ctx, SVCLang.Get("hud-volume"), textX, barY + GuiElement.scaled(16), 11, new[] { 0.80, 0.84, 0.88, 0.92 }, bold: true);
         DrawVolumeImage(ctx, barX, barY - GuiElement.scaled(2), snapshot.VoiceLevel);
 
         DrawSquadMembers(ctx, snapshot, textX, GuiElement.scaled(112), width - textX - pad);
@@ -160,12 +159,14 @@ public sealed class VoiceHud : HudElement
 
     private static void DrawText(Context ctx, string text, double x, double y, double fontSize, double[] color, bool bold)
     {
+        CairoFont font = (bold ? CairoFont.WhiteSmallText().WithWeight(FontWeight.Bold) : CairoFont.WhiteSmallText())
+            .WithFontSize((float)fontSize);
         ctx.Save();
-        ctx.SelectFontFace(GuiStyle.StandardFontName, FontSlant.Normal, bold ? FontWeight.Bold : FontWeight.Normal);
-        ctx.SetFontSize(GuiElement.scaled(fontSize));
+        font.WithColor(new[] { 0.0, 0.0, 0.0, 0.72 }).SetupContext(ctx);
         ctx.SetSourceRGBA(0, 0, 0, 0.72);
         ctx.MoveTo(x + GuiElement.scaled(1), y + GuiElement.scaled(1));
         ctx.ShowText(text);
+        font.WithColor(color).SetupContext(ctx);
         ctx.SetSourceRGBA(color[0], color[1], color[2], color[3]);
         ctx.MoveTo(x, y);
         ctx.ShowText(text);
@@ -239,10 +240,11 @@ public sealed class VoiceHud : HudElement
 
     private static double MeasureText(Context ctx, string text, double fontSize, bool bold)
     {
+        CairoFont font = (bold ? CairoFont.WhiteSmallText().WithWeight(FontWeight.Bold) : CairoFont.WhiteSmallText())
+            .WithFontSize((float)fontSize);
         ctx.Save();
-        ctx.SelectFontFace(GuiStyle.StandardFontName, FontSlant.Normal, bold ? FontWeight.Bold : FontWeight.Normal);
-        ctx.SetFontSize(GuiElement.scaled(fontSize));
-        TextExtents extents = ctx.TextExtents(text);
+        font.SetupContext(ctx);
+        TextExtents extents = font.GetTextExtents(text);
         ctx.Restore();
         return extents.Width;
     }

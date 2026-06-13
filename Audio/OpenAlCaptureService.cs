@@ -31,7 +31,7 @@ public sealed class OpenAlCaptureService : IDisposable
             captureDevice = ALC.CaptureOpenDevice(deviceName, VoiceConstants.SampleRate, ALFormat.Mono16, VoiceConstants.SamplesPerFrame * CaptureBufferFrames);
             if (captureDevice.Handle == IntPtr.Zero)
             {
-                FailureReason = "OpenAL capture device could not be opened.";
+                FailureReason = SVCLang.Get("capture-open-failed");
                 IsAvailable = false;
                 return false;
             }

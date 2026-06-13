@@ -56,7 +56,7 @@ public sealed class ServerVoiceController
     private void RegisterCommands()
     {
         sapi.ChatCommands.Create("svc")
-            .WithDescription("简单语音对话命令")
+            .WithDescription(SVCLang.Get("command-description-server"))
             .RequiresPrivilege(Privilege.chat)
             .IgnoreAdditionalArgs()
             .HandleWith(HandleServerCommand);
@@ -69,7 +69,7 @@ public sealed class ServerVoiceController
         {
             case "status":
                 return TextCommandResult.Success(
-                    $"SimpleVoiceChat enabled={config.Enabled}, ranges whisper/talk/shout={config.WhisperRange:0.#}/{config.TalkRange:0.#}/{config.ShoutRange:0.#}, max={config.MaxRange:0.#}, squads={squadMembersByUid.Count}, adminMuted={config.GloballyMutedPlayerUids.Count}, forceBlocked={config.ForceBlockedPlayerUids.Count}");
+                    SVCLang.Get("server-status", config.Enabled, config.WhisperRange.ToString("0.#"), config.TalkRange.ToString("0.#"), config.ShoutRange.ToString("0.#"), config.MaxRange.ToString("0.#"), squadMembersByUid.Count, config.GloballyMutedPlayerUids.Count, config.ForceBlockedPlayerUids.Count));
 
             case "bind":
                 return HandleSquadBindCommand(args);
@@ -87,7 +87,7 @@ public sealed class ServerVoiceController
                 }
                 config = LoadConfig(sapi);
                 BroadcastConfig();
-                return TextCommandResult.Success("SimpleVoiceChat config reloaded.");
+                return TextCommandResult.Success(SVCLang.Get("server-config-reloaded"));
 
             case "enable":
                 if (!HasServerControl(args))
@@ -97,7 +97,7 @@ public sealed class ServerVoiceController
                 config.Enabled = true;
                 SaveConfig();
                 BroadcastConfig();
-                return TextCommandResult.Success("SimpleVoiceChat enabled.");
+                return TextCommandResult.Success(SVCLang.Get("server-enabled"));
 
             case "disable":
                 if (!HasServerControl(args))
@@ -107,7 +107,7 @@ public sealed class ServerVoiceController
                 config.Enabled = false;
                 SaveConfig();
                 BroadcastConfig();
-                return TextCommandResult.Success("SimpleVoiceChat disabled.");
+                return TextCommandResult.Success(SVCLang.Get("server-disabled"));
 
             case "setrange":
             {
@@ -119,7 +119,7 @@ public sealed class ServerVoiceController
                 float range = args.RawArgs.PopFloat(-1f) ?? -1f;
                 if (range <= 0)
                 {
-                    return TextCommandResult.Error("Usage: /svc setrange whisper|talk|shout <blocks>");
+                    return TextCommandResult.Error(SVCLang.Get("server-setrange-usage"));
                 }
 
                 switch (mode)
@@ -134,13 +134,13 @@ public sealed class ServerVoiceController
                         config.ShoutRange = range;
                         break;
                     default:
-                        return TextCommandResult.Error("Usage: /svc setrange whisper|talk|shout <blocks>");
+                        return TextCommandResult.Error(SVCLang.Get("server-setrange-usage"));
                 }
 
                 config.Normalize();
                 SaveConfig();
                 BroadcastConfig();
-                return TextCommandResult.Success($"SimpleVoiceChat {mode} range set to {range:0.#}.");
+                return TextCommandResult.Success(SVCLang.Get("server-setrange-ok", mode, range.ToString("0.#")));
             }
 
             case "adminmute":
@@ -155,7 +155,7 @@ public sealed class ServerVoiceController
                 string target = args.RawArgs.PopWord("");
                 if (string.IsNullOrWhiteSpace(target))
                 {
-                    return TextCommandResult.Error($"Usage: /svc {sub} <player>");
+                    return TextCommandResult.Error(SVCLang.Get("server-admin-usage", sub));
                 }
 
                 return HandleAdminVoiceControl(sub, target);
@@ -169,7 +169,7 @@ public sealed class ServerVoiceController
                 return TextCommandResult.Success(BuildAdminMuteList());
 
             default:
-                return TextCommandResult.Error("用法：/svc status|bind|unbind|squad|reload|enable|disable|setrange|adminmute|adminunmute|forceblock|unforceblock|adminmutes");
+                return TextCommandResult.Error(SVCLang.Get("server-command-usage-root"));
         }
     }
 
@@ -177,12 +177,12 @@ public sealed class ServerVoiceController
     {
         if (!config.EnableSquadChannels)
         {
-            return TextCommandResult.Error("简单语音对话：服务器未启用小队频道。");
+            return TextCommandResult.Error(SVCLang.Get("server-squad-disabled"));
         }
 
         if (GetCommandPlayer(args) is not { Entity: not null } player)
         {
-            return TextCommandResult.Error("简单语音对话：该命令只能由游戏内玩家使用。");
+            return TextCommandResult.Error(SVCLang.Get("server-player-only"));
         }
 
         string targetNameOrUid = args.RawArgs.PopWord("");
@@ -192,7 +192,7 @@ public sealed class ServerVoiceController
 
         if (target == null)
         {
-            return TextCommandResult.Error($"简单语音对话：请面对 {config.SquadBindRange:0.#} 格内玩家后输入 /svc bind，或使用 /svc bind <玩家名>。");
+            return TextCommandResult.Error(SVCLang.Get("server-bind-instruction", config.SquadBindRange.ToString("0.#")));
         }
 
         return BindSquadPlayers(player, target);
@@ -202,19 +202,19 @@ public sealed class ServerVoiceController
     {
         if (GetCommandPlayer(args) is not { Entity: not null } player)
         {
-            return TextCommandResult.Error("简单语音对话：该命令只能由游戏内玩家使用。");
+            return TextCommandResult.Error(SVCLang.Get("server-player-only"));
         }
 
         LeaveSquad(player.PlayerUID);
         SendSquadHud(player);
-        return TextCommandResult.Success("简单语音对话：你已离开小队频道。");
+        return TextCommandResult.Success(SVCLang.Get("server-left-squad"));
     }
 
     private TextCommandResult HandleSquadStatusCommand(TextCommandCallingArgs args)
     {
         if (GetCommandPlayer(args) is not { Entity: not null } player)
         {
-            return TextCommandResult.Error("简单语音对话：该命令只能由游戏内玩家使用。");
+            return TextCommandResult.Error(SVCLang.Get("server-player-only"));
         }
 
         return TextCommandResult.Success(BuildSquadStatusText(player));
@@ -265,7 +265,7 @@ public sealed class ServerVoiceController
     {
         if (!config.EnableSquadChannels)
         {
-            SendPlayerMessage(fromPlayer, "简单语音对话：服务器未启用小队频道。");
+            SendPlayerMessage(fromPlayer, SVCLang.Get("server-squad-disabled"));
             return;
         }
 
@@ -278,7 +278,7 @@ public sealed class ServerVoiceController
         if (packet.LeaveSquad)
         {
             LeaveSquad(fromPlayer.PlayerUID);
-            SendPlayerMessage(fromPlayer, "简单语音对话：你已离开小队频道。");
+            SendPlayerMessage(fromPlayer, SVCLang.Get("server-left-squad"));
             SendSquadHud(fromPlayer);
             return;
         }
@@ -316,7 +316,7 @@ public sealed class ServerVoiceController
     {
         if (!fromPlayer.HasPrivilege(Privilege.controlserver))
         {
-            SendPlayerMessage(fromPlayer, "简单语音对话：你没有语音管理权限。");
+            SendPlayerMessage(fromPlayer, SVCLang.Get("server-no-voice-admin-permission"));
             return;
         }
 
@@ -490,7 +490,7 @@ public sealed class ServerVoiceController
     {
         if (!squadMembersByUid.TryGetValue(initiator.PlayerUID, out HashSet<string>? members) || members.Count == 0)
         {
-            SendPlayerMessage(initiator, "简单语音对话：你当前没有可解散的小队。");
+            SendPlayerMessage(initiator, SVCLang.Get("server-no-squad-to-disband"));
             SendSquadHud(initiator);
             return;
         }
@@ -512,8 +512,8 @@ public sealed class ServerVoiceController
 
             SendSquadHud(player);
             string message = uid == initiator.PlayerUID
-                ? "简单语音对话：你已解散当前小队频道。"
-                : $"简单语音对话：{initiator.PlayerName} 已解散当前小队频道。";
+                ? SVCLang.Get("server-disbanded-squad-self")
+                : SVCLang.Get("server-disbanded-squad-other", initiator.PlayerName);
             SendPlayerMessage(player, message);
         }
     }
@@ -559,31 +559,31 @@ public sealed class ServerVoiceController
     {
         if (!squadMembersByUid.TryGetValue(player.PlayerUID, out HashSet<string>? members) || members.Count == 0)
         {
-            return "简单语音对话：你当前没有绑定小队频道。";
+            return SVCLang.Get("server-no-squad-bound");
         }
 
         string names = string.Join("、", members.Select(uid => FindOnlinePlayer(uid)?.PlayerName ?? uid));
-        return $"简单语音对话：当前小队成员：{names}";
+        return SVCLang.Get("server-squad-members", names);
     }
 
     private TextCommandResult BindSquadPlayers(IServerPlayer fromPlayer, IServerPlayer? target)
     {
         if (target == null || target == fromPlayer || target.Entity == null || fromPlayer.Entity == null)
         {
-            return TextCommandResult.Error("简单语音对话：没有找到可绑定的目标玩家。");
+            return TextCommandResult.Error(SVCLang.Get("server-no-bind-target"));
         }
 
         double distance = fromPlayer.Entity.Pos.XYZ.DistanceTo(target.Entity.Pos.XYZ);
         if (distance > config.SquadBindRange)
         {
-            return TextCommandResult.Error($"简单语音对话：目标太远，需要 {config.SquadBindRange:0.#} 格内面对绑定。");
+            return TextCommandResult.Error(SVCLang.Get("server-bind-target-too-far", config.SquadBindRange.ToString("0.#")));
         }
 
         BindSquads(fromPlayer.PlayerUID, target.PlayerUID);
-        SendPlayerMessage(target, $"简单语音对话：{fromPlayer.PlayerName} 已与你绑定小队频道。");
+        SendPlayerMessage(target, SVCLang.Get("server-bound-with-you", fromPlayer.PlayerName));
         SendSquadHud(fromPlayer);
         SendSquadHud(target);
-        return TextCommandResult.Success($"简单语音对话：已与 {target.PlayerName} 绑定小队频道。");
+        return TextCommandResult.Success(SVCLang.Get("server-bound-squad", target.PlayerName));
     }
 
     private IServerPlayer? FindSelectedSquadTarget(IServerPlayer player)
@@ -650,7 +650,7 @@ public sealed class ServerVoiceController
 
     private static TextCommandResult NoServerControl()
     {
-        return TextCommandResult.Error("简单语音对话：你没有服务器语音管理权限。");
+        return TextCommandResult.Error(SVCLang.Get("server-no-server-control"));
     }
 
     private IServerPlayer? FindOnlinePlayer(string nameOrUid)
@@ -674,7 +674,7 @@ public sealed class ServerVoiceController
         string display = target?.PlayerName ?? targetNameOrUid;
         if (string.IsNullOrWhiteSpace(uid))
         {
-            return TextCommandResult.Error("Usage: /svc adminmute|adminunmute|forceblock|unforceblock <player>");
+            return TextCommandResult.Error(SVCLang.Get("server-admin-control-usage"));
         }
 
         switch (action)
@@ -682,37 +682,37 @@ public sealed class ServerVoiceController
             case "adminmute":
                 SetListValue(config.GloballyMutedPlayerUids, uid, true);
                 SaveConfig();
-                return TextCommandResult.Success($"SimpleVoiceChat: {display} 已被管理员全局禁言。");
+                return TextCommandResult.Success(SVCLang.Get("server-adminmuted", display));
 
             case "adminunmute":
                 SetListValue(config.GloballyMutedPlayerUids, uid, false);
                 SaveConfig();
-                return TextCommandResult.Success($"SimpleVoiceChat: {display} 已取消管理员全局禁言。");
+                return TextCommandResult.Success(SVCLang.Get("server-adminunmuted", display));
 
             case "forceblock":
                 SetListValue(config.ForceBlockedPlayerUids, uid, true);
                 SaveConfig();
-                return TextCommandResult.Success($"SimpleVoiceChat: {display} 已被管理员强制屏蔽，全服不会听到该玩家。");
+                return TextCommandResult.Success(SVCLang.Get("server-forceblocked", display));
 
             case "unforceblock":
                 SetListValue(config.ForceBlockedPlayerUids, uid, false);
                 SaveConfig();
-                return TextCommandResult.Success($"SimpleVoiceChat: {display} 已取消管理员强制屏蔽。");
+                return TextCommandResult.Success(SVCLang.Get("server-unforceblocked", display));
 
             default:
-                return TextCommandResult.Error("Usage: /svc adminmute|adminunmute|forceblock|unforceblock <player>");
+                return TextCommandResult.Error(SVCLang.Get("server-admin-control-usage"));
         }
     }
 
     private string BuildAdminMuteList()
     {
         string muted = config.GloballyMutedPlayerUids.Count == 0
-            ? "无"
+            ? SVCLang.Get("server-list-none")
             : string.Join(", ", config.GloballyMutedPlayerUids.Select(uid => FindOnlinePlayer(uid)?.PlayerName ?? uid));
         string blocked = config.ForceBlockedPlayerUids.Count == 0
-            ? "无"
+            ? SVCLang.Get("server-list-none")
             : string.Join(", ", config.ForceBlockedPlayerUids.Select(uid => FindOnlinePlayer(uid)?.PlayerName ?? uid));
-        return $"SimpleVoiceChat admin muted: {muted}; force blocked: {blocked}";
+        return SVCLang.Get("server-admin-list", muted, blocked);
     }
 
     private static void SetListValue(List<string> values, string value, bool enabled)

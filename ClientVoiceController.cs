@@ -132,13 +132,13 @@ public sealed class ClientVoiceController : IDisposable
 
     private void RegisterHotkeys()
     {
-        capi.Input.RegisterHotKey(VoiceConstants.PushToTalkHotKey, "简单语音对话：按住说话", GlKeys.N, HotkeyType.CharacterControls);
-        capi.Input.RegisterHotKey(VoiceConstants.ToggleTalkHotKey, "简单语音对话：持续说话开关", GlKeys.N, HotkeyType.GUIOrOtherControls, altPressed: true);
-        capi.Input.RegisterHotKey(VoiceConstants.ModeCycleHotKey, "简单语音对话：切换模式", GlKeys.LBracket, HotkeyType.CharacterControls);
-        capi.Input.RegisterHotKey(VoiceConstants.ModeCycleAltHotKey, "简单语音对话：切换模式备用", GlKeys.RBracket, HotkeyType.CharacterControls);
-        capi.Input.RegisterHotKey(VoiceConstants.LocalMuteHotKey, "简单语音对话：麦克风静音", GlKeys.Minus, HotkeyType.GUIOrOtherControls, ctrlPressed: true);
-        capi.Input.RegisterHotKey(VoiceConstants.GlobalMuteHotKey, "简单语音对话：全局语音开关", GlKeys.Semicolon, HotkeyType.CharacterControls);
-        capi.Input.RegisterHotKey(VoiceConstants.SettingsHotKey, "简单语音对话：状态/设置窗口", GlKeys.Quote, HotkeyType.GUIOrOtherControls);
+        capi.Input.RegisterHotKey(VoiceConstants.PushToTalkHotKey, SVCLang.Get("hotkey-push-to-talk"), GlKeys.N, HotkeyType.CharacterControls);
+        capi.Input.RegisterHotKey(VoiceConstants.ToggleTalkHotKey, SVCLang.Get("hotkey-toggle-talk"), GlKeys.N, HotkeyType.GUIOrOtherControls, altPressed: true);
+        capi.Input.RegisterHotKey(VoiceConstants.ModeCycleHotKey, SVCLang.Get("hotkey-cycle-mode"), GlKeys.LBracket, HotkeyType.CharacterControls);
+        capi.Input.RegisterHotKey(VoiceConstants.ModeCycleAltHotKey, SVCLang.Get("hotkey-cycle-mode-alt"), GlKeys.RBracket, HotkeyType.CharacterControls);
+        capi.Input.RegisterHotKey(VoiceConstants.LocalMuteHotKey, SVCLang.Get("hotkey-local-mute"), GlKeys.Minus, HotkeyType.GUIOrOtherControls, ctrlPressed: true);
+        capi.Input.RegisterHotKey(VoiceConstants.GlobalMuteHotKey, SVCLang.Get("hotkey-global-mute"), GlKeys.Semicolon, HotkeyType.CharacterControls);
+        capi.Input.RegisterHotKey(VoiceConstants.SettingsHotKey, SVCLang.Get("hotkey-settings"), GlKeys.Quote, HotkeyType.GUIOrOtherControls);
 
         capi.Input.SetHotKeyHandler(VoiceConstants.ModeCycleHotKey, _ =>
         {
@@ -223,7 +223,7 @@ public sealed class ClientVoiceController : IDisposable
         {
             toggleTalkEnabled = false;
         }
-        capi.ShowChatMessage($"简单语音对话：麦克风已{(localMuted ? "静音" : "取消静音")}。");
+        capi.ShowChatMessage(SVCLang.Get("chat-local-mute", localMuted ? SVCLang.Get("chat-local-mute-on") : SVCLang.Get("chat-local-mute-off")));
         SendState(force: true);
         hud?.Refresh();
     }
@@ -235,7 +235,7 @@ public sealed class ClientVoiceController : IDisposable
         {
             toggleTalkEnabled = false;
         }
-        capi.ShowChatMessage($"简单语音对话：全局语音已{(globalMuted ? "关闭" : "开启")}。");
+        capi.ShowChatMessage(SVCLang.Get("chat-global-mute", globalMuted ? SVCLang.Get("state-off") : SVCLang.Get("state-on")));
         SendState(force: true);
         hud?.Refresh();
     }
@@ -243,7 +243,7 @@ public sealed class ClientVoiceController : IDisposable
     private void ToggleContinuousTalk()
     {
         toggleTalkEnabled = !toggleTalkEnabled;
-        capi.ShowChatMessage($"简单语音对话：持续说话已{(toggleTalkEnabled ? "开启" : "关闭")}。");
+        capi.ShowChatMessage(SVCLang.Get("chat-continuous-talk", toggleTalkEnabled ? SVCLang.Get("state-on") : SVCLang.Get("state-off")));
         SendState(force: true);
         hud?.Refresh();
     }
@@ -251,7 +251,7 @@ public sealed class ClientVoiceController : IDisposable
     private void RegisterCommands()
     {
         capi.ChatCommands.Create("svc")
-            .WithDescription("SimpleVoiceChat client controls")
+            .WithDescription(SVCLang.Get("command-description-client"))
             .IgnoreAdditionalArgs()
             .HandleWith(HandleClientCommand);
     }
@@ -269,11 +269,11 @@ public sealed class ClientVoiceController : IDisposable
                 int value = args.RawArgs.PopInt(-1) ?? -1;
                 if (value < 0 || value > 200)
                 {
-                    return TextCommandResult.Error("用法：/svc volume <0-200>");
+                    return TextCommandResult.Error(SVCLang.Get("command-usage-volume"));
                 }
                 config.OutputVolume = value / 100f;
                 SaveConfig();
-                return TextCommandResult.Success($"简单语音对话：播放音量已设为 {value}%。");
+                return TextCommandResult.Success(SVCLang.Get("command-set-volume-ok", value));
             }
 
             case "mute":
@@ -282,18 +282,18 @@ public sealed class ClientVoiceController : IDisposable
                 string name = args.RawArgs.PopWord("");
                 if (string.IsNullOrWhiteSpace(name))
                 {
-                    return TextCommandResult.Error($"用法：/svc {sub} <玩家名>");
+                    return TextCommandResult.Error(SVCLang.Get("command-usage-player", sub));
                 }
 
                 IPlayer? player = capi.World.AllOnlinePlayers.FirstOrDefault(p => p.PlayerName.Equals(name, StringComparison.OrdinalIgnoreCase));
                 if (player == null)
                 {
-                    return TextCommandResult.Error($"找不到在线玩家：{name}。");
+                    return TextCommandResult.Error(SVCLang.Get("command-player-not-found", name));
                 }
 
                 bool muted = sub == "mute";
                 SetMuted(player.PlayerUID, muted);
-                return TextCommandResult.Success($"已{(muted ? "屏蔽" : "取消屏蔽")} {player.PlayerName}。");
+                return TextCommandResult.Success(muted ? SVCLang.Get("command-mute-player", player.PlayerName) : SVCLang.Get("command-unmute-player", player.PlayerName));
             }
 
             case "bind":
@@ -301,20 +301,20 @@ public sealed class ClientVoiceController : IDisposable
                 IPlayer? target = GetSelectedPlayer();
                 if (target == null)
                 {
-                    return TextCommandResult.Error("请面对近处玩家后输入 /svc bind。");
+                    return TextCommandResult.Error(SVCLang.Get("command-bind-face-player"));
                 }
 
                 controlChannel?.SendPacket(new SquadBindPacket { TargetPlayerUid = target.PlayerUID });
-                return TextCommandResult.Success($"已请求与 {target.PlayerName} 绑定小队频道。");
+                return TextCommandResult.Success(SVCLang.Get("command-request-bind-squad", target.PlayerName));
             }
 
             case "unbind":
                 controlChannel?.SendPacket(new SquadBindPacket { LeaveSquad = true });
-                return TextCommandResult.Success("已请求离开当前小队频道。");
+                return TextCommandResult.Success(SVCLang.Get("command-request-leave-squad"));
 
             case "squad":
                 controlChannel?.SendPacket(new SquadBindPacket { RequestStatus = true });
-                return TextCommandResult.Success("已请求小队频道状态。");
+                return TextCommandResult.Success(SVCLang.Get("command-request-squad-status"));
 
             case "adminmute":
             case "adminunmute":
@@ -324,19 +324,19 @@ public sealed class ClientVoiceController : IDisposable
                 string nameOrUid = args.RawArgs.PopWord("");
                 if (string.IsNullOrWhiteSpace(nameOrUid))
                 {
-                    return TextCommandResult.Error($"用法：/svc {sub} <玩家名或UID>");
+                    return TextCommandResult.Error(SVCLang.Get("command-usage-player-or-uid", sub));
                 }
 
                 controlChannel?.SendPacket(new AdminVoiceControlPacket { Action = sub, TargetNameOrUid = nameOrUid });
-                return TextCommandResult.Success("已发送管理员语音控制请求。");
+                return TextCommandResult.Success(SVCLang.Get("command-request-admin-control"));
             }
 
             case "adminmutes":
                 controlChannel?.SendPacket(new AdminVoiceControlPacket { Action = sub });
-                return TextCommandResult.Success("已请求管理员语音屏蔽列表。");
+                return TextCommandResult.Success(SVCLang.Get("command-request-admin-list"));
 
             default:
-                return TextCommandResult.Error("用法：/svc status|volume|mute|unmute|bind|unbind|squad");
+                return TextCommandResult.Error(SVCLang.Get("command-usage-client-root"));
         }
     }
 
@@ -401,7 +401,7 @@ public sealed class ClientVoiceController : IDisposable
         if (pressed && capture?.IsAvailable != true && !captureWarningShown)
         {
             captureWarningShown = true;
-            capi.ShowChatMessage($"简单语音对话：麦克风不可用。{capture?.FailureReason}");
+            capi.ShowChatMessage(SVCLang.Get("chat-mic-unavailable", capture?.FailureReason ?? string.Empty));
         }
 
         if (canSpeak)
@@ -518,7 +518,7 @@ public sealed class ClientVoiceController : IDisposable
             mode = VoiceMode.Talk;
         }
 
-        capi.ShowChatMessage($"简单语音对话：语音模式已切换为 {FormatMode(mode)}。");
+        capi.ShowChatMessage(SVCLang.Get("chat-switched-mode", FormatMode(mode)));
         SendState(force: true);
         hud?.Refresh();
     }
@@ -584,14 +584,14 @@ public sealed class ClientVoiceController : IDisposable
         lastRemoteVoiceLevel = 0f;
         SendState(force: true);
         hud?.Refresh();
-        capi.ShowChatMessage($"简单语音对话：麦克风输入设备已切换为 {(string.IsNullOrWhiteSpace(config.InputDeviceName) ? "默认麦克风" : config.InputDeviceName)}。");
+        capi.ShowChatMessage(SVCLang.Get("chat-device-switched", string.IsNullOrWhiteSpace(config.InputDeviceName) ? SVCLang.Get("default-microphone") : config.InputDeviceName));
     }
 
     private bool LeaveSquadFromWindow()
     {
         if (controlChannel == null)
         {
-            capi.ShowChatMessage("简单语音对话：控制通道尚未连接，无法离开小组。");
+            capi.ShowChatMessage(SVCLang.Get("chat-control-not-connected-leave"));
             return true;
         }
 
@@ -599,7 +599,7 @@ public sealed class ClientVoiceController : IDisposable
         squadHudMembers = Array.Empty<VoiceHudSquadMember>();
         hud?.Refresh();
         settingsDialog?.RefreshStatusTexts();
-        capi.ShowChatMessage("简单语音对话：已请求离开当前小组。");
+        capi.ShowChatMessage(SVCLang.Get("chat-requested-leave-squad"));
         return true;
     }
 
@@ -607,7 +607,7 @@ public sealed class ClientVoiceController : IDisposable
     {
         if (controlChannel == null)
         {
-            capi.ShowChatMessage("简单语音对话：控制通道尚未连接，无法解散小组。");
+            capi.ShowChatMessage(SVCLang.Get("chat-control-not-connected-disband"));
             return true;
         }
 
@@ -615,7 +615,7 @@ public sealed class ClientVoiceController : IDisposable
         squadHudMembers = Array.Empty<VoiceHudSquadMember>();
         hud?.Refresh();
         settingsDialog?.RefreshStatusTexts();
-        capi.ShowChatMessage("简单语音对话：已请求解散当前小组。");
+        capi.ShowChatMessage(SVCLang.Get("chat-requested-disband-squad"));
         return true;
     }
 
@@ -628,7 +628,7 @@ public sealed class ClientVoiceController : IDisposable
     {
         if (capture?.IsAvailable != true)
         {
-            capi.ShowChatMessage($"简单语音对话：无法开始调试录音，麦克风不可用。{capture?.FailureReason}");
+            capi.ShowChatMessage(SVCLang.Get("chat-debug-recording-unavailable", capture?.FailureReason ?? string.Empty));
             return true;
         }
 
@@ -643,7 +643,7 @@ public sealed class ClientVoiceController : IDisposable
             capture.Start();
         }
 
-        capi.ShowChatMessage("简单语音对话：开始调试录音 3 秒。本地录制将经过发送前处理与 ADPCM 编码，但不会发给服务器。");
+        capi.ShowChatMessage(SVCLang.Get("chat-debug-recording-started"));
         return true;
     }
 
@@ -651,19 +651,19 @@ public sealed class ClientVoiceController : IDisposable
     {
         if (debugRecording)
         {
-            capi.ShowChatMessage("简单语音对话：调试录音仍在进行，请录制完成后再播放。");
+            capi.ShowChatMessage(SVCLang.Get("chat-debug-recording-busy"));
             return true;
         }
 
         if (debugRecordingFrames.Count == 0)
         {
-            capi.ShowChatMessage("简单语音对话：还没有可播放的调试录音，或录音期间没有超过噪声门的麦克风输入。");
+            capi.ShowChatMessage(SVCLang.Get("chat-debug-recording-empty"));
             return true;
         }
 
         if (playback == null)
         {
-            capi.ShowChatMessage("简单语音对话：播放服务未初始化，无法播放调试录音。");
+            capi.ShowChatMessage(SVCLang.Get("chat-debug-playback-uninitialized"));
             return true;
         }
 
@@ -678,7 +678,7 @@ public sealed class ClientVoiceController : IDisposable
             debugPlaybackEntityId = InitialDebugPlaybackEntityId;
         }
 
-        capi.ShowChatMessage($"简单语音对话：开始播放调试录音（{debugRecordingFrames.Count} 帧）。播放会使用游戏 OpenAL 3D 声场，并叠加语音传播所需的距离/遮挡/水下低通修正。");
+        capi.ShowChatMessage(SVCLang.Get("chat-debug-playback-started", debugRecordingFrames.Count));
         return true;
     }
 
@@ -725,8 +725,10 @@ public sealed class ClientVoiceController : IDisposable
         }
 
         debugCaptureStartedByTool = false;
-        string suffix = debugRecordingFrames.Count == 0 ? "没有捕获到超过噪声门的声音。" : $"捕获 {debugRecordingFrames.Count} 帧，可在状态窗口点击播放录音。";
-        capi.ShowChatMessage($"简单语音对话：调试录音完成，{suffix}");
+        string suffix = debugRecordingFrames.Count == 0
+            ? SVCLang.Get("chat-debug-recording-finished-empty")
+            : SVCLang.Get("chat-debug-recording-finished-frames", debugRecordingFrames.Count);
+        capi.ShowChatMessage(SVCLang.Get("chat-debug-recording-finished", suffix));
     }
 
     private void UpdateDebugPlayback()
@@ -747,7 +749,7 @@ public sealed class ClientVoiceController : IDisposable
         if (debugPlaybackIndex >= debugRecordingFrames.Count && elapsed > lastOffset + 500)
         {
             debugPlaybackActive = false;
-            capi.ShowChatMessage("简单语音对话：调试录音播放结束。");
+            capi.ShowChatMessage(SVCLang.Get("chat-debug-playback-finished"));
         }
     }
 
@@ -854,10 +856,10 @@ public sealed class ClientVoiceController : IDisposable
         bool captureAvailable = capture?.IsAvailable == true;
         bool micEnabled = !localMuted && !globalMuted && serverConfig.Enabled && captureAvailable;
         string status = BuildHudStatus(captureAvailable);
-        string detail = voiceChannel?.Connected == true ? "UDP OK" : "UDP WAIT";
+        string detail = voiceChannel?.Connected == true ? SVCLang.Get("hud-detail-udp-ok") : SVCLang.Get("hud-detail-udp-wait");
         if (!captureAvailable)
         {
-            detail = "麦克风不可用";
+            detail = SVCLang.Get("hud-detail-mic-unavailable");
         }
 
         float voiceLevel = Math.Max(lastMicLevel, lastRemoteVoiceLevel);
@@ -916,25 +918,25 @@ public sealed class ClientVoiceController : IDisposable
     {
         if (!serverConfig.Enabled || globalMuted)
         {
-            return "语音关闭";
+            return SVCLang.Get("hud-status-voice-off");
         }
 
         if (!captureAvailable)
         {
-            return "麦克风不可用";
+            return SVCLang.Get("hud-status-mic-unavailable");
         }
 
         if (localMuted)
         {
-            return "麦克风静音";
+            return SVCLang.Get("hud-status-mic-muted");
         }
 
         if (lastSpeaking)
         {
-            return toggleTalkEnabled ? "持续说话" : "正在说话";
+            return toggleTalkEnabled ? SVCLang.Get("hud-status-always-talking") : SVCLang.Get("hud-status-speaking");
         }
 
-        return toggleTalkEnabled ? "持续待机" : "麦克风就绪";
+        return toggleTalkEnabled ? SVCLang.Get("hud-status-always-standby") : SVCLang.Get("hud-status-mic-ready");
     }
 
     private bool ShouldShowHud()
@@ -952,19 +954,19 @@ public sealed class ClientVoiceController : IDisposable
         string globalMute = FormatHotkey(VoiceConstants.GlobalMuteHotKey, ";");
         string settings = FormatHotkey(VoiceConstants.SettingsHotKey, "'");
         return
-            $"语音模式：{FormatMode(mode)}\n" +
-            $"语音总开关：{(serverConfig.Enabled && !globalMuted ? "开启" : "关闭")}\n" +
-            $"麦克风：{(capture?.IsAvailable == true ? (localMuted ? "静音" : "就绪") : "不可用")}\n" +
-            $"播放音量：{(int)(config.OutputVolume * 100)}%\n" +
-            $"按住说话：{ptt}\n" +
-            $"持续说话：{toggleTalk}（当前：{(toggleTalkEnabled ? "开启" : "关闭")}）\n" +
-            $"切换模式：{cycle} / {cycleAlt}\n" +
-            $"麦克风静音：{localMute}    全局开关：{globalMute}\n" +
-            $"打开状态/设置窗口：{settings}\n" +
-            $"调试录音：{BuildDebugRecordingStatus()}\n" +
-            $"{playback?.BuildDebugStatus() ?? "播放：未初始化"}\n" +
+            $"{SVCLang.Get("summary-line-voice-mode", FormatMode(mode))}\n" +
+            $"{SVCLang.Get("summary-line-voice-master", serverConfig.Enabled && !globalMuted ? SVCLang.Get("state-on") : SVCLang.Get("state-off"))}\n" +
+            $"{SVCLang.Get("summary-line-mic", capture?.IsAvailable == true ? (localMuted ? SVCLang.Get("state-muted") : SVCLang.Get("state-ready")) : SVCLang.Get("state-unavailable"))}\n" +
+            $"{SVCLang.Get("summary-line-playback-volume", (int)(config.OutputVolume * 100))}\n" +
+            $"{SVCLang.Get("summary-line-push-to-talk", ptt)}\n" +
+            $"{SVCLang.Get("summary-line-toggle-talk", toggleTalk, toggleTalkEnabled ? SVCLang.Get("state-on") : SVCLang.Get("state-off"))}\n" +
+            $"{SVCLang.Get("summary-line-cycle-mode", cycle, cycleAlt)}\n" +
+            $"{SVCLang.Get("summary-line-local-global", localMute, globalMute)}\n" +
+            $"{SVCLang.Get("summary-line-open-settings", settings)}\n" +
+            $"{SVCLang.Get("summary-line-debug-recording", BuildDebugRecordingStatus())}\n" +
+            $"{playback?.BuildDebugStatus() ?? SVCLang.Get("summary-playback-uninitialized")}\n" +
             $"{VoiceEnvironment.BuildDebugSummary(capi, config, serverConfig)}\n" +
-            $"命令：/svc volume <0-200>, /svc mute <玩家名>, /svc bind, /svc unbind";
+            $"{SVCLang.Get("summary-line-commands")}";
     }
 
     private string BuildSettingsWindowSummary()
@@ -976,12 +978,12 @@ public sealed class ClientVoiceController : IDisposable
         string localMute = FormatHotkey(VoiceConstants.LocalMuteHotKey, "Ctrl + -");
         string globalMute = FormatHotkey(VoiceConstants.GlobalMuteHotKey, ";");
         return
-            $"模式：{FormatMode(mode)}    总开关：{(serverConfig.Enabled && !globalMuted ? "开启" : "关闭")}\n" +
-            $"麦克风：{(capture?.IsAvailable == true ? (localMuted ? "静音" : "就绪") : "不可用")}\n" +
-            $"按住说话：{ptt}    持续说话：{toggleTalk}（{(toggleTalkEnabled ? "开" : "关")}）\n" +
-            $"切换模式：{cycle} / {cycleAlt}\n" +
-            $"麦克风静音：{localMute}    全局开关：{globalMute}\n" +
-            $"调试录音：{BuildDebugRecordingStatus()}\n" +
+            $"{SVCLang.Get("summary-line-window-header", FormatMode(mode), serverConfig.Enabled && !globalMuted ? SVCLang.Get("state-on") : SVCLang.Get("state-off"))}\n" +
+            $"{SVCLang.Get("summary-line-window-mic", capture?.IsAvailable == true ? (localMuted ? SVCLang.Get("state-muted") : SVCLang.Get("state-ready")) : SVCLang.Get("state-unavailable"))}\n" +
+            $"{SVCLang.Get("summary-line-window-talk", ptt, toggleTalk, toggleTalkEnabled ? SVCLang.Get("state-on-short") : SVCLang.Get("state-off-short"))}\n" +
+            $"{SVCLang.Get("summary-line-window-cycle", cycle, cycleAlt)}\n" +
+            $"{SVCLang.Get("summary-line-window-local-global", localMute, globalMute)}\n" +
+            $"{SVCLang.Get("summary-line-debug-recording", BuildDebugRecordingStatus())}\n" +
             VoiceEnvironment.BuildDebugSummary(capi, config, serverConfig);
     }
 
@@ -989,16 +991,16 @@ public sealed class ClientVoiceController : IDisposable
     {
         if (!serverConfig.Enabled)
         {
-            return "语音已关闭";
+            return SVCLang.Get("squad-status-voice-off");
         }
 
         if (squadHudMembers.Length == 0)
         {
-            return "当前没有小组。绑定后可无视距离通话。";
+            return SVCLang.Get("squad-status-none");
         }
 
         string names = string.Join("、", squadHudMembers.Select(member => member.Name));
-        return $"当前小组：{names}\n小组语音无视距离限制。";
+        return SVCLang.Get("squad-status-members", names);
     }
 
     private string BuildDebugRecordingStatus()
@@ -1006,30 +1008,30 @@ public sealed class ClientVoiceController : IDisposable
         if (debugRecording)
         {
             float remaining = Math.Max(0, debugRecordingEndMs - capi.World.ElapsedMilliseconds) / 1000f;
-            return $"录制中，剩余 {remaining:0.0}s，已捕获 {debugRecordingFrames.Count} 帧";
+            return SVCLang.Get("debug-status-recording", remaining.ToString("0.0"), debugRecordingFrames.Count);
         }
 
         if (debugPlaybackActive)
         {
-            return $"播放中 {debugPlaybackIndex}/{debugRecordingFrames.Count} 帧";
+            return SVCLang.Get("debug-status-playing", debugPlaybackIndex, debugRecordingFrames.Count);
         }
 
         if (debugRecordingFrames.Count > 0)
         {
             int duration = Math.Min(DebugRecordingMilliseconds, debugRecordingFrames[^1].OffsetMilliseconds + VoiceConstants.FrameMilliseconds);
-            return $"已录制 {debugRecordingFrames.Count} 帧，约 {duration / 1000f:0.0}s";
+            return SVCLang.Get("debug-status-recorded", debugRecordingFrames.Count, (duration / 1000f).ToString("0.0"));
         }
 
-        return "未录制";
+        return SVCLang.Get("debug-status-none");
     }
 
     private static string FormatMode(VoiceMode voiceMode)
     {
         return voiceMode switch
         {
-            VoiceMode.Whisper => "耳语",
-            VoiceMode.Shout => "大喊",
-            _ => "正常说话"
+            VoiceMode.Whisper => SVCLang.Get("mode-whisper"),
+            VoiceMode.Shout => SVCLang.Get("mode-shout"),
+            _ => SVCLang.Get("mode-talk")
         };
     }
 

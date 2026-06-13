@@ -176,7 +176,14 @@ public sealed class OpenAlPlaybackService : IDisposable
         {
             int queuedBuffers = streams.Values.Sum(stream => stream.QueuedBuffers);
             int jitterFrames = streams.Values.Sum(stream => stream.Buffer.Count);
-            return $"播放：ctx={(hasContext ? "OK" : "等待")} efx={(hasEffectsExtension ? "OK" : "无")} streams={streams.Count} pending={pendingFrames.Count} jitter={jitterFrames} albuf={queuedBuffers}";
+            return SVCLang.Get(
+                "playback-debug-status",
+                hasContext ? SVCLang.Get("playback-debug-ctx-ok") : SVCLang.Get("playback-debug-ctx-wait"),
+                hasEffectsExtension ? SVCLang.Get("playback-debug-efx-ok") : SVCLang.Get("playback-debug-efx-none"),
+                streams.Count,
+                pendingFrames.Count,
+                jitterFrames,
+                queuedBuffers);
         }
     }
 
