@@ -7,6 +7,7 @@ public sealed class JitterBuffer
     private readonly SortedDictionary<ushort, short[]> frames = new();
     private bool initialized;
     private ushort nextSequence;
+    private bool started;
 
     public int Count => frames.Count;
 
@@ -24,7 +25,7 @@ public sealed class JitterBuffer
         }
 
         frames[sequence] = samples;
-        while (frames.Count > 12)
+        while (frames.Count > 6)
         {
             frames.Remove(frames.Keys.Min());
         }
@@ -33,9 +34,19 @@ public sealed class JitterBuffer
     public bool TryDequeue(out short[] samples)
     {
         samples = Array.Empty<short>();
-        if (!initialized || frames.Count < 4)
+        if (!initialized)
         {
             return false;
+        }
+
+        if (!started)
+        {
+            if (frames.Count < 2)
+            {
+                return false;
+            }
+
+            started = true;
         }
 
         if (frames.Remove(nextSequence, out samples!))

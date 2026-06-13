@@ -25,10 +25,10 @@ public sealed class VoiceEffectsProcessor
             return;
         }
 
-        float alpha = Math.Clamp(1f - lowPass * 0.82f, 0.08f, 1f);
+        float alpha = Math.Clamp(1f - lowPass * 0.92f, 0.035f, 1f);
         int delay = Math.Clamp(environment.EchoDelaySamples, 1, echoBuffer.Length - 1);
-        float echoFeedback = echo * 0.42f;
-        float echoMix = echo * 0.55f;
+        float echoFeedback = echo * 0.58f;
+        float echoMix = echo * 0.82f;
 
         for (int i = 0; i < samples.Length; i++)
         {
@@ -47,7 +47,7 @@ public sealed class VoiceEffectsProcessor
 
             if (distortion > 0.001f)
             {
-                float drive = 1f + distortion * 4.5f;
+                float drive = 1f + distortion * 6.5f;
                 sample = SoftClip(sample * drive) / SoftClip(drive);
             }
 

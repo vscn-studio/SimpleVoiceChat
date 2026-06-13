@@ -8,6 +8,7 @@ public sealed class OpenAlCaptureService : IDisposable
 {
     private readonly ICoreClientAPI capi;
     private readonly SimpleVoiceChatClientConfig config;
+    private readonly short[] discardBuffer = new short[VoiceConstants.SamplesPerFrame];
     private ALCaptureDevice captureDevice;
     private bool captureStarted;
     private bool disposed;
@@ -83,6 +84,12 @@ public sealed class OpenAlCaptureService : IDisposable
         }
 
         int available = ALC.GetInteger(captureDevice, AlcGetInteger.CaptureSamples);
+        while (available >= VoiceConstants.SamplesPerFrame * 4)
+        {
+            ALC.CaptureSamples(captureDevice, discardBuffer, VoiceConstants.SamplesPerFrame);
+            available -= VoiceConstants.SamplesPerFrame;
+        }
+
         if (available < VoiceConstants.SamplesPerFrame)
         {
             return false;

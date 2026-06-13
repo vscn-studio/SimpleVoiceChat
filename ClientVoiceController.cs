@@ -79,6 +79,7 @@ public sealed class ClientVoiceController : IDisposable
 
         capi.Event.KeyUp += OnKeyUp;
         capi.Event.RegisterGameTickListener(OnFastTick, VoiceConstants.FrameMilliseconds);
+        capi.Event.RegisterGameTickListener(OnPlaybackTick, VoiceConstants.FrameMilliseconds);
         capi.Event.RegisterGameTickListener(OnSlowTick, 100);
         SendState(force: true);
         SyncMutedPlayersToServer();
@@ -404,7 +405,6 @@ public sealed class ClientVoiceController : IDisposable
 
     private void OnSlowTick(float dt)
     {
-        playback?.Update(serverConfig);
         SendState(force: false);
         if (!lastSpeaking)
         {
@@ -420,6 +420,11 @@ public sealed class ClientVoiceController : IDisposable
             lastRemoteVoiceLevel = 0f;
         }
         hud?.Refresh();
+    }
+
+    private void OnPlaybackTick(float dt)
+    {
+        playback?.Update(serverConfig);
     }
 
     private void CaptureAndSend()
@@ -669,6 +674,7 @@ public sealed class ClientVoiceController : IDisposable
             $"切换模式：{cycle} / {cycleAlt}\n" +
             $"麦克风静音：{localMute}    全局开关：{globalMute}\n" +
             $"打开状态/设置窗口：{settings}\n" +
+            $"{VoiceEnvironment.BuildDebugSummary(capi, config, serverConfig)}\n" +
             $"命令：/svc volume <0-200>, /svc mute <玩家名>, /svc bind, /svc unbind";
     }
 
@@ -685,7 +691,8 @@ public sealed class ClientVoiceController : IDisposable
             $"麦克风：{(capture?.IsAvailable == true ? (localMuted ? "静音" : "就绪") : "不可用")}\n" +
             $"按住说话：{ptt}    持续说话：{toggleTalk}（{(toggleTalkEnabled ? "开" : "关")}）\n" +
             $"切换模式：{cycle} / {cycleAlt}\n" +
-            $"麦克风静音：{localMute}    全局开关：{globalMute}";
+            $"麦克风静音：{localMute}    全局开关：{globalMute}\n" +
+            VoiceEnvironment.BuildDebugSummary(capi, config, serverConfig);
     }
 
     private static string FormatMode(VoiceMode voiceMode)

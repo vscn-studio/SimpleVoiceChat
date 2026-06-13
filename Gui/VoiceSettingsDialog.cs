@@ -51,7 +51,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     {
         ElementBounds dialogBounds = ElementBounds.Fixed(EnumDialogArea.CenterMiddle, -330, -300, 660, 600);
         ElementBounds bgBounds = ElementBounds.Fixed(0, 0, 660, 600);
-        ElementBounds statusBounds = ElementBounds.Fixed(28, 48, 604, 118);
+        ElementBounds statusBounds = ElementBounds.Fixed(28, 48, 604, 146);
         ElementBounds closeBounds = ElementBounds.Fixed(275, 550, 110, 32);
         string[] inputDeviceValues = GetInputDeviceValues();
         string[] inputDeviceNames = GetInputDeviceNames(inputDeviceValues);
@@ -61,7 +61,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         double controlX = 260;
         double labelWidth = 210;
         double controlWidth = 350;
-        double y = 194;
+        double y = 216;
         double row = 46;
 
         SingleComposer = capi.Gui.CreateCompo("simplevoicechat-settings", dialogBounds)
