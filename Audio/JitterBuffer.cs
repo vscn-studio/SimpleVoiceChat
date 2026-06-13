@@ -25,7 +25,7 @@ public sealed class JitterBuffer
         }
 
         frames[sequence] = samples;
-        while (frames.Count > 6)
+        while (frames.Count > 8)
         {
             frames.Remove(frames.Keys.Min());
         }
@@ -41,7 +41,7 @@ public sealed class JitterBuffer
 
         if (!started)
         {
-            if (frames.Count < 2)
+            if (frames.Count < 3)
             {
                 return false;
             }

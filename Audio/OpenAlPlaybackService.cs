@@ -44,7 +44,7 @@ public sealed class OpenAlPlaybackService : IDisposable
             }
 
             hasContext = true;
-            AL.DistanceModel(ALDistanceModel.InverseDistanceClamped);
+            AL.DistanceModel(ALDistanceModel.None);
             return true;
         }
         catch (Exception ex)
@@ -211,7 +211,7 @@ public sealed class OpenAlPlaybackService : IDisposable
 
     private static void QueuePendingBuffers(RemoteVoiceStream stream)
     {
-        while (stream.QueuedBuffers < 3 && stream.FreeBuffers.Count > 0 && stream.Buffer.TryDequeue(out short[] samples))
+        while (stream.QueuedBuffers < 4 && stream.FreeBuffers.Count > 0 && stream.Buffer.TryDequeue(out short[] samples))
         {
             int buffer = stream.FreeBuffers.Dequeue();
             AL.BufferData(buffer, ALFormat.Mono16, samples, VoiceConstants.SampleRate);
@@ -275,7 +275,7 @@ public sealed class OpenAlPlaybackService : IDisposable
             AL.Source(Source, ALSourcef.ReferenceDistance, 2f);
             AL.Source(Source, ALSourcef.RolloffFactor, 1f);
 
-            int[] buffers = AL.GenBuffers(4);
+            int[] buffers = AL.GenBuffers(5);
             foreach (int buffer in buffers)
             {
                 FreeBuffers.Enqueue(buffer);

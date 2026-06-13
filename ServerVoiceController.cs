@@ -57,6 +57,7 @@ public sealed class ServerVoiceController
     {
         sapi.ChatCommands.Create("svc")
             .WithDescription("简单语音对话命令")
+            .RequiresPrivilege(Privilege.chat)
             .IgnoreAdditionalArgs()
             .HandleWith(HandleServerCommand);
     }
