@@ -95,11 +95,15 @@ public sealed class ClientVoiceController : IDisposable
             capi,
             config,
             BuildSettingsWindowSummary,
+            BuildSquadStatusSummary,
             SaveConfig,
             () => hud?.Refresh(),
             ReinitializeCapture,
             StartDebugRecording,
-            PlayDebugRecording);
+            PlayDebugRecording,
+            LeaveSquadFromWindow,
+            DisbandSquadFromWindow,
+            RequestSquadStatus);
 
         capi.Event.KeyUp += OnKeyUp;
         capi.Event.RegisterGameTickListener(OnFastTick, VoiceConstants.FrameMilliseconds);
@@ -367,6 +371,7 @@ public sealed class ClientVoiceController : IDisposable
 
         squadHudMembers = members;
         hud?.Refresh();
+        settingsDialog?.RefreshStatusTexts();
     }
 
     private void OnVoiceFrame(VoiceFramePacket packet)
@@ -580,6 +585,43 @@ public sealed class ClientVoiceController : IDisposable
         SendState(force: true);
         hud?.Refresh();
         capi.ShowChatMessage($"简单语音对话：麦克风输入设备已切换为 {(string.IsNullOrWhiteSpace(config.InputDeviceName) ? "默认麦克风" : config.InputDeviceName)}。");
+    }
+
+    private bool LeaveSquadFromWindow()
+    {
+        if (controlChannel == null)
+        {
+            capi.ShowChatMessage("简单语音对话：控制通道尚未连接，无法离开小组。");
+            return true;
+        }
+
+        controlChannel.SendPacket(new SquadBindPacket { LeaveSquad = true });
+        squadHudMembers = Array.Empty<VoiceHudSquadMember>();
+        hud?.Refresh();
+        settingsDialog?.RefreshStatusTexts();
+        capi.ShowChatMessage("简单语音对话：已请求离开当前小组。");
+        return true;
+    }
+
+    private bool DisbandSquadFromWindow()
+    {
+        if (controlChannel == null)
+        {
+            capi.ShowChatMessage("简单语音对话：控制通道尚未连接，无法解散小组。");
+            return true;
+        }
+
+        controlChannel.SendPacket(new SquadBindPacket { DisbandSquad = true });
+        squadHudMembers = Array.Empty<VoiceHudSquadMember>();
+        hud?.Refresh();
+        settingsDialog?.RefreshStatusTexts();
+        capi.ShowChatMessage("简单语音对话：已请求解散当前小组。");
+        return true;
+    }
+
+    private void RequestSquadStatus()
+    {
+        controlChannel?.SendPacket(new SquadBindPacket { RequestStatus = true });
     }
 
     private bool StartDebugRecording()
@@ -836,14 +878,15 @@ public sealed class ClientVoiceController : IDisposable
 
     private float NormalizeRemoteVoiceLevel(VoiceFramePacket packet)
     {
+        if (packet.SquadRelay)
+        {
+            return Math.Clamp(NormalizeVoiceLevel(packet.Rms, packet.Mode) * 0.82f, 0f, 1f);
+        }
+
         Vec3d listener = capi.World.Player.Entity.Pos.XYZ;
         double distance = listener.DistanceTo(packet.X, packet.Y, packet.Z);
         float range = Math.Min(serverConfig.GetRange(packet.Mode), serverConfig.MaxRange);
         float distanceGain = EstimateOpenAlDistanceGain(distance, range);
-        if (packet.SquadRelay && distance > range)
-        {
-            distanceGain = 0.62f;
-        }
         return Math.Clamp(NormalizeVoiceLevel(packet.Rms, packet.Mode) * distanceGain, 0f, 1f);
     }
 
@@ -940,6 +983,22 @@ public sealed class ClientVoiceController : IDisposable
             $"麦克风静音：{localMute}    全局开关：{globalMute}\n" +
             $"调试录音：{BuildDebugRecordingStatus()}\n" +
             VoiceEnvironment.BuildDebugSummary(capi, config, serverConfig);
+    }
+
+    private string BuildSquadStatusSummary()
+    {
+        if (!serverConfig.Enabled)
+        {
+            return "语音已关闭";
+        }
+
+        if (squadHudMembers.Length == 0)
+        {
+            return "当前没有小组。绑定后可无视距离通话。";
+        }
+
+        string names = string.Join("、", squadHudMembers.Select(member => member.Name));
+        return $"当前小组：{names}\n小组语音无视距离限制。";
     }
 
     private string BuildDebugRecordingStatus()

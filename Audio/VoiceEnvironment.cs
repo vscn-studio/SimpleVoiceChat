@@ -39,6 +39,11 @@ public static class VoiceEnvironment
         VoiceMode mode,
         bool squadRelay)
     {
+        if (squadRelay)
+        {
+            return EvaluateSquadRelay(capi, listener, speaker, speakerEntity);
+        }
+
         float volume = 1f;
         float pitch = 1f;
         float lowPass = 0f;
@@ -56,12 +61,6 @@ public static class VoiceEnvironment
         {
             float far = (float)Math.Clamp((distance - range * 0.35) / Math.Max(1f, range * 0.65f), 0.0, 1.0);
             lowPass += 0.48f * far;
-        }
-
-        if (squadRelay && distance > range)
-        {
-            volume *= 0.68f;
-            lowPass += 0.42f;
         }
 
         bool listenerInLiquid = IsInLiquid(capi.World.BlockAccessor, listener);
@@ -95,6 +94,48 @@ public static class VoiceEnvironment
             volume *= 0.92f;
             pitch *= 0.98f;
             lowPass += 0.16f;
+        }
+
+        return new VoiceEnvironmentSnapshot(
+            Math.Clamp(volume, 0f, 1.5f),
+            Math.Clamp(pitch, 0.9f, 1.05f),
+            Math.Clamp(lowPass, 0f, 0.92f));
+    }
+
+    private static VoiceEnvironmentSnapshot EvaluateSquadRelay(
+        ICoreClientAPI capi,
+        Vec3d listener,
+        Vec3f speaker,
+        Entity? speakerEntity)
+    {
+        float volume = 0.88f;
+        float pitch = 1f;
+        float lowPass = 0.04f;
+
+        bool listenerInLiquid = IsInLiquid(capi.World.BlockAccessor, listener);
+        bool speakerInLiquid = IsInLiquid(capi.World.BlockAccessor, speaker);
+        if (listenerInLiquid || speakerInLiquid)
+        {
+            volume *= listenerInLiquid && speakerInLiquid ? 0.84f : 0.92f;
+            pitch *= listenerInLiquid && speakerInLiquid ? 0.97f : 0.985f;
+            lowPass += listenerInLiquid && speakerInLiquid ? 0.18f : 0.10f;
+        }
+
+        Entity playerEntity = capi.World.Player.Entity;
+        double stability = TryReadTemporalStability(playerEntity);
+        if (stability >= 0 && stability < 0.35)
+        {
+            float factor = (float)(1.0 - stability / 0.35);
+            pitch *= 1f - 0.03f * factor;
+            volume *= 1f - 0.08f * factor;
+            lowPass += 0.08f * factor;
+        }
+
+        if (IsLikelyPoisoned(speakerEntity) || IsLikelyPoisoned(playerEntity))
+        {
+            volume *= 0.96f;
+            pitch *= 0.99f;
+            lowPass += 0.08f;
         }
 
         return new VoiceEnvironmentSnapshot(

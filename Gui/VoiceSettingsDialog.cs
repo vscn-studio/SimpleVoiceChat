@@ -14,31 +14,46 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private const string ShowMicrophoneHudKey = "showMicrophoneHud";
     private const string OcclusionKey = "occlusion";
     private const string PerformanceModeKey = "performanceMode";
+    private const string SquadStatusKey = "squadStatus";
 
     private readonly SimpleVoiceChatClientConfig config;
+    private readonly Func<string> summaryProvider;
+    private readonly Func<string> squadStatusProvider;
     private readonly Action saveConfig;
     private readonly Action refreshHud;
     private readonly Action reinitializeCapture;
     private readonly Func<bool> startDebugRecording;
     private readonly Func<bool> playDebugRecording;
+    private readonly Func<bool> leaveSquad;
+    private readonly Func<bool> disbandSquad;
+    private readonly Action requestSquadStatus;
 
     public VoiceSettingsDialog(
         ICoreClientAPI capi,
         SimpleVoiceChatClientConfig config,
         Func<string> summaryProvider,
+        Func<string> squadStatusProvider,
         Action saveConfig,
         Action refreshHud,
         Action reinitializeCapture,
         Func<bool> startDebugRecording,
-        Func<bool> playDebugRecording)
+        Func<bool> playDebugRecording,
+        Func<bool> leaveSquad,
+        Func<bool> disbandSquad,
+        Action requestSquadStatus)
         : base(capi)
     {
         this.config = config;
+        this.summaryProvider = summaryProvider;
+        this.squadStatusProvider = squadStatusProvider;
         this.saveConfig = saveConfig;
         this.refreshHud = refreshHud;
         this.reinitializeCapture = reinitializeCapture;
         this.startDebugRecording = startDebugRecording;
         this.playDebugRecording = playDebugRecording;
+        this.leaveSquad = leaveSquad;
+        this.disbandSquad = disbandSquad;
+        this.requestSquadStatus = requestSquadStatus;
         Compose();
     }
 
@@ -47,15 +62,16 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     public override bool TryOpen()
     {
+        requestSquadStatus();
         Compose();
         return base.TryOpen();
     }
 
     public void Compose()
     {
-        ElementBounds dialogBounds = ElementBounds.Fixed(EnumDialogArea.CenterMiddle, -330, -250, 660, 500);
-        ElementBounds bgBounds = ElementBounds.Fixed(0, 0, 660, 500);
-        ElementBounds closeBounds = ElementBounds.Fixed(275, 450, 110, 32);
+        ElementBounds dialogBounds = ElementBounds.Fixed(EnumDialogArea.CenterMiddle, -330, -285, 660, 570);
+        ElementBounds bgBounds = ElementBounds.Fixed(0, 0, 660, 570);
+        ElementBounds closeBounds = ElementBounds.Fixed(275, 520, 110, 32);
         string[] inputDeviceValues = GetInputDeviceValues();
         string[] inputDeviceNames = GetInputDeviceNames(inputDeviceValues);
         int selectedInputDeviceIndex = GetSelectedInputDeviceIndex(inputDeviceValues);
@@ -88,6 +104,11 @@ public sealed class VoiceSettingsDialog : GuiDialog
             .AddStaticText("调试录音", CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row, labelWidth, 24))
             .AddSmallButton("录制3秒", OnDebugRecordClicked, ElementBounds.Fixed(controlX, y - 6, 104, 32))
             .AddSmallButton("播放录音", OnDebugPlayClicked, ElementBounds.Fixed(controlX + 124, y - 6, 104, 32))
+            .AddStaticText("小组频道", CairoFont.WhiteSmallText(), ElementBounds.Fixed(labelX, y += row + 6, labelWidth, 24))
+            .AddDynamicText("", CairoFont.WhiteSmallText(), ElementBounds.Fixed(controlX, y - 2, controlWidth, 46), SquadStatusKey)
+            .AddSmallButton("离开小组", OnLeaveSquadClicked, ElementBounds.Fixed(controlX, y + 34, 104, 32))
+            .AddSmallButton("解散小组", OnDisbandSquadClicked, ElementBounds.Fixed(controlX + 124, y + 34, 104, 32))
+            .AddSmallButton("刷新状态", OnRefreshSquadClicked, ElementBounds.Fixed(controlX + 248, y + 34, 104, 32))
             .AddSmallButton("关闭", () => TryClose(), closeBounds)
             .EndChildElements()
             .Compose();
@@ -98,6 +119,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         SingleComposer.GetSwitch(ShowMicrophoneHudKey).SetValue(config.ShowMicrophoneHud);
         SingleComposer.GetSwitch(OcclusionKey).SetValue(config.EnableOcclusionEffects);
         SingleComposer.GetSwitch(PerformanceModeKey).SetValue(config.PerformanceMode);
+        SingleComposer.GetDynamicText(SquadStatusKey).SetNewText(squadStatusProvider(), true, true, true);
     }
 
     private void OnInputDeviceChanged(string value, bool selected)
@@ -167,10 +189,38 @@ public sealed class VoiceSettingsDialog : GuiDialog
         return playDebugRecording();
     }
 
+    private bool OnLeaveSquadClicked()
+    {
+        return leaveSquad();
+    }
+
+    private bool OnDisbandSquadClicked()
+    {
+        return disbandSquad();
+    }
+
+    private bool OnRefreshSquadClicked()
+    {
+        requestSquadStatus();
+        RefreshStatusTexts();
+        return true;
+    }
+
     private void ApplyConfig()
     {
         saveConfig();
         refreshHud();
+        RefreshStatusTexts();
+    }
+
+    public void RefreshStatusTexts()
+    {
+        if (SingleComposer == null)
+        {
+            return;
+        }
+
+        SingleComposer.GetDynamicText(SquadStatusKey)?.SetNewText(squadStatusProvider(), true, true, true);
     }
 
     private string[] GetInputDeviceValues()

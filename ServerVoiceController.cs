@@ -283,6 +283,12 @@ public sealed class ServerVoiceController
             return;
         }
 
+        if (packet.DisbandSquad)
+        {
+            DisbandSquad(fromPlayer);
+            return;
+        }
+
         IServerPlayer? target = FindOnlinePlayer(packet.TargetPlayerUid);
         TextCommandResult result = BindSquadPlayers(fromPlayer, target);
         SendPlayerMessage(fromPlayer, result.StatusMessage);
@@ -378,14 +384,16 @@ public sealed class ServerVoiceController
                 continue;
             }
 
+            if (AreSquadmates(fromPlayer.PlayerUID, player.PlayerUID))
+            {
+                squadRecipients.Add(player);
+                continue;
+            }
+
             double distance = player.Entity.Pos.XYZ.DistanceTo(speakerPos);
             if (distance <= range + 1.0)
             {
                 distanceRecipients.Add(player);
-            }
-            else if (AreSquadmates(fromPlayer.PlayerUID, player.PlayerUID))
-            {
-                squadRecipients.Add(player);
             }
         }
 
@@ -478,6 +486,38 @@ public sealed class ServerVoiceController
         }
     }
 
+    private void DisbandSquad(IServerPlayer initiator)
+    {
+        if (!squadMembersByUid.TryGetValue(initiator.PlayerUID, out HashSet<string>? members) || members.Count == 0)
+        {
+            SendPlayerMessage(initiator, "简单语音对话：你当前没有可解散的小队。");
+            SendSquadHud(initiator);
+            return;
+        }
+
+        HashSet<string> allMembers = new(StringComparer.Ordinal) { initiator.PlayerUID };
+        allMembers.UnionWith(members);
+        foreach (string uid in allMembers)
+        {
+            squadMembersByUid.Remove(uid);
+        }
+
+        foreach (string uid in allMembers)
+        {
+            IServerPlayer? player = FindOnlinePlayer(uid);
+            if (player == null)
+            {
+                continue;
+            }
+
+            SendSquadHud(player);
+            string message = uid == initiator.PlayerUID
+                ? "简单语音对话：你已解散当前小队频道。"
+                : $"简单语音对话：{initiator.PlayerName} 已解散当前小队频道。";
+            SendPlayerMessage(player, message);
+        }
+    }
+
     private void SendSquadHud(IServerPlayer player)
     {
         if (!squadMembersByUid.TryGetValue(player.PlayerUID, out HashSet<string>? members) || members.Count == 0)
@@ -511,6 +551,7 @@ public sealed class ServerVoiceController
 
     private void SendSquadStatus(IServerPlayer player)
     {
+        SendSquadHud(player);
         SendPlayerMessage(player, BuildSquadStatusText(player));
     }
 

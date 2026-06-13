@@ -126,6 +126,9 @@ public sealed class SquadBindPacket
 
     [ProtoMember(3)]
     public bool RequestStatus;
+
+    [ProtoMember(4)]
+    public bool DisbandSquad;
 }
 
 [ProtoContract]

@@ -190,19 +190,23 @@ public sealed class OpenAlPlaybackService : IDisposable
         double distance = listener.DistanceTo(stream.Position.X, stream.Position.Y, stream.Position.Z);
         float range = Math.Min(serverConfig.GetRange(stream.Mode), serverConfig.MaxRange);
         float gain = clientConfig.OutputVolume;
-        if (stream.SquadRelay && distance > range)
+        if (stream.SquadRelay)
         {
-            gain = 0.62f * clientConfig.OutputVolume;
+            gain = 0.82f * clientConfig.OutputVolume;
         }
 
         Entity? speakerEntity = capi.World.GetEntityById(stream.EntityId);
         VoiceEnvironmentSnapshot env = VoiceEnvironment.Evaluate(capi, listener, stream.Position, speakerEntity, clientConfig, serverConfig, stream.Mode, stream.SquadRelay);
         gain *= env.VolumeMultiplier;
 
-        AL.Source(stream.Source, ALSource3f.Position, stream.Position.X, stream.Position.Y, stream.Position.Z);
+        Vec3f playbackPosition = stream.SquadRelay
+            ? new Vec3f((float)listener.X, (float)listener.Y, (float)listener.Z)
+            : stream.Position;
+
+        AL.Source(stream.Source, ALSource3f.Position, playbackPosition.X, playbackPosition.Y, playbackPosition.Z);
         AL.Source(stream.Source, ALSourcef.Gain, Math.Clamp(gain, 0f, 2f));
-        AL.Source(stream.Source, ALSourcef.RolloffFactor, CalculateRolloff(range));
-        AL.Source(stream.Source, ALSourcef.ReferenceDistance, CalculateReferenceDistance(range));
+        AL.Source(stream.Source, ALSourcef.RolloffFactor, stream.SquadRelay ? 0f : CalculateRolloff(range));
+        AL.Source(stream.Source, ALSourcef.ReferenceDistance, stream.SquadRelay ? 1f : CalculateReferenceDistance(range));
         AL.Source(stream.Source, ALSourcef.MaxDistance, 9999f);
         AL.Source(stream.Source, ALSourcef.Pitch, env.Pitch);
         ApplyLowPass(stream, env.LowPass);
