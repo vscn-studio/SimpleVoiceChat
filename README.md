@@ -1,6 +1,6 @@
 # 简单语音对话
 
-作者：VSCN
+作者：VSCN-Studio
 
 `SimpleVoiceChat` 是 Vintage Story 的双端语音模组，提供接近度语音、三档说话距离、3D 空间定位、环境音效、小队频道、静音和右下角麦克风状态提示。
 
