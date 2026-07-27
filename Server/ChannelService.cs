@@ -308,7 +308,8 @@ public sealed class ChannelService
         long nowMilliseconds,
         int squadMaxMembers,
         int squadMaxTalkers,
-        int maxChannelsPerPlayer = 8)
+        int maxChannelsPerPlayer = 8,
+        bool administrator = false)
     {
         if (inviterUid == targetUid)
         {
@@ -321,7 +322,8 @@ public sealed class ChannelService
 
         VoiceChannel? inviterSquad = GetFirstForPlayer(inviterUid, VoiceChannelKind.Squad);
         VoiceChannel? targetSquad = GetFirstForPlayer(targetUid, VoiceChannelKind.Squad);
-        if (inviterSquad != null
+        if (!administrator
+            && inviterSquad != null
             && (!inviterSquad.Members.TryGetValue(inviterUid, out VoiceChannelRole inviterRole)
                 || inviterRole < VoiceChannelRole.Officer))
         {

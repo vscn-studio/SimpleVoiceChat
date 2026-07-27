@@ -1,5 +1,8 @@
 {
   "simplevoicechat:title": "简单语音对话",
+  "simplevoicechat:button-close": "关闭",
+  "simplevoicechat:dropdown-search-placeholder": "搜索选项…",
+  "simplevoicechat:dropdown-no-matches": "没有匹配的选项",
   "simplevoicechat:setting-voice-title": "语音对话",
   "simplevoicechat:setting-voice-channel": "当前频道",
   "simplevoicechat:setting-voice-input-device": "麦克风设备",
@@ -190,7 +193,7 @@
   "simplevoicechat:channel-action-adminunmute": "解除持久禁言",
   "simplevoicechat:channel-action-forceblock": "管理员全服屏蔽",
   "simplevoicechat:channel-action-unforceblock": "解除全服屏蔽",
-  "simplevoicechat:channel-none": "没有可用频道",
+  "simplevoicechat:channel-none": "未选择频道",
   "simplevoicechat:transmit-proximity": "仅接近度",
   "simplevoicechat:transmit-channel": "仅当前频道",
   "simplevoicechat:transmit-both": "接近度和当前频道",

@@ -1076,6 +1076,15 @@ public sealed class ClientVoiceController : IDisposable
             return;
         }
 
+        if ((action is "leave" or "disband")
+            && string.Equals(config.SelectedChannelId, channelId, StringComparison.Ordinal))
+        {
+            config.SelectedChannelId = string.Empty;
+            SaveConfig();
+            UpdateSquadHudMembers();
+            hud?.Refresh();
+        }
+
         if (action is "tempmute" or "deafen" or "adminmute" or "adminunmute" or "forceblock" or "unforceblock")
         {
             if (controlChannel?.Connected == true)
@@ -1121,6 +1130,11 @@ public sealed class ClientVoiceController : IDisposable
             && channels.Any(channel => channel.ChannelId == savedSelected))
         {
             return (savedSelected, restorePending);
+        }
+
+        if (string.IsNullOrEmpty(savedSelected))
+        {
+            return (string.Empty, false);
         }
 
         return (channels.FirstOrDefault(channel => channel.Kind == VoiceChannelKind.Squad)?.ChannelId ?? string.Empty, false);
@@ -1612,18 +1626,33 @@ public sealed class ClientVoiceController : IDisposable
             return;
         }
 
+        VoiceTransmitTarget transmitTarget = ResolveTransmitTarget(config.TransmitTarget, config.SelectedChannelId);
+        if (transmitTarget == VoiceTransmitTarget.SelectedChannel
+            && string.IsNullOrEmpty(config.SelectedChannelId))
+        {
+            return;
+        }
+
         voiceChannel?.SendPacket(new VoiceFrameV2Packet
         {
             ConnectionEpoch = connectionEpoch,
             SessionId = sessionId,
             Sequence = sequence++,
             Mode = mode,
-            Target = config.TransmitTarget,
+            Target = transmitTarget,
             ChannelId = config.SelectedChannelId,
             Level = (byte)Math.Clamp((int)Math.Round(stats.Rms * byte.MaxValue), 0, byte.MaxValue),
             Flags = 0,
             Payload = payload
         });
+    }
+
+    internal static VoiceTransmitTarget ResolveTransmitTarget(VoiceTransmitTarget configuredTarget, string? selectedChannelId)
+    {
+        return configuredTarget == VoiceTransmitTarget.ProximityAndChannel
+            && string.IsNullOrEmpty(selectedChannelId)
+                ? VoiceTransmitTarget.Proximity
+                : configuredTarget;
     }
 
     private void BeginVoiceSession()

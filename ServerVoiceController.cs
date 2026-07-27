@@ -925,7 +925,11 @@ public sealed class ServerVoiceController : IDisposable
                         return;
                     }
 
-                    if (fromPlayer.Entity.Pos.XYZ.DistanceTo(target.Entity.Pos.XYZ) > config.SquadBindRange)
+                    bool administrator = fromPlayer.HasPrivilege(Privilege.controlserver);
+                    if (!CanInviteAcrossDistance(
+                            administrator,
+                            fromPlayer.Entity.Pos.XYZ.DistanceTo(target.Entity.Pos.XYZ),
+                            config.SquadBindRange))
                     {
                         SendFeedback(fromPlayer, "target-too-far");
                         return;
@@ -939,7 +943,8 @@ public sealed class ServerVoiceController : IDisposable
                         now,
                         config.MaxSquadMembers,
                         config.MaxSquadTalkers,
-                        config.MaxChannelsPerPlayer);
+                        config.MaxChannelsPerPlayer,
+                        administrator);
                     if (!invite.Succeeded)
                     {
                         SendFeedback(fromPlayer, invite.ErrorCode);
@@ -1010,6 +1015,7 @@ public sealed class ServerVoiceController : IDisposable
                         SendFeedback(fromPlayer, "channel-missing");
                         return;
                     }
+                    ClearUnavailableChannelSelections(channelId, affected);
                     foreach (string uid in affected)
                     {
                         if (onlinePlayersByUid.TryGetValue(uid, out IServerPlayer? member))
@@ -1036,6 +1042,7 @@ public sealed class ServerVoiceController : IDisposable
                         SendFeedback(fromPlayer, "channel-disband-denied");
                         return;
                     }
+                    ClearUnavailableChannelSelections(channelId, affected);
                     foreach (string uid in affected)
                     {
                         if (onlinePlayersByUid.TryGetValue(uid, out IServerPlayer? member))
@@ -1053,6 +1060,15 @@ public sealed class ServerVoiceController : IDisposable
 
             case "select":
                 {
+                    if (string.IsNullOrWhiteSpace(packet.ChannelId))
+                    {
+                        if (sessionsByUid.TryGetValue(fromPlayer.PlayerUID, out VoiceClientSession? emptySession))
+                        {
+                            emptySession.SelectedChannelId = string.Empty;
+                        }
+                        SendChannelSnapshot(fromPlayer);
+                        return;
+                    }
                     if (!channels.TryGet(packet.ChannelId, out VoiceChannel channel)
                         || !channel.Members.ContainsKey(fromPlayer.PlayerUID))
                     {
@@ -1183,6 +1199,7 @@ public sealed class ServerVoiceController : IDisposable
                         SavePersistentChannels();
                         SendMemberDelta(remainingChannel, remainingChannel.Revision - 1, Array.Empty<string>(), new[] { targetUid }, affected);
                     }
+                    ClearUnavailableChannelSelections(packet.ChannelId, affected.Append(targetUid));
                     if (target != null)
                     {
                         SendChannelSnapshot(target);
@@ -1259,6 +1276,7 @@ public sealed class ServerVoiceController : IDisposable
                     SavePersistentChannels();
                     if (action == "ban")
                     {
+                        ClearUnavailableChannelSelections(packet.ChannelId, affected.Append(targetUid));
                         SendMemberDelta(changedChannel, baseRevision, Array.Empty<string>(), new[] { targetUid }, affected);
                         if (target != null)
                         {
@@ -1355,7 +1373,7 @@ public sealed class ServerVoiceController : IDisposable
         if (config.EnableChannelVoice
             && packet.Target is VoiceTransmitTarget.SelectedChannel or VoiceTransmitTarget.ProximityAndChannel)
         {
-            string channelId = ResolveChannelId(fromPlayer.PlayerUID, packet.ChannelId);
+            string channelId = packet.ChannelId ?? string.Empty;
             if (!string.IsNullOrEmpty(channelId)
                 && channels.TryGet(channelId, out VoiceChannel channel)
                 && channel.CanTransmit(fromPlayer.PlayerUID)
@@ -1743,6 +1761,25 @@ public sealed class ServerVoiceController : IDisposable
             : string.Empty;
     }
 
+    internal static bool CanInviteAcrossDistance(bool administrator, double distance, double maximumDistance)
+    {
+        return administrator || distance <= maximumDistance;
+    }
+
+    private void ClearUnavailableChannelSelections(string channelId, IEnumerable<string> candidateUids)
+    {
+        bool channelExists = channels.TryGet(channelId, out VoiceChannel channel);
+        foreach (string uid in candidateUids.Distinct(StringComparer.Ordinal))
+        {
+            if (sessionsByUid.TryGetValue(uid, out VoiceClientSession? session)
+                && string.Equals(session.SelectedChannelId, channelId, StringComparison.Ordinal)
+                && (!channelExists || !channel.Members.ContainsKey(uid)))
+            {
+                session.SelectedChannelId = string.Empty;
+            }
+        }
+    }
+
     private void OnSpatialTick(float dt)
     {
         if (!lifecycle.IsStarted)
@@ -2119,7 +2156,10 @@ public sealed class ServerVoiceController : IDisposable
         }
 
         double distance = fromPlayer.Entity.Pos.XYZ.DistanceTo(target.Entity.Pos.XYZ);
-        if (distance > config.SquadBindRange)
+        if (!CanInviteAcrossDistance(
+                fromPlayer.HasPrivilege(Privilege.controlserver),
+                distance,
+                config.SquadBindRange))
         {
             return TextCommandResult.Error(SVCLang.Get("server-bind-target-too-far", config.SquadBindRange.ToString("0.#")));
         }

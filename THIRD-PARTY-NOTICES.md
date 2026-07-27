@@ -10,3 +10,6 @@ Concentus is distributed under the BSD 3-Clause License. Its source and license 
 Copyright (c) 2013-2025, Eric Lasota and Concentus contributors.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the conditions in the upstream `LICENSE` file are met. The complete upstream license is included in the Concentus NuGet package referenced by this project.
+
+The settings controls include Lucide icons from https://lucide.dev/ under the ISC License.
+The complete license text is included at `assets/simplevoicechat/licenses/LUCIDE.txt`.

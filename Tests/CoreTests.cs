@@ -10,7 +10,7 @@ namespace SimpleVoiceChat.Tests;
 public sealed class CoreTests
 {
     [Fact]
-    public void LanguageFilesContainCurrentChannelLabels()
+    public void SettingsUiAssetsAndLanguageKeysArePackaged()
     {
         string languageDirectory = Path.Combine(
             AppContext.BaseDirectory,
@@ -24,7 +24,19 @@ public sealed class CoreTests
                 File.ReadAllText(Path.Combine(languageDirectory, fileName)));
             Assert.True(document.RootElement.TryGetProperty("simplevoicechat:label-current-channel", out _));
             Assert.True(document.RootElement.TryGetProperty("simplevoicechat:label-current-chanel", out _));
+            Assert.True(document.RootElement.TryGetProperty("simplevoicechat:dropdown-search-placeholder", out _));
+            Assert.True(document.RootElement.TryGetProperty("simplevoicechat:dropdown-no-matches", out _));
         }
+
+        string iconDirectory = Path.Combine(
+            AppContext.BaseDirectory,
+            "assets",
+            "simplevoicechat",
+            "textures",
+            "icons",
+            "lucide");
+        Assert.True(File.Exists(Path.Combine(iconDirectory, "x.svg")));
+        Assert.True(File.Exists(Path.Combine(iconDirectory, "refresh-cw.svg")));
     }
 
     [Fact]
@@ -584,6 +596,54 @@ public sealed class CoreTests
             restorePending: true);
         Assert.Equal("squad-a", selected);
         Assert.False(restore);
+    }
+
+    [Fact]
+    public void ExplicitEmptyChannelSelectionRemainsUnselected()
+    {
+        ChannelInfoPacket[] channels =
+        {
+            new() { ChannelId = "squad-a", Kind = VoiceChannelKind.Squad }
+        };
+
+        (string selected, bool restore) = ClientVoiceController.ResolveChannelSelection(
+            channels,
+            string.Empty,
+            string.Empty,
+            restorePending: false);
+
+        Assert.Equal(string.Empty, selected);
+        Assert.False(restore);
+        Assert.Equal(
+            VoiceTransmitTarget.Proximity,
+            ClientVoiceController.ResolveTransmitTarget(VoiceTransmitTarget.ProximityAndChannel, string.Empty));
+    }
+
+    [Fact]
+    public void AdministratorInviteIsNotLimitedByDistance()
+    {
+        Assert.False(ServerVoiceController.CanInviteAcrossDistance(false, 20, 12));
+        Assert.True(ServerVoiceController.CanInviteAcrossDistance(true, 20, 12));
+    }
+
+    [Fact]
+    public void AdministratorCanInviteFromAPlayerRole()
+    {
+        ChannelService channels = new();
+        VoiceChannel squad = channels.Create(VoiceChannelKind.Squad, "Squad", "owner", 12, 3);
+        Assert.True(channels.AddMember(squad.Id, "admin", VoiceChannelRole.Member));
+
+        ChannelInviteResult result = channels.Invite(
+            "admin",
+            "Admin",
+            "target",
+            "Target",
+            0,
+            12,
+            3,
+            administrator: true);
+
+        Assert.True(result.Succeeded);
     }
 
     [Fact]

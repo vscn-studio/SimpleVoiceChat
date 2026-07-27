@@ -1,5 +1,8 @@
 {
   "simplevoicechat:title": "Simple Voice Chat",
+  "simplevoicechat:button-close": "Close",
+  "simplevoicechat:dropdown-search-placeholder": "Search options...",
+  "simplevoicechat:dropdown-no-matches": "No matching options",
   "simplevoicechat:setting-voice-title": "Voice chat",
   "simplevoicechat:setting-voice-channel": "Current channel",
   "simplevoicechat:setting-voice-input-device": "Microphone device",
@@ -190,7 +193,7 @@
   "simplevoicechat:channel-action-adminunmute": "Admin: remove persistent mute",
   "simplevoicechat:channel-action-forceblock": "Admin: block server-wide",
   "simplevoicechat:channel-action-unforceblock": "Admin: remove server-wide block",
-  "simplevoicechat:channel-none": "No channel available",
+  "simplevoicechat:channel-none": "No channel selected",
   "simplevoicechat:transmit-proximity": "Proximity only",
   "simplevoicechat:transmit-channel": "Current channel only",
   "simplevoicechat:transmit-both": "Proximity and current channel",
