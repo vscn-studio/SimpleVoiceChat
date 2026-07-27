@@ -94,6 +94,15 @@ public sealed class ServerVoiceConfigPacket
     [ProtoMember(11)]
     public bool EnableHudIndicators;
 
+    [ProtoMember(12)]
+    public int ProtocolVersion;
+
+    [ProtoMember(13)]
+    public int MaxStreamsPerListener;
+
+    [ProtoMember(14)]
+    public bool AllowContinuousTalk;
+
     public float GetRange(VoiceMode mode)
     {
         return mode switch
@@ -139,6 +148,9 @@ public sealed class AdminVoiceControlPacket
 
     [ProtoMember(2)]
     public string TargetNameOrUid = string.Empty;
+
+    [ProtoMember(3)]
+    public int DurationSeconds;
 }
 
 [ProtoContract]

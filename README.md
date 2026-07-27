@@ -2,13 +2,15 @@
 
 作者：VSCN-Studio
 
-`SimpleVoiceChat` 是 Vintage Story 的双端语音模组，提供接近度语音、三档说话距离、3D 空间定位、语音传播修正、小队频道、静音和右下角麦克风状态提示。
+`SimpleVoiceChat 0.2.0` 是 Vintage Story 双端语音模组，面向大型文明模拟活动。它提供接近度语音、文明/指挥/外交/小队/工作人员/广播/无线电频道、Opus、3D 定位、环境传播、权限管理和容量保护。
 
-## 安装
+## 安装与升级
 
-1. 客户端和服务器都需要安装本模组。
-2. 将 `SimpleVoiceChat-v0.1.0.zip` 放入 Vintage Story 的 `Mods` 目录。
+1. 客户端和服务器都安装 `SimpleVoiceChat-v0.2.0.zip`。
+2. 删除旧版 zip，避免同时加载两个版本；保留配置文件即可迁移。
 3. 重启客户端和服务器。
+
+协议 V2 默认不兼容 0.1.x 客户端。紧急回滚时可恢复旧模组和备份配置；`AllowLegacyProtocol` 只用于短期开发兼容，活动服不建议开启。
 
 ## 默认快捷键
 
@@ -16,127 +18,123 @@
 | --- | --- |
 | 按住说话 | `N` |
 | 持续说话开关 | `Alt + N` |
-| 切换语音模式 | `[` 或 `]` |
-| 本地麦克风静音/取消静音 | `Ctrl + -` |
-| 全局语音开关 | `;` |
-| 打开语音状态/设置窗口 | `'` |
+| 切换耳语/正常/大喊 | `[` 或 `]` |
+| 本地麦克风静音 | `Ctrl + -` |
+| 全局停止收听 | `;` |
+| 打开状态/设置窗口 | `'` |
 
-这些键位故意选得偏一些，尽量避开 Vintage Story 和常见模组常用键位。可以在游戏的按键设置里重新绑定。
+快捷键可在游戏按键设置的 `Simple Voice Chat` 分类中重绑。服务器关闭持续说话时，客户端会自动退回 PTT 并提示。
 
-本版已切换到新的热键内部编号，旧版生成过的冲突按键不会继续覆盖这些默认值。如果你手动改过键位，请在游戏按键设置中搜索 `Simple Voice Chat` 重新绑定。
+## 设置窗口
 
-## 右下角麦克风显示
+按 `'` 打开较矮的“音频 / 频道 / 状态”分页窗口，可直接操作：
 
-右下角不再使用大块文字 HUD，改为紧凑的麦克风图片状态：
+- 选择和重新初始化麦克风设备。
+- 调整总音量、频道音量、单玩家音量和单玩家静音。
+- 调整麦克风增益与噪声门。
+- 切换麦克风静音、全局语音关闭和服务器允许时的持续发言。
+- 切换 HUD、传播效果、性能模式和 40-120ms 自适应 jitter。
+- 查看当前频道、发送目标、分页成员、邀请和频道管理操作。
+- 具备服务器管理权限时，可从频道页创建文明/指挥/外交/工作人员/广播/无线电频道，并执行临时或持久语音管制。
+- 接受/拒绝小队邀请，离开或解散频道。
+- 录制并回放 3 秒本地麦克风测试；测试内容不会上传。
+- 查看协议、codec、连接 epoch、真实 UDP 存活、RTT、探测丢包、队列、target delay、迟到、PLC/FEC 和路由诊断。
 
-- 麦克风启用时显示 `haojiao.png`。
-- 麦克风禁用、静音、语音关闭或麦克风不可用时显示 `nohaojiao.png`。
-- 图片右侧显示麦克风状态、当前中文语音模式和 UDP/麦克风状态。
-- UDP/麦克风状态下方常驻显示音量：没有语音输入/接收时显示 0 音量图片，灰色表示未达到，绿色表示正常音量，柔和红色表示输入过大；音量条使用 2 倍大小、40 格带间距的透明背景预渲染 PNG 帧，并降低红色视觉重量以减少暗色 HUD 上的视觉漂移。
-- 音量按当前语音模式和游戏内传播计算，耳语显示更小，正常说话居中，大喊更高；无输入或未开启语音时不显示音量条。
-- 绑定小队频道后，音量下方会显示小队成员；成员正在说话时显示绿色电话图标。
-- 该麦克风状态属于本地测试/控制提示，不受服务器 HUD 指示开关影响；客户端可用 `ShowMicrophoneHud` 关闭。
+基础采集链路包含高通、attack/release AGC、软限幅、噪声门和 VAD hangover。采集设备失败后每 10 秒进行一次静默重连，恢复时提示玩家；仍需在活动使用的 Windows/Linux 设备上做拔插验证。当前发行包没有经过验证的跨平台 WebRTC APM，因此 NS/AEC 会明确显示为不可用，不会用普通噪声门冒充。
 
-图片已打包在模组内：`assets/simplevoicechat/textures/gui/haojiao.png`、`assets/simplevoicechat/textures/gui/nohaojiao.png`、`assets/simplevoicechat/textures/gui/phone-volume-solid.png` 和 `assets/simplevoicechat/textures/gui/volume/volume-00.png` 到 `volume-40.png`。
+## 频道与发送目标
 
-## 状态/设置窗口
+窗口可选择三种发送目标：仅接近度、仅当前频道、接近度和当前频道。HUD 始终显示实际目标，降低误发到文明或工作人员频道的风险。
 
-按 `'` 打开状态/设置窗口。窗口内可以直接调整：
+| 频道 | 默认策略 |
+| --- | --- |
+| 接近度 | 耳语 8 格、正常 18 格、大喊 35 格；每听众最多 6 路 |
+| 文明 | 成员可发言，默认 3 个并发席位 |
+| 指挥 | 只有 Owner/Officer 可发言，默认 2 个席位 |
+| 外交 | 授权成员可发言，默认 3 个席位 |
+| 小队 | 邀请后接受，默认最多 12 人、3 个席位 |
+| 工作人员 | 成员可发言，拥有较高路由优先级 |
+| 广播 | 只有 Owner/Officer 可发言，单席位抢占式优先 |
+| 无线电 | 由管理员或外部 group provider 提供成员/频率语义 |
 
-- 输入设备：默认麦克风或 OpenAL 枚举到的麦克风设备。
-- 播放音量：0-200%。
-- 麦克风增益：10-400%。
-- 噪声门：0-200/1000，数值越高越容易过滤小声和底噪。
-- 右下角麦克风显示、遮挡/语音传播修正、性能模式开关。
-- 调试录音：录制 3 秒本机麦克风，并播放经过发送前处理、ADPCM 编码/解码和语音传播修正后的结果。
+频道有 Owner、Officer、Member、ListenOnly、Banned 权限。发言席位会按角色优先并公平轮转，持续开放麦不会永久占据普通席位。单听众默认最多 8 路，硬上限 12 路；同一玩家经多个路径到达时只发送一次。
 
-切换输入设备后会自动重新打开麦克风采集；如果设备不可用，会在聊天栏提示，仍可听到其他玩家语音。
-
-调试录音只在本地使用，不会发送给服务器或其他玩家。它适合测试真实游戏里的麦克风链路、噪声门、增益，以及距离、遮挡、水下、风雨、时间稳定性等接收端语音传播效果是否明显。
-
-语音模式：
-
-- 耳语：默认 8 格。
-- 正常说话：默认 18 格。
-- 大喊：默认 35 格。
+文明模组可通过 `SimpleVoiceChat.Integration.IVoiceGroupProvider` 提供权威文明/角色快照。最多注册 32 个 provider；ID、组、频道、成员、角色和名称均有上限，单个派生频道最多 100 人、12 个发言席位。provider 抛异常或返回不可枚举数据时保留最后一次有效快照，告警按 provider 节流，不会把全部玩家误并入同一频道。派生频道不允许本地添加、移出、改角色、离开或解散；语音管理员仍可锁定、频道禁言或封禁。没有集成时使用管理员手工频道。
 
 ## 客户端命令
 
 ```text
 /svc status
 /svc volume <0-200>
-/svc mute <玩家名>
-/svc unmute <玩家名>
-/svc bind
+/svc volumeplayer <玩家名> <0-200>
+/svc mute|unmute <玩家名>
+/svc bind [玩家名]
 /svc unbind
 /svc squad
+/svc accept|decline
+/svc diag
 ```
 
-说明：
+`/svc bind` 发送 30 秒小队邀请，目标必须在 `SquadBindRange` 内。两个已有小队只有在邀请方和接受方都是各自小队的 Owner/Officer、合并后不超过人数/频道上限时才会合并；不能单方面绑定。
 
-- `/svc status` 查看当前语音状态。
-- `/svc volume <0-200>` 调整本地播放音量。
-- `/svc mute <玩家名>` 屏蔽指定在线玩家。
-- `/svc unmute <玩家名>` 取消屏蔽指定在线玩家。
-- `/svc bind` 面对近处玩家时绑定小队频道，也可使用 `/svc bind <玩家名>`；如果绑定范围内只有一个其他玩家，会自动作为目标。绑定后小组成员可无视距离直接语音沟通。
-- `/svc unbind` 离开当前小队频道；也可在状态/设置窗口中直接离开或解散小组。
-- `/svc squad` 查看当前小队成员。
+## 管理命令
 
-## 语音传播和游戏音频融合
-
-当前版本尽量使用 Vintage Story 自带 OpenAL 音频环境：
-
-- 语音流使用游戏当前 OpenAL context，和游戏声音共用 listener/3D 声场；不会再另开第二套播放 context。
-- 3D 左右定位和距离衰减交给 OpenAL 处理，避免模组和游戏各算一套距离。
-- 模组只额外处理游戏不会自动知道的语音传播因素：距离变闷、隔墙/地形遮挡、水下闷声、风雨传播衰减、时间稳定性和中毒识别后的轻量修正。
-- 室内/洞穴回音不再由模组手写模拟，避免与游戏原生环境声/混响叠加产生噪音；实时语音只保留必要的传播修正。
-- 有 OpenAL EFX 时优先用硬件/驱动低通；没有 EFX 时才使用模组内的简单 PCM 低通兜底。
-- `/svc status` 和状态窗口会显示本地环境诊断，例如水下、风雨、稳定度、中毒和低通数值，方便确认修正是否触发。
-
-这些效果都是轻量 MVP 实现，不依赖额外音频 DLL。
-
-## 服务器命令
-
-需要 `controlserver` 权限：
+以下命令需要 `controlserver` 权限：
 
 ```text
 /svc status
+/svc diag
+/svc channels
+/svc playerdiag <玩家>
+/svc metrics reset
+/svc audit
 /svc reload
-/svc enable
-/svc disable
-/svc setrange whisper <格数>
-/svc setrange talk <格数>
-/svc setrange shout <格数>
-/svc adminmute <玩家名或UID>
-/svc adminunmute <玩家名或UID>
-/svc forceblock <玩家名或UID>
-/svc unforceblock <玩家名或UID>
+/svc enable|disable
+/svc setrange whisper|talk|shout <格数>
+/svc tempmute <玩家> [秒]
+/svc deafen <玩家> [秒]
+/svc adminmute|adminunmute <玩家或UID>
+/svc forceblock|unforceblock <玩家或UID>
 /svc adminmutes
+/svc channelcreate civilization|command|diplomacy|staff|broadcast|radio <名称>
+/svc channeladd|channelremove <频道ID> <玩家或UID>
+/svc channelrole <频道ID> <玩家或UID> listenonly|member|officer
+/svc channellock|channelunlock <频道ID>
+/svc channelmute|channelunmute <频道ID> <玩家或UID>
+/svc channelban|channelunban <频道ID> <玩家或UID>
 ```
 
-说明：
+`reload` 先加载并归一化新配置，成功后才替换运行快照；解析失败会保留旧配置。管理操作写入 `SimpleVoiceChat.Audit.json`，记录时间、操作者、目标、范围和原因，不记录语音内容。
 
-- `/svc adminmute` 管理员全局禁言指定玩家，该玩家语音不会被服务器转发。
-- `/svc forceblock` 管理员强制屏蔽指定玩家，全服不会听到该玩家。
-- `reload`、`enable`、`disable`、`setrange`、`adminmute`、`forceblock` 等管理命令需要服务器管理权限；普通玩家仍可使用 `/svc bind`、`/svc unbind`、`/svc squad`。
-- `adminmute` 和 `forceblock` 都会写入服务器配置并持久化。
+## 百人容量与带宽
+
+默认容量模型：100 人在线、正常峰值 25 人同时上行、异常峰值 100 人持续上行。系统不向每人转发其余 99 路，而是通过空间索引、频道席位、每听众流仲裁、限包/限字节、每听众出口预算和全服出口 token bucket 保持资源有界。
+
+默认 `MaxListenerEgressKbps=512`、`MaxServerEgressKbps=50000`，即单听众约 512Kbps、全服约 50Mbps 的语音出口硬预算。100M 独享对称上行通常足以支持 50 人聚集、约 10 人同时说话；实际流量通常明显低于 50Mbps。仍需为 Vintage Story 游戏同步、TCP/UDP/IP 开销和波动留余量，建议可用上行长期不少于 70-80Mbps，避免共享线路、运营商上行限速和 Wi-Fi 回程。
+
+若“100M”只是下载 100Mbps、上行很低，则不满足要求。部署前应测服务器实际公网持续上行、丢包和抖动，而不是只看套餐名义带宽。
+
+## 音频与网络实现
+
+- 协议 V2 使用服务器连接身份与 connection epoch；客户端不能声明发送者 UID、实体或坐标。
+- 默认 codec 为 16kHz 单声道、20ms、20kbps Opus，启用 VBR、DTX、in-band FEC 和 PLC；正式默认 `AllowAdpcmFallback=false`，只有开发兼容时显式开启才允许 ADPCM 降级。
+- 每流使用编码帧重排和 40-120ms 自适应 jitter，队列过载时丢旧帧。
+- 客户端最多创建 12 个远端 OpenAL 流；所有待处理队列均有界。
+- 语音使用游戏当前 OpenAL context，不修改共享的全局 distance model。
+- 遮挡、水下、风雨和玩家状态按流缓存；不再每帧序列化实体属性。
 
 ## 配置文件
 
-首次启动后会自动生成：
-
 - 客户端：`SimpleVoiceChat.Client.json`
 - 服务器：`SimpleVoiceChat.Server.json`
+- 管理审计：`SimpleVoiceChat.Audit.json`
 
-服务器可配置最大范围、三档范围、是否允许耳语/大喊、是否启用遮挡、天气影响、小队频道、管理员禁言/强制屏蔽列表和 HUD 指示等。
+服务器配置包含协议/codec 兼容、范围、频道功能开关、100 人资源上限、单听众/全服出口预算、连续说话策略、持久频道和管理列表。默认 `MaxChannels=256`、`MaxChannelsPerPlayer=8`，接近度语音不计入玩家频道数；两者分别归一化到 16-512 和 1-8。客户端配置包含设备、音量、单玩家覆盖、静音、发送目标、选中频道和 jitter 设置。配置包含独立 `ConfigVersion` 并在加载时归一化；`/svc reload` 还会同步现有会话限流、重建出口预算并重发频道快照。
 
-客户端可配置音量、麦克风增益、噪声门、麦克风图片状态、HUD、性能模式和屏蔽列表。
+## 隐私与发布边界
 
-## 当前版本边界
-
-- 第一版是 MVP，重点是可用的接近度语音。
-- 使用游戏自带 OpenAL/OpenTK，不随模组额外打包第三方音频库。
-- 嘴部动画和完整天气传播模型留到后续版本。
-- 小队频道当前是面对面 `/svc bind` 绑定后的临时语音频道；状态/设置窗口已提供离开与解散小组操作，但仍不做持久小队管理。
-- 如果客户端无法打开麦克风，会在聊天栏提示，仍可听到其他玩家语音。
-- 播放端使用低延迟模式：20ms 更新、较小 jitter buffer；采集端会在每个更新内尽量补发已积压的完整语音帧，并在新一段说话开始时重置接收流状态，避免只播后半段或刚响一点就断。
+- 服务端只转发压缩语音，不常态解码、混音或录音，也不保存 payload。
+- 本模组不提供端到端加密；传输保护取决于 Vintage Story 底层连接。
+- Concentus 许可证见随包的 `THIRD-PARTY-NOTICES.md`。
+- 52 项自动测试覆盖 100 人等效路由、总流/接近度/字节预算、25/100 路上行边界、小队合并、外部提供器权威边界、权限、生命周期、限流、Opus 畸形输入隔离、jitter 回绕、0/2/5/10% 丢包与 20-100ms 抖动矩阵、协议随机输入和配置迁移。
+- 自动仿真不能替代真实活动验收。正式宣称某台服务器满足 100 人目标前，仍应完成 20/50/100 人彩排、网络故障矩阵和 8 小时长稳测试，并保存 Tick、P95 路由、内存、句柄和出口流量报告。

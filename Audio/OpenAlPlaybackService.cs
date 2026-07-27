@@ -14,12 +14,17 @@ public sealed class OpenAlPlaybackService : IDisposable
     private const int MaxDecodedFramesPerTick = 160;
     private const int TargetQueuedBuffers = 5;
     private const int StreamBufferCount = 8;
+    private const int MaxRemoteStreams = 12;
 
     private readonly ICoreClientAPI capi;
     private readonly SimpleVoiceChatClientConfig clientConfig;
     private readonly Dictionary<long, RemoteVoiceStream> streams = new();
     private readonly Queue<DecodedVoiceFrame> pendingFrames = new();
+    private readonly Queue<EncodedVoiceFrame> pendingEncodedFrames = new();
     private readonly object gate = new();
+    private readonly CancellationTokenSource decodeCancellation = new();
+    private readonly SemaphoreSlim decodeSignal = new(0, 1);
+    private Task? decodeWorker;
     private ALDevice device;
     private ALContext context;
     private bool hasContext;
@@ -35,6 +40,7 @@ public sealed class OpenAlPlaybackService : IDisposable
 
     public bool Initialize()
     {
+        decodeWorker ??= Task.Run(() => DecodeWorkerLoop(decodeCancellation.Token));
         return TryUseCurrentContext(logIfMissing: true);
     }
 
@@ -66,7 +72,6 @@ public sealed class OpenAlPlaybackService : IDisposable
             device = ALC.GetContextsDevice(context);
             hasContext = true;
             hasEffectsExtension = device.Handle != IntPtr.Zero && ALC.EFX.IsExtensionPresent(device);
-            AL.DistanceModel(ALDistanceModel.ExponentDistanceClamped);
             capi.Logger.Notification("SimpleVoiceChat: voice playback using game OpenAL context, effects={0}.", hasEffectsExtension);
             return true;
         }
@@ -77,9 +82,9 @@ public sealed class OpenAlPlaybackService : IDisposable
         }
     }
 
-    public void Enqueue(VoiceFramePacket packet, ServerVoiceConfigPacket serverConfig)
+    public void Enqueue(VoiceFramePacket packet, ServerVoiceConfigPacket serverConfig, float gainMultiplier = 1f)
     {
-        if (packet.Payload.Length == 0)
+        if (packet.Payload == null || packet.Payload.Length == 0)
         {
             return;
         }
@@ -104,7 +109,8 @@ public sealed class OpenAlPlaybackService : IDisposable
             packet.Rms,
             packet.SquadRelay,
             new Vec3f(packet.X, packet.Y, packet.Z),
-            decoded);
+            decoded,
+            Math.Clamp(gainMultiplier, 0f, 2f));
 
         lock (gate)
         {
@@ -114,6 +120,36 @@ public sealed class OpenAlPlaybackService : IDisposable
             }
 
             pendingFrames.Enqueue(frame);
+        }
+    }
+
+    public void Enqueue(VoiceRelayFrameV2Packet packet, int codec, float gainMultiplier = 1f)
+    {
+        if (packet.Payload == null
+            || packet.Payload.Length == 0
+            || codec is not (VoiceProtocol.CodecImaAdpcm or VoiceProtocol.CodecOpus))
+        {
+            return;
+        }
+
+        EncodedVoiceFrame frame = new(
+            packet.SenderEntityId,
+            packet.SessionId,
+            packet.Sequence,
+            packet.Mode,
+            packet.RelayKind != VoiceRelayKind.Proximity,
+            new Vec3f(packet.X, packet.Y, packet.Z),
+            packet.Payload.ToArray(),
+            codec,
+            Math.Clamp(gainMultiplier, 0f, 2f));
+
+        lock (gate)
+        {
+            while (pendingEncodedFrames.Count >= MaxPendingDecodedFrames)
+            {
+                pendingEncodedFrames.Dequeue();
+            }
+            pendingEncodedFrames.Enqueue(frame);
         }
     }
 
@@ -131,6 +167,7 @@ public sealed class OpenAlPlaybackService : IDisposable
             lock (gate)
             {
                 DrainPendingFrames(serverConfig);
+                DrainPendingEncodedFrames();
                 long now = capi.World.ElapsedMilliseconds;
                 List<long>? remove = null;
                 foreach (KeyValuePair<long, RemoteVoiceStream> pair in streams)
@@ -170,40 +207,59 @@ public sealed class OpenAlPlaybackService : IDisposable
         }
     }
 
+    public void SetAdaptiveJitter(bool enabled)
+    {
+        lock (gate)
+        {
+            foreach (RemoteVoiceStream stream in streams.Values)
+            {
+                stream.EncodedBuffer.SetAdaptive(enabled);
+            }
+        }
+    }
+
     public string BuildDebugStatus()
     {
         lock (gate)
         {
             int queuedBuffers = streams.Values.Sum(stream => stream.QueuedBuffers);
-            int jitterFrames = streams.Values.Sum(stream => stream.Buffer.Count);
+            int jitterFrames = streams.Values.Sum(stream => stream.Buffer.Count + stream.EncodedBuffer.Count);
+            int averageTargetDelay = streams.Count == 0
+                ? 0
+                : (int)Math.Round(streams.Values.Average(stream => stream.EncodedBuffer.TargetDelayMilliseconds));
+            long lateFrames = streams.Values.Sum(stream => stream.EncodedBuffer.LateFrames);
+            long concealedFrames = streams.Values.Sum(stream => stream.EncodedBuffer.ConcealedFrames);
+            long fecFrames = streams.Values.Sum(stream => stream.EncodedBuffer.FecFrames);
             return SVCLang.Get(
                 "playback-debug-status",
                 hasContext ? SVCLang.Get("playback-debug-ctx-ok") : SVCLang.Get("playback-debug-ctx-wait"),
                 hasEffectsExtension ? SVCLang.Get("playback-debug-efx-ok") : SVCLang.Get("playback-debug-efx-none"),
                 streams.Count,
-                pendingFrames.Count,
+                pendingFrames.Count + pendingEncodedFrames.Count,
                 jitterFrames,
-                queuedBuffers);
+                queuedBuffers,
+                averageTargetDelay,
+                lateFrames,
+                concealedFrames,
+                fecFrames);
         }
     }
 
     private void UpdateStream(RemoteVoiceStream stream, ServerVoiceConfigPacket serverConfig)
     {
         RecycleProcessedBuffers(stream);
-        QueuePendingBuffers(stream);
+        QueuePendingBuffers(stream, serverConfig);
 
         Entity playerEntity = capi.World.Player.Entity;
         Vec3d listener = playerEntity.Pos.XYZ;
-        double distance = listener.DistanceTo(stream.Position.X, stream.Position.Y, stream.Position.Z);
         float range = Math.Min(serverConfig.GetRange(stream.Mode), serverConfig.MaxRange);
-        float gain = clientConfig.OutputVolume;
+        float gain = clientConfig.OutputVolume * stream.ExternalGain;
         if (stream.SquadRelay)
         {
-            gain = 0.82f * clientConfig.OutputVolume;
+            gain = 0.82f * clientConfig.OutputVolume * stream.ExternalGain;
         }
 
-        Entity? speakerEntity = capi.World.GetEntityById(stream.EntityId);
-        VoiceEnvironmentSnapshot env = VoiceEnvironment.Evaluate(capi, listener, stream.Position, speakerEntity, clientConfig, serverConfig, stream.Mode, stream.SquadRelay);
+        VoiceEnvironmentSnapshot env = GetEnvironment(stream, serverConfig);
         gain *= env.VolumeMultiplier;
 
         Vec3f playbackPosition = stream.SquadRelay
@@ -232,9 +288,11 @@ public sealed class OpenAlPlaybackService : IDisposable
             DecodedVoiceFrame frame = pendingFrames.Dequeue();
             if (!streams.TryGetValue(frame.EntityId, out RemoteVoiceStream? stream))
             {
-                stream = new RemoteVoiceStream(frame.EntityId);
-                stream.Initialize(hasEffectsExtension);
-                streams[frame.EntityId] = stream;
+                stream = TryCreateStream(frame.EntityId);
+                if (stream == null)
+                {
+                    continue;
+                }
             }
 
             if (stream.SessionId > frame.SessionId)
@@ -250,31 +308,86 @@ public sealed class OpenAlPlaybackService : IDisposable
             stream.Position = frame.Position;
             stream.Mode = frame.Mode;
             stream.SquadRelay = frame.SquadRelay;
+            stream.ExternalGain = frame.GainMultiplier;
             stream.LastPacketMilliseconds = capi.World.ElapsedMilliseconds;
-
-            Entity? speakerEntity = capi.World.GetEntityById(frame.EntityId);
-            VoiceEnvironmentSnapshot env = VoiceEnvironment.Evaluate(
-                capi,
-                capi.World.Player.Entity.Pos.XYZ,
-                stream.Position,
-                speakerEntity,
-                clientConfig,
-                serverConfig,
-                frame.Mode,
-                frame.SquadRelay);
 
             short[] samples = frame.Samples;
             if (!hasEffectsExtension)
             {
+                VoiceEnvironmentSnapshot env = GetEnvironment(stream, serverConfig);
                 stream.Effects.Process(samples, env);
             }
-            stream.Buffer.Enqueue(frame.Sequence, samples);
+            stream.Buffer.Enqueue(frame.Sequence, samples, capi.World.ElapsedMilliseconds);
         }
 
         while (pendingFrames.Count > MaxPendingDecodedFrames / 2)
         {
             pendingFrames.Dequeue();
         }
+    }
+
+    private void DrainPendingEncodedFrames()
+    {
+        int processed = 0;
+        while (pendingEncodedFrames.Count > 0 && processed++ < MaxDecodedFramesPerTick)
+        {
+            EncodedVoiceFrame frame = pendingEncodedFrames.Dequeue();
+            if (!streams.TryGetValue(frame.EntityId, out RemoteVoiceStream? stream))
+            {
+                stream = TryCreateStream(frame.EntityId);
+                if (stream == null)
+                {
+                    continue;
+                }
+            }
+
+            if (stream.SessionId > frame.SessionId)
+            {
+                continue;
+            }
+            if (stream.SessionId != frame.SessionId)
+            {
+                stream.ResetForSession(frame.SessionId);
+            }
+
+            stream.EnsureDecoder(frame.Codec);
+            stream.Position = frame.Position;
+            stream.Mode = frame.Mode;
+            stream.SquadRelay = frame.ChannelRelay;
+            stream.ExternalGain = frame.GainMultiplier;
+            stream.LastPacketMilliseconds = capi.World.ElapsedMilliseconds;
+            stream.EncodedBuffer.Enqueue(frame.Sequence, frame.Payload, capi.World.ElapsedMilliseconds);
+        }
+
+        if (processed > 0 && decodeSignal.CurrentCount == 0)
+        {
+            decodeSignal.Release();
+        }
+
+        while (pendingEncodedFrames.Count > MaxPendingDecodedFrames / 2)
+        {
+            pendingEncodedFrames.Dequeue();
+        }
+    }
+
+    private RemoteVoiceStream? TryCreateStream(long entityId)
+    {
+        if (streams.Count >= MaxRemoteStreams)
+        {
+            KeyValuePair<long, RemoteVoiceStream> oldest = streams.Aggregate((left, right) =>
+                left.Value.LastPacketMilliseconds <= right.Value.LastPacketMilliseconds ? left : right);
+            if (capi.World.ElapsedMilliseconds - oldest.Value.LastPacketMilliseconds <= 350)
+            {
+                return null;
+            }
+            oldest.Value.Dispose();
+            streams.Remove(oldest.Key);
+        }
+
+        RemoteVoiceStream stream = new(entityId, clientConfig.AdaptiveJitterBuffer);
+        stream.Initialize(hasEffectsExtension);
+        streams[entityId] = stream;
+        return stream;
     }
 
     private static void RecycleProcessedBuffers(RemoteVoiceStream stream)
@@ -288,14 +401,92 @@ public sealed class OpenAlPlaybackService : IDisposable
         }
     }
 
-    private static void QueuePendingBuffers(RemoteVoiceStream stream)
+    private VoiceEnvironmentSnapshot GetEnvironment(RemoteVoiceStream stream, ServerVoiceConfigPacket serverConfig)
     {
-        while (stream.QueuedBuffers < TargetQueuedBuffers && stream.FreeBuffers.Count > 0 && stream.Buffer.TryDequeue(out short[] samples))
+        long now = capi.World.ElapsedMilliseconds;
+        int cacheMilliseconds = clientConfig.PerformanceMode ? 250 : 150;
+        if (stream.LastEnvironmentMilliseconds >= 0
+            && now - stream.LastEnvironmentMilliseconds < cacheMilliseconds)
         {
+            return stream.CachedEnvironment;
+        }
+
+        Entity playerEntity = capi.World.Player.Entity;
+        Entity? speakerEntity = capi.World.GetEntityById(stream.EntityId);
+        stream.CachedEnvironment = VoiceEnvironment.Evaluate(
+            capi,
+            playerEntity.Pos.XYZ,
+            stream.Position,
+            speakerEntity,
+            clientConfig,
+            serverConfig,
+            stream.Mode,
+            stream.SquadRelay);
+        stream.LastEnvironmentMilliseconds = now;
+        return stream.CachedEnvironment;
+    }
+
+    private void QueuePendingBuffers(RemoteVoiceStream stream, ServerVoiceConfigPacket serverConfig)
+    {
+        while (stream.QueuedBuffers < TargetQueuedBuffers && stream.FreeBuffers.Count > 0)
+        {
+            if (!TryGetNextSamples(stream, serverConfig, out short[] samples))
+            {
+                break;
+            }
             int buffer = stream.FreeBuffers.Dequeue();
             AL.BufferData(buffer, ALFormat.Mono16, samples, VoiceConstants.SampleRate);
             AL.SourceQueueBuffer(stream.Source, buffer);
             stream.QueuedBuffers++;
+        }
+    }
+
+    private bool TryGetNextSamples(RemoteVoiceStream stream, ServerVoiceConfigPacket serverConfig, out short[] samples)
+    {
+        if (stream.Buffer.TryDequeue(out samples))
+        {
+            return true;
+        }
+        if (!stream.DecodedEncodedFrames.TryDequeue(out samples!))
+        {
+            samples = Array.Empty<short>();
+            return false;
+        }
+
+        if (!hasEffectsExtension)
+        {
+            VoiceEnvironmentSnapshot env = GetEnvironment(stream, serverConfig);
+            stream.Effects.Process(samples, env);
+        }
+        if (decodeSignal.CurrentCount == 0)
+        {
+            decodeSignal.Release();
+        }
+        return true;
+    }
+
+    private async Task DecodeWorkerLoop(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await decodeSignal.WaitAsync(20, cancellationToken).ConfigureAwait(false);
+                lock (gate)
+                {
+                    foreach (RemoteVoiceStream stream in streams.Values)
+                    {
+                        stream.DecodeAvailableFrames(TargetQueuedBuffers + 2);
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            capi.Logger.Warning("SimpleVoiceChat: decode worker stopped unexpectedly: {0}", ex.Message);
         }
     }
 
@@ -307,6 +498,18 @@ public sealed class OpenAlPlaybackService : IDisposable
         }
 
         disposed = true;
+        decodeCancellation.Cancel();
+        try
+        {
+            decodeWorker?.GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        if (hasContext && ALC.GetCurrentContext() != context)
+        {
+            ALC.MakeContextCurrent(context);
+        }
         lock (gate)
         {
             foreach (RemoteVoiceStream stream in streams.Values)
@@ -315,11 +518,8 @@ public sealed class OpenAlPlaybackService : IDisposable
             }
             streams.Clear();
         }
-
-        if (hasContext && ALC.GetCurrentContext() != context)
-        {
-            ALC.MakeContextCurrent(context);
-        }
+        decodeSignal.Dispose();
+        decodeCancellation.Dispose();
 
         hasContext = false;
         context = ALContext.Null;
@@ -363,24 +563,62 @@ public sealed class OpenAlPlaybackService : IDisposable
 
     private sealed class RemoteVoiceStream : IDisposable
     {
-        public RemoteVoiceStream(long entityId)
+        public RemoteVoiceStream(long entityId, bool adaptiveJitter)
         {
             EntityId = entityId;
+            EncodedBuffer = new EncodedJitterBuffer(adaptiveJitter);
         }
 
         public long EntityId { get; }
         public int Source { get; private set; }
         public Queue<int> FreeBuffers { get; } = new();
         public JitterBuffer Buffer { get; } = new();
+        public EncodedJitterBuffer EncodedBuffer { get; }
+        public Queue<short[]> DecodedEncodedFrames { get; } = new();
+        public IVoiceDecoder? Decoder { get; private set; }
+        public int DecoderCodec { get; private set; }
+        public long DecodeErrors { get; set; }
         public int QueuedBuffers { get; set; }
         public int SessionId { get; private set; } = -1;
         public long LastPacketMilliseconds { get; set; }
         public Vec3f Position { get; set; } = new();
         public VoiceMode Mode { get; set; } = VoiceMode.Talk;
         public bool SquadRelay { get; set; }
+        public float ExternalGain { get; set; } = 1f;
         public VoiceEffectsProcessor Effects { get; } = new();
         public float LastLowPassGainHf { get; set; } = 1f;
         public int LowPassFilter { get; private set; }
+        public long LastEnvironmentMilliseconds { get; set; } = -1;
+        public VoiceEnvironmentSnapshot CachedEnvironment { get; set; } = new(1f, 1f, 0f);
+
+        public void EnsureDecoder(int codec)
+        {
+            if (Decoder != null && DecoderCodec == codec)
+            {
+                return;
+            }
+
+            Decoder?.Dispose();
+            Decoder = VoiceCodecFactory.CreateDecoder(codec);
+            DecoderCodec = codec;
+            EncodedBuffer.Reset();
+            DecodedEncodedFrames.Clear();
+        }
+
+        public void DecodeAvailableFrames(int maximumQueuedFrames)
+        {
+            while (Decoder != null
+                && DecodedEncodedFrames.Count < maximumQueuedFrames
+                && EncodedBuffer.TryDequeue(out EncodedJitterFrame encoded))
+            {
+                short[] samples = new short[VoiceConstants.SamplesPerFrame];
+                if (!VoiceDecoderSafety.DecodeOrSilence(Decoder, encoded.Payload, samples, encoded.UseFec))
+                {
+                    DecodeErrors++;
+                }
+                DecodedEncodedFrames.Enqueue(samples);
+            }
+        }
 
         public void Initialize(bool hasEffectsExtension)
         {
@@ -408,8 +646,12 @@ public sealed class OpenAlPlaybackService : IDisposable
         {
             SessionId = sessionId;
             Buffer.Reset();
+            EncodedBuffer.Reset();
+            DecodedEncodedFrames.Clear();
+            Decoder?.Reset();
             Effects.Reset();
             LastLowPassGainHf = 1f;
+            LastEnvironmentMilliseconds = -1;
 
             if (Source == 0)
             {
@@ -450,6 +692,11 @@ public sealed class OpenAlPlaybackService : IDisposable
                 LowPassFilter = 0;
             }
 
+            Decoder?.Dispose();
+            Decoder = null;
+            DecoderCodec = 0;
+            DecodedEncodedFrames.Clear();
+
             while (FreeBuffers.Count > 0)
             {
                 AL.DeleteBuffer(FreeBuffers.Dequeue());
@@ -465,5 +712,17 @@ public sealed class OpenAlPlaybackService : IDisposable
         float Rms,
         bool SquadRelay,
         Vec3f Position,
-        short[] Samples);
+        short[] Samples,
+        float GainMultiplier);
+
+    private readonly record struct EncodedVoiceFrame(
+        long EntityId,
+        int SessionId,
+        ushort Sequence,
+        VoiceMode Mode,
+        bool ChannelRelay,
+        Vec3f Position,
+        byte[] Payload,
+        int Codec,
+        float GainMultiplier);
 }

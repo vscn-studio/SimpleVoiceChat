@@ -13,11 +13,16 @@ namespace SimpleVoiceChat;
 public sealed class ClientVoiceController : IDisposable
 {
     private const int DebugRecordingMilliseconds = 3000;
+    private const int SettingsMemberPageSize = 8;
     private const int MaxCaptureFramesPerTick = 8;
     private const long InitialDebugPlaybackEntityId = -900001;
+    private const long VoiceProbeIntervalMilliseconds = 2_000;
+    private const long VoiceProbeTimeoutMilliseconds = 6_000;
+    private const long CaptureRecoveryIntervalMilliseconds = 10_000;
 
     private readonly ICoreClientAPI capi;
     private readonly SimpleVoiceChatClientConfig config;
+    private readonly ControllerLifecycle lifecycle = new();
     private IClientNetworkChannel? controlChannel;
     private IClientNetworkChannel? voiceChannel;
     private OpenAlCaptureService? capture;
@@ -25,6 +30,8 @@ public sealed class ClientVoiceController : IDisposable
     private VoiceHud? hud;
     private VoiceSettingsDialog? settingsDialog;
     private readonly short[] captureBuffer = new short[VoiceConstants.SamplesPerFrame];
+    private readonly VoiceCapturePreprocessor capturePreprocessor = new();
+    private readonly VoiceProbeTracker voiceProbeTracker = new();
     private ServerVoiceConfigPacket serverConfig = new()
     {
         Enabled = true,
@@ -47,16 +54,29 @@ public sealed class ClientVoiceController : IDisposable
     private bool lastPressed;
     private bool lastSpeaking;
     private bool captureWarningShown;
-    private bool disposed;
     private bool localMutePressed;
     private bool globalMutePressed;
     private bool settingsPressed;
     private bool toggleTalkPressed;
+    private bool voiceHandshakeAccepted;
+    private bool hasServerControl;
+    private int connectionEpoch;
+    private int negotiatedCodec = VoiceProtocol.CodecImaAdpcm;
+    private IVoiceEncoder? voiceEncoder;
+    private long fastTickListenerId;
+    private long playbackTickListenerId;
+    private long slowTickListenerId;
     private long lastStateSentMs;
+    private long lastHelloSentMs;
     private float lastMicLevel;
     private float lastRemoteVoiceLevel;
     private long lastVoiceLevelMs;
     private VoiceHudSquadMember[] squadHudMembers = Array.Empty<VoiceHudSquadMember>();
+    private ChannelInfoPacket[] channelInfos = Array.Empty<ChannelInfoPacket>();
+    private readonly Dictionary<string, ChannelMemberPagePacket> memberPagesByChannel = new(StringComparer.Ordinal);
+    private string[] pendingInviteNames = Array.Empty<string>();
+    private readonly Dictionary<string, HashSet<int>> activeChannelTalkerHashesByChannel = new(StringComparer.Ordinal);
+    private string lastDiagnostics = string.Empty;
     private readonly List<DebugVoiceFrame> debugRecordingFrames = new();
     private bool debugRecording;
     private bool debugCaptureStartedByTool;
@@ -69,6 +89,10 @@ public sealed class ClientVoiceController : IDisposable
     private int debugPlaybackIndex;
     private ushort debugPlaybackSequence;
     private int nextSessionId = 1;
+    private int nextVoiceProbeNonce = 1;
+    private long lastVoiceProbeSentMs;
+    private long voiceHandshakeAcceptedMs;
+    private long lastCaptureRecoveryAttemptMs;
 
     public ClientVoiceController(ICoreClientAPI capi, SimpleVoiceChatClientConfig config)
     {
@@ -79,6 +103,13 @@ public sealed class ClientVoiceController : IDisposable
 
     public void Start()
     {
+        if (!lifecycle.TryStart(this))
+        {
+            return;
+        }
+        config.EnableNoiseSuppression &= VoiceProcessingCapabilities.NoiseSuppressionAvailable;
+        config.EnableEchoCancellation &= VoiceProcessingCapabilities.EchoCancellationAvailable;
+        SaveConfig();
         RegisterChannels();
         RegisterHotkeys();
         RegisterCommands();
@@ -103,12 +134,35 @@ public sealed class ClientVoiceController : IDisposable
             PlayDebugRecording,
             LeaveSquadFromWindow,
             DisbandSquadFromWindow,
-            RequestSquadStatus);
+            RequestSquadStatus,
+            BuildChannelOptions,
+            SelectChannel,
+            BuildDiagnosticsSummary,
+            AcceptPendingInvite,
+            DeclinePendingInvite,
+            () => serverConfig.ForceImmersive,
+            BuildPlayerOptions,
+            GetPlayerVolumePercent,
+            SetPlayerVolume,
+            SetPlayerMuted,
+             BuildMemberPage,
+             ManageSelectedChannel,
+             enabled => playback?.SetAdaptiveJitter(enabled),
+             () => localMuted,
+             SetLocalMuted,
+             () => globalMuted,
+             SetGlobalMuted,
+             () => toggleTalkEnabled,
+             () => serverConfig.AllowContinuousTalk,
+             SetContinuousTalk,
+             () => hasServerControl);
+        capi.Gui.RegisterDialog(settingsDialog);
 
         capi.Event.KeyUp += OnKeyUp;
-        capi.Event.RegisterGameTickListener(OnFastTick, VoiceConstants.FrameMilliseconds);
-        capi.Event.RegisterGameTickListener(OnPlaybackTick, VoiceConstants.FrameMilliseconds);
-        capi.Event.RegisterGameTickListener(OnSlowTick, 100);
+        fastTickListenerId = capi.Event.RegisterGameTickListener(OnFastTick, VoiceConstants.FrameMilliseconds);
+        playbackTickListenerId = capi.Event.RegisterGameTickListener(OnPlaybackTick, VoiceConstants.FrameMilliseconds);
+        slowTickListenerId = capi.Event.RegisterGameTickListener(OnSlowTick, 100);
+        SendHello();
         SendState(force: true);
         SyncMutedPlayersToServer();
     }
@@ -122,12 +176,34 @@ public sealed class ClientVoiceController : IDisposable
             .RegisterMessageType<SquadBindPacket>()
             .RegisterMessageType<AdminVoiceControlPacket>()
             .RegisterMessageType<SquadHudPacket>()
+            .RegisterMessageType<VoiceHelloPacket>()
+            .RegisterMessageType<VoiceWelcomePacket>()
+            .RegisterMessageType<ChannelCommandPacket>()
+            .RegisterMessageType<ChannelSnapshotPacket>()
+            .RegisterMessageType<ChannelMemberDeltaPacket>()
+            .RegisterMessageType<ChannelMemberPagePacket>()
+            .RegisterMessageType<TalkerStateDeltaPacket>()
+            .RegisterMessageType<VoiceFeedbackPacket>()
+            .RegisterMessageType<VoiceDiagnosticsPacket>()
             .SetMessageHandler<ServerVoiceConfigPacket>(OnServerConfig)
-            .SetMessageHandler<SquadHudPacket>(OnSquadHud);
+            .SetMessageHandler<SquadHudPacket>(OnSquadHud)
+            .SetMessageHandler<VoiceWelcomePacket>(OnVoiceWelcome)
+            .SetMessageHandler<ChannelSnapshotPacket>(OnChannelSnapshot)
+            .SetMessageHandler<ChannelMemberDeltaPacket>(OnChannelMemberDelta)
+            .SetMessageHandler<ChannelMemberPagePacket>(OnChannelMemberPage)
+            .SetMessageHandler<TalkerStateDeltaPacket>(OnTalkerStateDelta)
+            .SetMessageHandler<VoiceFeedbackPacket>(OnVoiceFeedback)
+            .SetMessageHandler<VoiceDiagnosticsPacket>(OnVoiceDiagnostics);
 
         voiceChannel = capi.Network.RegisterUdpChannel(VoiceConstants.VoiceChannelName)
             .RegisterMessageType<VoiceFramePacket>()
-            .SetMessageHandler<VoiceFramePacket>(OnVoiceFrame);
+            .RegisterMessageType<VoiceFrameV2Packet>()
+            .RegisterMessageType<VoiceRelayFrameV2Packet>()
+            .RegisterMessageType<VoicePingPacket>()
+            .RegisterMessageType<VoicePongPacket>()
+            .SetMessageHandler<VoiceFramePacket>(OnVoiceFrame)
+            .SetMessageHandler<VoiceRelayFrameV2Packet>(OnVoiceRelayFrameV2)
+            .SetMessageHandler<VoicePongPacket>(OnVoicePong);
     }
 
     private void RegisterHotkeys()
@@ -142,16 +218,28 @@ public sealed class ClientVoiceController : IDisposable
 
         capi.Input.SetHotKeyHandler(VoiceConstants.ModeCycleHotKey, _ =>
         {
+            if (!lifecycle.IsStarted)
+            {
+                return false;
+            }
             CycleMode();
             return true;
         });
         capi.Input.SetHotKeyHandler(VoiceConstants.ModeCycleAltHotKey, _ =>
         {
+            if (!lifecycle.IsStarted)
+            {
+                return false;
+            }
             CycleMode();
             return true;
         });
         capi.Input.SetHotKeyHandler(VoiceConstants.ToggleTalkHotKey, _ =>
         {
+            if (!lifecycle.IsStarted)
+            {
+                return false;
+            }
             if (!toggleTalkPressed)
             {
                 toggleTalkPressed = true;
@@ -161,6 +249,10 @@ public sealed class ClientVoiceController : IDisposable
         });
         capi.Input.SetHotKeyHandler(VoiceConstants.LocalMuteHotKey, _ =>
         {
+            if (!lifecycle.IsStarted)
+            {
+                return false;
+            }
             if (!localMutePressed)
             {
                 localMutePressed = true;
@@ -170,6 +262,10 @@ public sealed class ClientVoiceController : IDisposable
         });
         capi.Input.SetHotKeyHandler(VoiceConstants.GlobalMuteHotKey, _ =>
         {
+            if (!lifecycle.IsStarted)
+            {
+                return false;
+            }
             if (!globalMutePressed)
             {
                 globalMutePressed = true;
@@ -179,6 +275,10 @@ public sealed class ClientVoiceController : IDisposable
         });
         capi.Input.SetHotKeyHandler(VoiceConstants.SettingsHotKey, _ =>
         {
+            if (!lifecycle.IsStarted)
+            {
+                return false;
+            }
             if (!settingsPressed)
             {
                 settingsPressed = true;
@@ -190,6 +290,10 @@ public sealed class ClientVoiceController : IDisposable
 
     private void OnKeyUp(KeyEvent e)
     {
+        if (!lifecycle.IsStarted)
+        {
+            return;
+        }
         if (e.KeyCode == GetHotkeyCode(VoiceConstants.LocalMuteHotKey, GlKeys.Minus))
         {
             localMutePressed = false;
@@ -242,10 +346,41 @@ public sealed class ClientVoiceController : IDisposable
 
     private void ToggleContinuousTalk()
     {
+        if (!serverConfig.AllowContinuousTalk)
+        {
+            toggleTalkEnabled = false;
+            capi.ShowChatMessage(SVCLang.Get("chat-continuous-disabled"));
+            hud?.Refresh();
+            return;
+        }
         toggleTalkEnabled = !toggleTalkEnabled;
         capi.ShowChatMessage(SVCLang.Get("chat-continuous-talk", toggleTalkEnabled ? SVCLang.Get("state-on") : SVCLang.Get("state-off")));
         SendState(force: true);
         hud?.Refresh();
+    }
+
+    private void SetLocalMuted(bool muted)
+    {
+        if (localMuted != muted)
+        {
+            ToggleLocalMute();
+        }
+    }
+
+    private void SetGlobalMuted(bool muted)
+    {
+        if (globalMuted != muted)
+        {
+            ToggleGlobalMute();
+        }
+    }
+
+    private void SetContinuousTalk(bool enabled)
+    {
+        if (toggleTalkEnabled != enabled)
+        {
+            ToggleContinuousTalk();
+        }
     }
 
     private void RegisterCommands()
@@ -258,6 +393,10 @@ public sealed class ClientVoiceController : IDisposable
 
     private TextCommandResult HandleClientCommand(TextCommandCallingArgs args)
     {
+        if (!lifecycle.IsStarted)
+        {
+            return TextCommandResult.Error(SVCLang.Get("command-controller-unavailable"));
+        }
         string sub = args.RawArgs.PopWord("status").ToLowerInvariant();
         switch (sub)
         {
@@ -265,71 +404,111 @@ public sealed class ClientVoiceController : IDisposable
                 return TextCommandResult.Success(BuildSettingsSummary());
 
             case "volume":
-            {
-                int value = args.RawArgs.PopInt(-1) ?? -1;
-                if (value < 0 || value > 200)
                 {
-                    return TextCommandResult.Error(SVCLang.Get("command-usage-volume"));
+                    int value = args.RawArgs.PopInt(-1) ?? -1;
+                    if (value < 0 || value > 200)
+                    {
+                        return TextCommandResult.Error(SVCLang.Get("command-usage-volume"));
+                    }
+                    config.OutputVolume = value / 100f;
+                    SaveConfig();
+                    return TextCommandResult.Success(SVCLang.Get("command-set-volume-ok", value));
                 }
-                config.OutputVolume = value / 100f;
-                SaveConfig();
-                return TextCommandResult.Success(SVCLang.Get("command-set-volume-ok", value));
-            }
+
+            case "volumeplayer":
+                {
+                    string name = args.RawArgs.PopWord("");
+                    int value = args.RawArgs.PopInt(-1) ?? -1;
+                    if (string.IsNullOrWhiteSpace(name) || value < 0 || value > 200)
+                    {
+                        return TextCommandResult.Error(SVCLang.Get("command-usage-player-volume"));
+                    }
+
+                    IPlayer? player = capi.World.AllOnlinePlayers.FirstOrDefault(candidate =>
+                        candidate.PlayerName.Equals(name, StringComparison.OrdinalIgnoreCase));
+                    if (player == null)
+                    {
+                        return TextCommandResult.Error(SVCLang.Get("command-player-not-found", name));
+                    }
+
+                    if (value == 100)
+                    {
+                        config.PlayerVolumeOverrides.Remove(player.PlayerUID);
+                    }
+                    else
+                    {
+                        config.PlayerVolumeOverrides[player.PlayerUID] = value / 100f;
+                    }
+                    SaveConfig();
+                    return TextCommandResult.Success(SVCLang.Get("command-set-player-volume-ok", player.PlayerName, value));
+                }
 
             case "mute":
             case "unmute":
-            {
-                string name = args.RawArgs.PopWord("");
-                if (string.IsNullOrWhiteSpace(name))
                 {
-                    return TextCommandResult.Error(SVCLang.Get("command-usage-player", sub));
-                }
+                    string name = args.RawArgs.PopWord("");
+                    if (string.IsNullOrWhiteSpace(name))
+                    {
+                        return TextCommandResult.Error(SVCLang.Get("command-usage-player", sub));
+                    }
 
-                IPlayer? player = capi.World.AllOnlinePlayers.FirstOrDefault(p => p.PlayerName.Equals(name, StringComparison.OrdinalIgnoreCase));
-                if (player == null)
-                {
-                    return TextCommandResult.Error(SVCLang.Get("command-player-not-found", name));
-                }
+                    IPlayer? player = capi.World.AllOnlinePlayers.FirstOrDefault(p => p.PlayerName.Equals(name, StringComparison.OrdinalIgnoreCase));
+                    if (player == null)
+                    {
+                        return TextCommandResult.Error(SVCLang.Get("command-player-not-found", name));
+                    }
 
-                bool muted = sub == "mute";
-                SetMuted(player.PlayerUID, muted);
-                return TextCommandResult.Success(muted ? SVCLang.Get("command-mute-player", player.PlayerName) : SVCLang.Get("command-unmute-player", player.PlayerName));
-            }
+                    bool muted = sub == "mute";
+                    SetMuted(player.PlayerUID, muted);
+                    return TextCommandResult.Success(muted ? SVCLang.Get("command-mute-player", player.PlayerName) : SVCLang.Get("command-unmute-player", player.PlayerName));
+                }
 
             case "bind":
-            {
-                IPlayer? target = GetSelectedPlayer();
-                if (target == null)
                 {
-                    return TextCommandResult.Error(SVCLang.Get("command-bind-face-player"));
+                    IPlayer? target = GetSelectedPlayer();
+                    if (target == null)
+                    {
+                        return TextCommandResult.Error(SVCLang.Get("command-bind-face-player"));
+                    }
+
+                    SendChannelCommand("invite", targetPlayerUid: target.PlayerUID);
+                    return TextCommandResult.Success(SVCLang.Get("command-request-bind-squad", target.PlayerName));
                 }
 
-                controlChannel?.SendPacket(new SquadBindPacket { TargetPlayerUid = target.PlayerUID });
-                return TextCommandResult.Success(SVCLang.Get("command-request-bind-squad", target.PlayerName));
-            }
-
             case "unbind":
-                controlChannel?.SendPacket(new SquadBindPacket { LeaveSquad = true });
+                SendChannelCommand("leave", channelId: config.SelectedChannelId);
                 return TextCommandResult.Success(SVCLang.Get("command-request-leave-squad"));
 
             case "squad":
-                controlChannel?.SendPacket(new SquadBindPacket { RequestStatus = true });
+                SendChannelCommand("request");
                 return TextCommandResult.Success(SVCLang.Get("command-request-squad-status"));
+
+            case "accept":
+                SendChannelCommand("accept");
+                return TextCommandResult.Success(SVCLang.Get("command-invite-accepted"));
+
+            case "decline":
+                SendChannelCommand("decline");
+                return TextCommandResult.Success(SVCLang.Get("command-invite-declined"));
+
+            case "diag":
+                SendChannelCommand("diagnostics");
+                return TextCommandResult.Success(SVCLang.Get("command-diagnostics-requested"));
 
             case "adminmute":
             case "adminunmute":
             case "forceblock":
             case "unforceblock":
-            {
-                string nameOrUid = args.RawArgs.PopWord("");
-                if (string.IsNullOrWhiteSpace(nameOrUid))
                 {
-                    return TextCommandResult.Error(SVCLang.Get("command-usage-player-or-uid", sub));
-                }
+                    string nameOrUid = args.RawArgs.PopWord("");
+                    if (string.IsNullOrWhiteSpace(nameOrUid))
+                    {
+                        return TextCommandResult.Error(SVCLang.Get("command-usage-player-or-uid", sub));
+                    }
 
-                controlChannel?.SendPacket(new AdminVoiceControlPacket { Action = sub, TargetNameOrUid = nameOrUid });
-                return TextCommandResult.Success(SVCLang.Get("command-request-admin-control"));
-            }
+                    controlChannel?.SendPacket(new AdminVoiceControlPacket { Action = sub, TargetNameOrUid = nameOrUid });
+                    return TextCommandResult.Success(SVCLang.Get("command-request-admin-control"));
+                }
 
             case "adminmutes":
                 controlChannel?.SendPacket(new AdminVoiceControlPacket { Action = sub });
@@ -356,12 +535,486 @@ public sealed class ClientVoiceController : IDisposable
 
     private void OnServerConfig(ServerVoiceConfigPacket packet)
     {
+        if (!lifecycle.IsStarted)
+        {
+            return;
+        }
         serverConfig = packet;
+        if (serverConfig.ForceImmersive)
+        {
+            config.EnableOcclusionEffects = true;
+        }
+        if (!serverConfig.AllowContinuousTalk)
+        {
+            toggleTalkEnabled = false;
+        }
+        SaveConfig();
         hud?.Refresh();
+        settingsDialog?.RefreshConfiguration();
+    }
+
+    private void SendHello()
+    {
+        lastHelloSentMs = capi.World.ElapsedMilliseconds;
+        controlChannel?.SendPacket(new VoiceHelloPacket
+        {
+            ProtocolVersion = VoiceProtocol.CurrentVersion,
+            ModVersion = "0.2.0",
+            SupportedCodecs = new[] { VoiceProtocol.CodecOpus, VoiceProtocol.CodecImaAdpcm },
+            Capabilities = (int)(VoiceCapability.ProtocolV2
+                | VoiceCapability.ChannelDeltas
+                | VoiceCapability.ChannelMemberPaging
+                | VoiceCapability.AdaptiveJitter
+                | VoiceCapability.Opus
+                | VoiceCapability.Diagnostics)
+        });
+    }
+
+    private void OnVoiceWelcome(VoiceWelcomePacket packet)
+    {
+        if (!lifecycle.IsStarted)
+        {
+            return;
+        }
+        voiceHandshakeAccepted = packet.Accepted
+            && packet.ProtocolVersion == VoiceProtocol.CurrentVersion
+            && packet.Codec is VoiceProtocol.CodecImaAdpcm or VoiceProtocol.CodecOpus;
+        connectionEpoch = voiceHandshakeAccepted ? packet.ConnectionEpoch : 0;
+        voiceHandshakeAcceptedMs = voiceHandshakeAccepted ? capi.World.ElapsedMilliseconds : 0;
+        negotiatedCodec = packet.Codec;
+        hasServerControl = voiceHandshakeAccepted && packet.HasServerControl;
+        voiceProbeTracker.Reset();
+        lastVoiceProbeSentMs = 0;
+        voiceEncoder?.Dispose();
+        voiceEncoder = voiceHandshakeAccepted ? VoiceCodecFactory.CreateEncoder(negotiatedCodec, packet.Bitrate) : null;
+        if (!voiceHandshakeAccepted && !string.IsNullOrWhiteSpace(packet.Message))
+        {
+            capi.ShowChatMessage($"Simple Voice Chat: {SVCLang.Get("feedback-" + packet.Message)}");
+        }
+        if (voiceHandshakeAccepted)
+        {
+            SendState(force: true);
+            SyncMutedPlayersToServer();
+        }
+        hud?.Refresh();
+        settingsDialog?.RefreshConfiguration();
+    }
+
+    private void OnChannelSnapshot(ChannelSnapshotPacket packet)
+    {
+        if (!lifecycle.IsStarted)
+        {
+            return;
+        }
+        hasServerControl = packet.HasServerControl;
+        channelInfos = packet.Channels ?? Array.Empty<ChannelInfoPacket>();
+        HashSet<string> currentChannelIds = channelInfos.Select(channel => channel.ChannelId).ToHashSet(StringComparer.Ordinal);
+        foreach (string removedChannelId in memberPagesByChannel.Keys.Where(id => !currentChannelIds.Contains(id)).ToArray())
+        {
+            memberPagesByChannel.Remove(removedChannelId);
+        }
+        foreach (string removedChannelId in activeChannelTalkerHashesByChannel.Keys.Where(id => !currentChannelIds.Contains(id)).ToArray())
+        {
+            activeChannelTalkerHashesByChannel.Remove(removedChannelId);
+        }
+        pendingInviteNames = packet.PendingInviteNames ?? Array.Empty<string>();
+        string selected = packet.SelectedChannelId ?? string.Empty;
+        if (!string.IsNullOrEmpty(selected) && channelInfos.Any(channel => channel.ChannelId == selected))
+        {
+            config.SelectedChannelId = selected;
+        }
+        else if (!channelInfos.Any(channel => channel.ChannelId == config.SelectedChannelId))
+        {
+            config.SelectedChannelId = channelInfos.FirstOrDefault(channel => channel.Kind == VoiceChannelKind.Squad)?.ChannelId ?? string.Empty;
+        }
+
+        UpdateSquadHudMembers();
+        SaveConfig();
+        hud?.Refresh();
+        settingsDialog?.RefreshChannelData();
+    }
+
+    private void OnChannelMemberDelta(ChannelMemberDeltaPacket packet)
+    {
+        if (!lifecycle.IsStarted)
+        {
+            return;
+        }
+        int channelIndex = Array.FindIndex(channelInfos, channel => channel.ChannelId == packet.ChannelId);
+        if (channelIndex < 0)
+        {
+            SendChannelCommand("request");
+            return;
+        }
+
+        ChannelInfoPacket current = channelInfos[channelIndex];
+        if (current.Revision != packet.BaseRevision || packet.Revision <= current.Revision)
+        {
+            SendChannelCommand("request");
+            return;
+        }
+
+        Dictionary<string, ChannelMemberPacket> members = current.Members
+            .ToDictionary(member => member.PlayerUid, member => member, StringComparer.Ordinal);
+        foreach (string uid in packet.RemovedPlayerUids ?? Array.Empty<string>())
+        {
+            members.Remove(uid);
+        }
+        foreach (ChannelMemberPacket member in packet.UpsertedMembers ?? Array.Empty<ChannelMemberPacket>())
+        {
+            members[member.PlayerUid] = member;
+        }
+        current.Members = members.Values
+            .OrderByDescending(member => member.Role)
+            .ThenBy(member => member.PlayerName, StringComparer.OrdinalIgnoreCase)
+            .Take(50)
+            .ToArray();
+        current.MemberCount = packet.MemberCount;
+        current.Locked = packet.Locked;
+        current.Revision = packet.Revision;
+        channelInfos[channelIndex] = current;
+        if (memberPagesByChannel.TryGetValue(packet.ChannelId, out ChannelMemberPagePacket? cachedPage))
+        {
+            memberPagesByChannel.Remove(packet.ChannelId);
+            SendChannelCommand("members", channelId: packet.ChannelId, page: cachedPage.Page, pageSize: SettingsMemberPageSize);
+        }
+        UpdateSquadHudMembers();
+        hud?.Refresh();
+        settingsDialog?.RefreshChannelData();
+    }
+
+    private void OnChannelMemberPage(ChannelMemberPagePacket packet)
+    {
+        if (!lifecycle.IsStarted)
+        {
+            return;
+        }
+        ChannelInfoPacket? channel = channelInfos.FirstOrDefault(info => info.ChannelId == packet.ChannelId);
+        if (channel == null || channel.Revision != packet.Revision)
+        {
+            SendChannelCommand("request");
+            return;
+        }
+        memberPagesByChannel[packet.ChannelId] = packet;
+        settingsDialog?.RefreshChannelData();
+    }
+
+    private void OnTalkerStateDelta(TalkerStateDeltaPacket packet)
+    {
+        if (!lifecycle.IsStarted)
+        {
+            return;
+        }
+        if (!channelInfos.Any(info => info.ChannelId == packet.ChannelId))
+        {
+            return;
+        }
+
+        if (packet.Speaking)
+        {
+            if (!activeChannelTalkerHashesByChannel.TryGetValue(packet.ChannelId, out HashSet<int>? activeTalkers))
+            {
+                activeTalkers = new HashSet<int>();
+                activeChannelTalkerHashesByChannel[packet.ChannelId] = activeTalkers;
+            }
+            activeTalkers.Add(packet.SenderUidHash);
+        }
+        else if (activeChannelTalkerHashesByChannel.TryGetValue(packet.ChannelId, out HashSet<int>? activeTalkers))
+        {
+            activeTalkers.Remove(packet.SenderUidHash);
+            if (activeTalkers.Count == 0)
+            {
+                activeChannelTalkerHashesByChannel.Remove(packet.ChannelId);
+            }
+        }
+
+        UpdateSquadHudMembers();
+        hud?.Refresh();
+    }
+
+    private void OnVoiceFeedback(VoiceFeedbackPacket packet)
+    {
+        if (!lifecycle.IsStarted)
+        {
+            return;
+        }
+        string message = LocalizeFeedback(packet);
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            capi.ShowChatMessage($"Simple Voice Chat: {message}");
+        }
+        settingsDialog?.RefreshStatusTexts();
+    }
+
+    private static string LocalizeFeedback(VoiceFeedbackPacket packet)
+    {
+        string code = (packet.Code ?? string.Empty).Trim().ToLowerInvariant();
+        if (code.Length > 0)
+        {
+            string localized = SVCLang.Get("feedback-" + code, packet.Arguments?.Cast<object>().ToArray() ?? Array.Empty<object>());
+            string unresolved = $"simplevoicechat:feedback-{code}";
+            if (!localized.Equals(unresolved, StringComparison.OrdinalIgnoreCase))
+            {
+                return localized;
+            }
+        }
+        return packet.Message ?? string.Empty;
+    }
+
+    private void OnVoiceDiagnostics(VoiceDiagnosticsPacket packet)
+    {
+        if (!lifecycle.IsStarted)
+        {
+            return;
+        }
+        lastDiagnostics = SVCLang.Get(
+            "diagnostics-detail",
+            packet.RollingRelayedPackets,
+            packet.RollingRelayedBytes,
+            packet.RollingDroppedPackets,
+            packet.P95FanOut.ToString("0.0"),
+            packet.P95RouteMilliseconds.ToString("0.000"),
+            packet.ActiveListenerStreams,
+            packet.ActiveTalkers);
+        settingsDialog?.RefreshStatusTexts();
+    }
+
+    private void OnVoicePong(VoicePongPacket packet)
+    {
+        if (!lifecycle.IsStarted
+            || !voiceHandshakeAccepted
+            || packet.ConnectionEpoch != connectionEpoch
+            || packet.Nonce <= 0)
+        {
+            return;
+        }
+
+        if (voiceProbeTracker.MarkReply(packet.Nonce, capi.World.ElapsedMilliseconds))
+        {
+            settingsDialog?.RefreshStatusTexts();
+            hud?.Refresh();
+        }
+    }
+
+    private void SendChannelCommand(
+        string action,
+        string channelId = "",
+        string targetPlayerUid = "",
+        string name = "",
+        VoiceChannelKind kind = VoiceChannelKind.Squad,
+        int page = 0,
+        int pageSize = 0)
+    {
+        controlChannel?.SendPacket(new ChannelCommandPacket
+        {
+            Action = action,
+            ChannelId = channelId,
+            TargetPlayerUid = targetPlayerUid,
+            Name = name,
+            Kind = kind,
+            Page = page,
+            PageSize = pageSize
+        });
+    }
+
+    private float GetPlaybackGain(IPlayer? sender, bool channelRelay)
+    {
+        float playerGain = sender != null && config.PlayerVolumeOverrides.TryGetValue(sender.PlayerUID, out float configured)
+            ? configured
+            : 1f;
+        float channelGain = channelRelay ? config.ChannelOutputVolume : 1f;
+        return Math.Clamp(playerGain * channelGain, 0f, 2f);
+    }
+
+    private void UpdateSquadHudMembers()
+    {
+        ChannelInfoPacket? channel = channelInfos.FirstOrDefault(info => info.ChannelId == config.SelectedChannelId)
+            ?? channelInfos.FirstOrDefault(info => info.Kind == VoiceChannelKind.Squad);
+        if (channel == null)
+        {
+            squadHudMembers = Array.Empty<VoiceHudSquadMember>();
+            return;
+        }
+        activeChannelTalkerHashesByChannel.TryGetValue(channel.ChannelId, out HashSet<int>? activeTalkers);
+
+        squadHudMembers = (channel.Members ?? Array.Empty<ChannelMemberPacket>())
+            .Where(member => member.PlayerUid != capi.World.Player.PlayerUID)
+            .Take(12)
+            .Select(member => new VoiceHudSquadMember(
+                member.PlayerName,
+                activeTalkers?.Contains(VoiceMath.StableUidHash(member.PlayerUid)) == true))
+            .ToArray();
+    }
+
+    private VoiceSettingsChannelOption[] BuildChannelOptions()
+    {
+        return channelInfos
+            .OrderBy(info => info.Kind)
+            .ThenBy(info => info.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(info => new VoiceSettingsChannelOption(info.ChannelId, $"{FormatChannelKind(info.Kind)}: {info.Name}", info.LocalRole, info.Kind, info.ExternallyManaged))
+            .ToArray();
+    }
+
+    private VoiceSettingsPlayerOption[] BuildPlayerOptions()
+    {
+        IEnumerable<VoiceSettingsPlayerOption> online = capi.World.AllOnlinePlayers
+            .Where(player => player.PlayerUID != capi.World.Player.PlayerUID)
+            .Select(player => new VoiceSettingsPlayerOption(player.PlayerUID, player.PlayerName));
+        IEnumerable<VoiceSettingsPlayerOption> members = channelInfos
+            .Where(channel => channel.ChannelId == config.SelectedChannelId)
+            .SelectMany(channel => channel.Members ?? Array.Empty<ChannelMemberPacket>())
+            .Where(member => member.PlayerUid != capi.World.Player.PlayerUID)
+            .Select(member => new VoiceSettingsPlayerOption(member.PlayerUid, member.PlayerName));
+        IEnumerable<VoiceSettingsPlayerOption> currentPage = memberPagesByChannel.TryGetValue(config.SelectedChannelId, out ChannelMemberPagePacket? page)
+            ? page.Members
+                .Where(member => member.PlayerUid != capi.World.Player.PlayerUID)
+                .Select(member => new VoiceSettingsPlayerOption(member.PlayerUid, member.PlayerName))
+            : Array.Empty<VoiceSettingsPlayerOption>();
+        return online.Concat(members).Concat(currentPage)
+            .GroupBy(player => player.Id, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .OrderBy(player => player.Name, StringComparer.OrdinalIgnoreCase)
+            .Take(100)
+            .ToArray();
+    }
+
+    private int GetPlayerVolumePercent(string playerUid)
+    {
+        return config.PlayerVolumeOverrides.TryGetValue(playerUid, out float value)
+            ? (int)Math.Round(value * 100f)
+            : 100;
+    }
+
+    private void SetPlayerVolume(string playerUid, int value)
+    {
+        if (string.IsNullOrWhiteSpace(playerUid))
+        {
+            return;
+        }
+        float normalized = Math.Clamp(value / 100f, 0f, 2f);
+        if (Math.Abs(normalized - 1f) < 0.001f)
+        {
+            config.PlayerVolumeOverrides.Remove(playerUid);
+        }
+        else
+        {
+            config.PlayerVolumeOverrides[playerUid] = normalized;
+        }
+        SaveConfig();
+    }
+
+    private void SetPlayerMuted(string playerUid, bool muted)
+    {
+        if (string.IsNullOrWhiteSpace(playerUid))
+        {
+            return;
+        }
+        SetMuted(playerUid, muted);
+    }
+
+    private VoiceSettingsMemberPage BuildMemberPage(string channelId, int page)
+    {
+        ChannelInfoPacket? channel = channelInfos.FirstOrDefault(info => info.ChannelId == channelId);
+        if (channel == null)
+        {
+            return VoiceSettingsMemberPage.Empty;
+        }
+        if (!memberPagesByChannel.TryGetValue(channelId, out ChannelMemberPagePacket? cached)
+            || cached.Page != page
+            || cached.Revision != channel.Revision)
+        {
+            SendChannelCommand("members", channelId: channelId, page: page, pageSize: SettingsMemberPageSize);
+            return new VoiceSettingsMemberPage(channel.MemberCount, page, SettingsMemberPageSize, Array.Empty<VoiceSettingsMemberOption>());
+        }
+        return new VoiceSettingsMemberPage(
+            cached.TotalMembers,
+            cached.Page,
+            cached.PageSize,
+            cached.Members.Select(member => new VoiceSettingsMemberOption(member.PlayerUid, member.PlayerName, member.Role)).ToArray());
+    }
+
+    private void ManageSelectedChannel(string action, string channelId, string targetUid = "", VoiceChannelRole role = VoiceChannelRole.Member)
+    {
+        if (action.StartsWith("create-", StringComparison.Ordinal))
+        {
+            string kindText = action["create-".Length..];
+            if (Enum.TryParse(kindText, true, out VoiceChannelKind kind)
+                && kind is >= VoiceChannelKind.Civilization and <= VoiceChannelKind.Radio)
+            {
+                string channelName = $"{FormatChannelKind(kind)} - {capi.World.Player.PlayerName}";
+                SendChannelCommand("create", name: channelName, kind: kind);
+            }
+            return;
+        }
+
+        if (action is "tempmute" or "deafen" or "adminmute" or "adminunmute" or "forceblock" or "unforceblock")
+        {
+            controlChannel?.SendPacket(new AdminVoiceControlPacket
+            {
+                Action = action,
+                TargetNameOrUid = targetUid,
+                DurationSeconds = action is "tempmute" or "deafen" ? 60 : 0
+            });
+            return;
+        }
+
+        string name = action == "role" ? role.ToString() : string.Empty;
+        SendChannelCommand(action, channelId: channelId, targetPlayerUid: targetUid, name: name);
+    }
+
+    private void SelectChannel(string channelId)
+    {
+        config.SelectedChannelId = channelId;
+        SaveConfig();
+        SendChannelCommand("select", channelId: channelId);
+        UpdateSquadHudMembers();
+        hud?.Refresh();
+    }
+
+    private bool AcceptPendingInvite()
+    {
+        SendChannelCommand("accept");
+        return true;
+    }
+
+    private bool DeclinePendingInvite()
+    {
+        SendChannelCommand("decline");
+        return true;
+    }
+
+    private string BuildDiagnosticsSummary()
+    {
+        if (!voiceHandshakeAccepted)
+        {
+            return SVCLang.Get("diagnostics-waiting");
+        }
+
+        string codec = negotiatedCodec == VoiceProtocol.CodecOpus ? "Opus" : "ADPCM";
+        bool udpResponsive = voiceProbeTracker.IsResponsive(capi.World.ElapsedMilliseconds, VoiceProbeTimeoutMilliseconds);
+        double rtt = voiceProbeTracker.SmoothedRttMilliseconds;
+        string network = SVCLang.Get(
+            "diagnostics-network",
+            udpResponsive ? SVCLang.Get("state-ready") : SVCLang.Get("state-unavailable"),
+            rtt < 0 ? "--" : rtt.ToString("0"),
+            voiceProbeTracker.LossPercent.ToString("0"));
+        string local = SVCLang.Get(
+            "diagnostics-local-processing",
+            playback?.BuildDebugStatus() ?? SVCLang.Get("summary-playback-uninitialized"),
+            VoiceProcessingCapabilities.BackendName,
+            VoiceProcessingCapabilities.NoiseSuppressionAvailable,
+            VoiceProcessingCapabilities.EchoCancellationAvailable);
+        return string.IsNullOrWhiteSpace(lastDiagnostics)
+            ? SVCLang.Get("diagnostics-summary", VoiceProtocol.CurrentVersion, codec, connectionEpoch, serverConfig.MaxStreamsPerListener, $"{network}\n{local}")
+            : SVCLang.Get("diagnostics-summary", VoiceProtocol.CurrentVersion, codec, connectionEpoch, serverConfig.MaxStreamsPerListener, $"{network}\n{lastDiagnostics}\n{local}");
     }
 
     private void OnSquadHud(SquadHudPacket packet)
     {
+        if (!lifecycle.IsStarted)
+        {
+            return;
+        }
         int count = Math.Min(packet.MemberNames.Length, packet.Speaking.Length);
         VoiceHudSquadMember[] members = new VoiceHudSquadMember[count];
         for (int i = 0; i < count; i++)
@@ -376,7 +1029,11 @@ public sealed class ClientVoiceController : IDisposable
 
     private void OnVoiceFrame(VoiceFramePacket packet)
     {
-        if (globalMuted || packet.SenderEntityId == capi.World.Player.Entity.EntityId)
+        if (!lifecycle.IsStarted
+            || !serverConfig.Enabled
+            || globalMuted
+            || packet.Payload == null
+            || packet.SenderEntityId == capi.World.Player.Entity.EntityId)
         {
             return;
         }
@@ -387,16 +1044,61 @@ public sealed class ClientVoiceController : IDisposable
             return;
         }
 
-        playback?.Enqueue(packet, serverConfig);
+        playback?.Enqueue(packet, serverConfig, GetPlaybackGain(sender, packet.SquadRelay));
         lastRemoteVoiceLevel = Math.Max(lastRemoteVoiceLevel, NormalizeRemoteVoiceLevel(packet));
+        lastVoiceLevelMs = capi.World.ElapsedMilliseconds;
+        hud?.Refresh();
+    }
+
+    private void OnVoiceRelayFrameV2(VoiceRelayFrameV2Packet packet)
+    {
+        if (!lifecycle.IsStarted
+            || !voiceHandshakeAccepted
+            || !serverConfig.Enabled
+            || globalMuted
+            || !VoiceProtocolValidation.IsValidRelayShape(packet)
+            || packet.SenderEntityId == capi.World.Player.Entity.EntityId)
+        {
+            return;
+        }
+
+        IPlayer? sender = capi.World.AllOnlinePlayers.FirstOrDefault(player => player.Entity?.EntityId == packet.SenderEntityId);
+        if (sender != null && config.MutedPlayerUids.Contains(sender.PlayerUID))
+        {
+            return;
+        }
+
+        bool channelRelay = packet.RelayKind != VoiceRelayKind.Proximity;
+        playback?.Enqueue(packet, packet.Codec, GetPlaybackGain(sender, channelRelay));
+        VoiceFramePacket levelPacket = new()
+        {
+            SenderEntityId = packet.SenderEntityId,
+            Mode = packet.Mode,
+            Rms = packet.Level / 255f,
+            X = packet.X,
+            Y = packet.Y,
+            Z = packet.Z,
+            SquadRelay = channelRelay
+        };
+        lastRemoteVoiceLevel = Math.Max(lastRemoteVoiceLevel, NormalizeRemoteVoiceLevel(levelPacket));
         lastVoiceLevelMs = capi.World.ElapsedMilliseconds;
         hud?.Refresh();
     }
 
     private void OnFastTick(float dt)
     {
+        if (!lifecycle.IsStarted)
+        {
+            return;
+        }
         bool pressed = toggleTalkEnabled || IsPushToTalkPressed();
-        bool canSpeak = pressed && !localMuted && !globalMuted && serverConfig.Enabled && capture?.IsAvailable == true && voiceChannel?.Connected == true;
+        bool canSpeak = pressed
+            && !localMuted
+            && !globalMuted
+            && serverConfig.Enabled
+            && voiceHandshakeAccepted
+            && capture?.IsAvailable == true
+            && voiceChannel?.Connected == true;
 
         if (pressed && capture?.IsAvailable != true && !captureWarningShown)
         {
@@ -442,6 +1144,18 @@ public sealed class ClientVoiceController : IDisposable
 
     private void OnSlowTick(float dt)
     {
+        if (!lifecycle.IsStarted)
+        {
+            return;
+        }
+        if (!voiceHandshakeAccepted
+            && controlChannel?.Connected == true
+            && capi.World.ElapsedMilliseconds - lastHelloSentMs >= 3000)
+        {
+            SendHello();
+        }
+        UpdateVoiceProbe();
+        TryRecoverCapture();
         SendState(force: false);
         if (!lastSpeaking)
         {
@@ -459,8 +1173,75 @@ public sealed class ClientVoiceController : IDisposable
         hud?.Refresh();
     }
 
+    private void UpdateVoiceProbe()
+    {
+        long now = capi.World.ElapsedMilliseconds;
+        voiceProbeTracker.Expire(now, VoiceProbeTimeoutMilliseconds);
+        if (voiceHandshakeAccepted
+            && voiceChannel?.Connected == true
+            && lastVoiceProbeSentMs > 0
+            && !voiceProbeTracker.IsResponsive(now, VoiceProbeTimeoutMilliseconds)
+            && now - voiceHandshakeAcceptedMs >= VoiceProbeTimeoutMilliseconds
+            && controlChannel?.Connected == true
+            && now - lastHelloSentMs >= 3_000)
+        {
+            SendHello();
+            return;
+        }
+        if (!voiceHandshakeAccepted
+            || voiceChannel?.Connected != true
+            || now - lastVoiceProbeSentMs < VoiceProbeIntervalMilliseconds)
+        {
+            return;
+        }
+
+        if (nextVoiceProbeNonce == int.MaxValue)
+        {
+            nextVoiceProbeNonce = 1;
+        }
+        int nonce = nextVoiceProbeNonce++;
+        lastVoiceProbeSentMs = now;
+        voiceProbeTracker.MarkSent(nonce, now);
+        voiceChannel.SendPacket(new VoicePingPacket
+        {
+            ConnectionEpoch = connectionEpoch,
+            Nonce = nonce
+        });
+    }
+
+    private void TryRecoverCapture()
+    {
+        long now = capi.World.ElapsedMilliseconds;
+        if (capture?.IsAvailable == true
+            || now - lastCaptureRecoveryAttemptMs < CaptureRecoveryIntervalMilliseconds)
+        {
+            return;
+        }
+
+        lastCaptureRecoveryAttemptMs = now;
+        capture?.Dispose();
+        OpenAlCaptureService replacement = new(capi, config);
+        capture = replacement;
+        if (!replacement.Initialize(logFailure: false))
+        {
+            return;
+        }
+
+        captureWarningShown = false;
+        lastPressed = false;
+        lastSpeaking = false;
+        SendState(force: true);
+        settingsDialog?.RefreshStatusTexts();
+        hud?.Refresh();
+        capi.ShowChatMessage(SVCLang.Get("chat-device-recovered", string.IsNullOrWhiteSpace(config.InputDeviceName) ? SVCLang.Get("default-microphone") : config.InputDeviceName));
+    }
+
     private void OnPlaybackTick(float dt)
     {
+        if (!lifecycle.IsStarted)
+        {
+            return;
+        }
         UpdateDebugPlayback();
         playback?.Update(serverConfig);
     }
@@ -574,6 +1355,7 @@ public sealed class ClientVoiceController : IDisposable
 
     private void ReinitializeCapture()
     {
+        lastCaptureRecoveryAttemptMs = capi.World.ElapsedMilliseconds;
         capture?.Dispose();
         capture = new OpenAlCaptureService(capi, config);
         capture.Initialize();
@@ -595,7 +1377,7 @@ public sealed class ClientVoiceController : IDisposable
             return true;
         }
 
-        controlChannel.SendPacket(new SquadBindPacket { LeaveSquad = true });
+        SendChannelCommand("leave", channelId: config.SelectedChannelId);
         squadHudMembers = Array.Empty<VoiceHudSquadMember>();
         hud?.Refresh();
         settingsDialog?.RefreshStatusTexts();
@@ -611,7 +1393,7 @@ public sealed class ClientVoiceController : IDisposable
             return true;
         }
 
-        controlChannel.SendPacket(new SquadBindPacket { DisbandSquad = true });
+        SendChannelCommand("disband", channelId: config.SelectedChannelId);
         squadHudMembers = Array.Empty<VoiceHudSquadMember>();
         hud?.Refresh();
         settingsDialog?.RefreshStatusTexts();
@@ -621,7 +1403,8 @@ public sealed class ClientVoiceController : IDisposable
 
     private void RequestSquadStatus()
     {
-        controlChannel?.SendPacket(new SquadBindPacket { RequestStatus = true });
+        SendChannelCommand("request");
+        SendChannelCommand("diagnostics");
     }
 
     private bool StartDebugRecording()
@@ -787,7 +1570,7 @@ public sealed class ClientVoiceController : IDisposable
             hadFrame = true;
             processedFrames++;
 
-            VoiceFrameStats stats = AudioPreprocessor.Process(captureBuffer, config.MicGain, config.NoiseGate);
+            VoiceFrameStats stats = capturePreprocessor.Process(captureBuffer, config.MicGain, config.NoiseGate);
             if (!stats.Active)
             {
                 continue;
@@ -796,14 +1579,24 @@ public sealed class ClientVoiceController : IDisposable
             peakMicLevel = Math.Max(peakMicLevel, NormalizeVoiceLevel(stats.Rms, mode));
             lastVoiceLevelMs = capi.World.ElapsedMilliseconds;
 
-            byte[] payload = ImaAdpcmCodec.Encode(captureBuffer);
+            byte[] payload = voiceEncoder?.Encode(captureBuffer) ?? Array.Empty<byte>();
+            if (payload.Length == 0)
+            {
+                continue;
+            }
             if (payload.Length + 64 > VoiceConstants.MaxUdpPacketBytes)
             {
                 capi.Logger.Warning("SimpleVoiceChat: encoded voice frame too large ({0} bytes), skipping.", payload.Length);
                 continue;
             }
 
-            RecordDebugFrame(payload, stats.Rms, mode);
+            if (debugRecording)
+            {
+                byte[] debugPayload = negotiatedCodec == VoiceProtocol.CodecImaAdpcm
+                    ? payload
+                    : ImaAdpcmCodec.Encode(captureBuffer);
+                RecordDebugFrame(debugPayload, stats.Rms, mode);
+            }
             if (sendFrames)
             {
                 SendCapturedFrame(payload, stats);
@@ -818,20 +1611,22 @@ public sealed class ClientVoiceController : IDisposable
 
     private void SendCapturedFrame(byte[] payload, VoiceFrameStats stats)
     {
-        Vec3d pos = capi.World.Player.Entity.Pos.XYZ;
-        voiceChannel?.SendPacket(new VoiceFramePacket
+        if (!voiceHandshakeAccepted || voiceEncoder == null)
         {
-            SenderUidHash = VoiceMath.StableUidHash(capi.World.Player.PlayerUID),
-            SenderEntityId = capi.World.Player.Entity.EntityId,
+            return;
+        }
+
+        voiceChannel?.SendPacket(new VoiceFrameV2Packet
+        {
+            ConnectionEpoch = connectionEpoch,
             SessionId = sessionId,
             Sequence = sequence++,
             Mode = mode,
-            Rms = stats.Rms,
+            Target = config.TransmitTarget,
+            ChannelId = config.SelectedChannelId,
+            Level = (byte)Math.Clamp((int)Math.Round(stats.Rms * byte.MaxValue), 0, byte.MaxValue),
             Flags = 0,
-            Payload = payload,
-            X = (float)pos.X,
-            Y = (float)pos.Y,
-            Z = (float)pos.Z
+            Payload = payload
         });
     }
 
@@ -839,6 +1634,8 @@ public sealed class ClientVoiceController : IDisposable
     {
         sessionId = NextSessionId();
         sequence = 0;
+        voiceEncoder?.Reset();
+        capturePreprocessor.Reset();
     }
 
     private int NextSessionId()
@@ -854,9 +1651,10 @@ public sealed class ClientVoiceController : IDisposable
     private VoiceHudSnapshot BuildHudSnapshot()
     {
         bool captureAvailable = capture?.IsAvailable == true;
-        bool micEnabled = !localMuted && !globalMuted && serverConfig.Enabled && captureAvailable;
+        bool micEnabled = !localMuted && !globalMuted && serverConfig.Enabled && voiceHandshakeAccepted && captureAvailable;
         string status = BuildHudStatus(captureAvailable);
-        string detail = voiceChannel?.Connected == true ? SVCLang.Get("hud-detail-udp-ok") : SVCLang.Get("hud-detail-udp-wait");
+        bool udpResponsive = voiceProbeTracker.IsResponsive(capi.World.ElapsedMilliseconds, VoiceProbeTimeoutMilliseconds);
+        string detail = udpResponsive ? SVCLang.Get("hud-detail-udp-ok") : SVCLang.Get("hud-detail-udp-wait");
         if (!captureAvailable)
         {
             detail = SVCLang.Get("hud-detail-mic-unavailable");
@@ -868,7 +1666,14 @@ public sealed class ClientVoiceController : IDisposable
             voiceLevel = 0f;
         }
 
-        return new VoiceHudSnapshot(micEnabled, voiceLevel > 0f, voiceLevel, status, FormatMode(mode), detail, squadHudMembers);
+        return new VoiceHudSnapshot(
+            micEnabled,
+            voiceLevel > 0f,
+            voiceLevel,
+            status,
+            $"{FormatMode(mode)} | {BuildTransmitTargetLabel()}",
+            detail,
+            squadHudMembers);
     }
 
     private float NormalizeVoiceLevel(float rms, VoiceMode voiceMode)
@@ -916,7 +1721,7 @@ public sealed class ClientVoiceController : IDisposable
 
     private string BuildHudStatus(bool captureAvailable)
     {
-        if (!serverConfig.Enabled || globalMuted)
+        if (!serverConfig.Enabled || globalMuted || !voiceHandshakeAccepted)
         {
             return SVCLang.Get("hud-status-voice-off");
         }
@@ -941,7 +1746,8 @@ public sealed class ClientVoiceController : IDisposable
 
     private bool ShouldShowHud()
     {
-        return config.ShowMicrophoneHud;
+        return config.ShowMicrophoneHud
+            && serverConfig.EnableHudIndicators;
     }
 
     private string BuildSettingsSummary()
@@ -983,8 +1789,26 @@ public sealed class ClientVoiceController : IDisposable
             $"{SVCLang.Get("summary-line-window-talk", ptt, toggleTalk, toggleTalkEnabled ? SVCLang.Get("state-on-short") : SVCLang.Get("state-off-short"))}\n" +
             $"{SVCLang.Get("summary-line-window-cycle", cycle, cycleAlt)}\n" +
             $"{SVCLang.Get("summary-line-window-local-global", localMute, globalMute)}\n" +
+            $"{SVCLang.Get("summary-line-window-target", BuildTransmitTargetLabel())}\n" +
             $"{SVCLang.Get("summary-line-debug-recording", BuildDebugRecordingStatus())}\n" +
             VoiceEnvironment.BuildDebugSummary(capi, config, serverConfig);
+    }
+
+    private string BuildTransmitTargetLabel()
+    {
+        ChannelInfoPacket? selected = channelInfos.FirstOrDefault(channel => channel.ChannelId == config.SelectedChannelId);
+        string channelName = selected == null ? SVCLang.Get("channel-none") : Truncate(selected.Name, 14);
+        return config.TransmitTarget switch
+        {
+            VoiceTransmitTarget.SelectedChannel => SVCLang.Get("hud-transmit-channel", channelName),
+            VoiceTransmitTarget.ProximityAndChannel when selected != null => SVCLang.Get("hud-transmit-both", channelName),
+            _ => SVCLang.Get("hud-transmit-proximity")
+        };
+    }
+
+    private static string Truncate(string value, int maximumLength)
+    {
+        return value.Length <= maximumLength ? value : value[..Math.Max(1, maximumLength - 3)] + "...";
     }
 
     private string BuildSquadStatusSummary()
@@ -992,6 +1816,11 @@ public sealed class ClientVoiceController : IDisposable
         if (!serverConfig.Enabled)
         {
             return SVCLang.Get("squad-status-voice-off");
+        }
+
+        if (pendingInviteNames.Length > 0)
+        {
+            return SVCLang.Get("squad-status-invite", string.Join(", ", pendingInviteNames));
         }
 
         if (squadHudMembers.Length == 0)
@@ -1035,6 +1864,20 @@ public sealed class ClientVoiceController : IDisposable
         };
     }
 
+    private static string FormatChannelKind(VoiceChannelKind kind)
+    {
+        return kind switch
+        {
+            VoiceChannelKind.Civilization => SVCLang.Get("channel-kind-civilization"),
+            VoiceChannelKind.Command => SVCLang.Get("channel-kind-command"),
+            VoiceChannelKind.Diplomacy => SVCLang.Get("channel-kind-diplomacy"),
+            VoiceChannelKind.Staff => SVCLang.Get("channel-kind-staff"),
+            VoiceChannelKind.Broadcast => SVCLang.Get("channel-kind-broadcast"),
+            VoiceChannelKind.Radio => SVCLang.Get("channel-kind-radio"),
+            _ => SVCLang.Get("channel-kind-squad")
+        };
+    }
+
     private string FormatHotkey(string hotkeyCode, string fallback)
     {
         string value = capi.Input.GetHotKeyByCode(hotkeyCode)?.CurrentMapping?.ToString() ?? fallback;
@@ -1049,17 +1892,43 @@ public sealed class ClientVoiceController : IDisposable
 
     public void Dispose()
     {
-        if (disposed)
+        if (!lifecycle.TryDispose())
         {
             return;
         }
-
-        disposed = true;
         capi.Event.KeyUp -= OnKeyUp;
+        if (fastTickListenerId != 0)
+        {
+            capi.Event.UnregisterGameTickListener(fastTickListenerId);
+            fastTickListenerId = 0;
+        }
+        if (playbackTickListenerId != 0)
+        {
+            capi.Event.UnregisterGameTickListener(playbackTickListenerId);
+            playbackTickListenerId = 0;
+        }
+        if (slowTickListenerId != 0)
+        {
+            capi.Event.UnregisterGameTickListener(slowTickListenerId);
+            slowTickListenerId = 0;
+        }
         capture?.Dispose();
+        capture = null;
+        voiceEncoder?.Dispose();
+        voiceEncoder = null;
         playback?.Dispose();
+        playback = null;
         hud?.TryClose();
+        hud?.Dispose();
+        hud = null;
         settingsDialog?.TryClose();
+        settingsDialog?.Dispose();
+        settingsDialog = null;
+        controlChannel = null;
+        voiceChannel = null;
+        channelInfos = Array.Empty<ChannelInfoPacket>();
+        memberPagesByChannel.Clear();
+        activeChannelTalkerHashesByChannel.Clear();
     }
 
     private readonly record struct DebugVoiceFrame(byte[] Payload, float Rms, VoiceMode Mode, int OffsetMilliseconds, Vec3f Position);

@@ -6,6 +6,7 @@ public static class VoiceConstants
     public const string VoiceChannelName = "simplevoicechat-voice";
     public const string ServerConfigFileName = "SimpleVoiceChat.Server.json";
     public const string ClientConfigFileName = "SimpleVoiceChat.Client.json";
+    public const string AuditConfigFileName = "SimpleVoiceChat.Audit.json";
 
     public const int SampleRate = 16000;
     public const int FrameMilliseconds = 20;

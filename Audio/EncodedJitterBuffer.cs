@@ -1,57 +1,68 @@
 namespace SimpleVoiceChat.Audio;
 
-public sealed class JitterBuffer
+public sealed class EncodedJitterBuffer
 {
     private const int MinimumStartupFrames = 2;
     private const int MaximumStartupFrames = 6;
     private const int MaxBufferedFrames = 12;
     private const int MaxConcealedMissingFrames = 2;
 
-    private static readonly short[] SilenceFrame = new short[VoiceConstants.SamplesPerFrame];
-
-    private readonly Dictionary<ushort, short[]> frames = new();
+    private readonly Dictionary<ushort, byte[]> frames = new();
+    private bool adaptive;
     private bool initialized;
-    private ushort nextSequence;
     private bool started;
+    private ushort nextSequence;
     private bool hasArrivalSample;
     private ushort lastArrivalSequence;
     private long lastArrivalMilliseconds;
     private double estimatedJitterMilliseconds;
     private int startupFrames = 3;
 
+    public EncodedJitterBuffer(bool adaptive = true)
+    {
+        this.adaptive = adaptive;
+        startupFrames = adaptive ? 3 : MinimumStartupFrames;
+    }
+
     public int Count => frames.Count;
     public int TargetDelayMilliseconds => startupFrames * VoiceConstants.FrameMilliseconds;
     public long DuplicateFrames { get; private set; }
     public long LateFrames { get; private set; }
     public long ConcealedFrames { get; private set; }
+    public long FecFrames { get; private set; }
 
     public void Reset()
     {
         frames.Clear();
         initialized = false;
-        nextSequence = 0;
         started = false;
+        nextSequence = 0;
         hasArrivalSample = false;
-        lastArrivalSequence = 0;
-        lastArrivalMilliseconds = 0;
         estimatedJitterMilliseconds = 0;
-        startupFrames = 3;
+        startupFrames = adaptive ? 3 : MinimumStartupFrames;
         DuplicateFrames = 0;
         LateFrames = 0;
         ConcealedFrames = 0;
+        FecFrames = 0;
     }
 
-    public void Enqueue(ushort sequence, short[] samples, long arrivalMilliseconds = -1)
+    public void SetAdaptive(bool enabled)
     {
-        if (arrivalMilliseconds >= 0)
+        if (adaptive == enabled)
         {
-            UpdateJitterEstimate(sequence, arrivalMilliseconds);
+            return;
         }
+        adaptive = enabled;
+        Reset();
+    }
 
+    public void Enqueue(ushort sequence, byte[] payload, long arrivalMilliseconds)
+    {
+        UpdateJitterEstimate(sequence, arrivalMilliseconds);
         if (!initialized)
         {
-            nextSequence = sequence;
             initialized = true;
+            nextSequence = sequence;
         }
         else if (!started && IsEarlierWithinWindow(sequence, nextSequence))
         {
@@ -64,17 +75,17 @@ public sealed class JitterBuffer
             return;
         }
 
-        if (!frames.TryAdd(sequence, samples))
+        if (!frames.TryAdd(sequence, payload))
         {
             DuplicateFrames++;
-            frames[sequence] = samples;
+            frames[sequence] = payload;
         }
         TrimOverflow();
     }
 
-    public bool TryDequeue(out short[] samples)
+    public bool TryDequeue(out EncodedJitterFrame frame)
     {
-        samples = Array.Empty<short>();
+        frame = default;
         if (!initialized || frames.Count == 0)
         {
             return false;
@@ -90,8 +101,9 @@ public sealed class JitterBuffer
             started = true;
         }
 
-        if (frames.Remove(nextSequence, out samples!))
+        if (frames.Remove(nextSequence, out byte[]? payload))
         {
+            frame = new EncodedJitterFrame(payload, false, false);
             nextSequence++;
             return true;
         }
@@ -103,37 +115,47 @@ public sealed class JitterBuffer
 
         if (distance > MaxConcealedMissingFrames)
         {
-            nextSequence = first;
-            samples = frames[first];
+            payload = frames[first];
             frames.Remove(first);
-            nextSequence++;
+            nextSequence = unchecked((ushort)(first + 1));
+            frame = new EncodedJitterFrame(payload, false, false);
             return true;
         }
 
+        if (distance == 1)
+        {
+            FecFrames++;
+            frame = new EncodedJitterFrame(frames[first], true, true);
+        }
+        else
+        {
+            ConcealedFrames++;
+            frame = new EncodedJitterFrame(Array.Empty<byte>(), true, false);
+        }
         nextSequence++;
-        ConcealedFrames++;
-        samples = SilenceFrame;
         return true;
     }
 
     private void UpdateJitterEstimate(ushort sequence, long arrivalMilliseconds)
     {
+        if (!adaptive)
+        {
+            return;
+        }
         if (hasArrivalSample)
         {
-            int sequenceAdvance = ForwardDistance(lastArrivalSequence, sequence);
-            if (sequenceAdvance is > 0 and < 128)
+            int advance = ForwardDistance(lastArrivalSequence, sequence);
+            if (advance is > 0 and < 128)
             {
-                double expected = sequenceAdvance * VoiceConstants.FrameMilliseconds;
+                double expected = advance * VoiceConstants.FrameMilliseconds;
                 double actual = Math.Max(0, arrivalMilliseconds - lastArrivalMilliseconds);
-                double deviation = Math.Abs(actual - expected);
-                estimatedJitterMilliseconds += (deviation - estimatedJitterMilliseconds) / 16d;
+                estimatedJitterMilliseconds += (Math.Abs(actual - expected) - estimatedJitterMilliseconds) / 16d;
                 startupFrames = Math.Clamp(
                     MinimumStartupFrames + (int)Math.Ceiling(estimatedJitterMilliseconds / VoiceConstants.FrameMilliseconds),
                     MinimumStartupFrames,
                     MaximumStartupFrames);
             }
         }
-
         hasArrivalSample = true;
         lastArrivalSequence = sequence;
         lastArrivalMilliseconds = arrivalMilliseconds;
@@ -143,10 +165,14 @@ public sealed class JitterBuffer
     {
         while (frames.Count > MaxBufferedFrames)
         {
-            ushort farthest = frames.Keys
-                .OrderByDescending(sequence => ForwardDistance(nextSequence, sequence))
+            ushort oldest = frames.Keys
+                .OrderBy(sequence => ForwardDistance(nextSequence, sequence))
                 .First();
-            frames.Remove(farthest);
+            frames.Remove(oldest);
+            if (oldest == nextSequence)
+            {
+                nextSequence++;
+            }
         }
     }
 
@@ -184,3 +210,5 @@ public sealed class JitterBuffer
         return unchecked((ushort)(to - from));
     }
 }
+
+public readonly record struct EncodedJitterFrame(byte[] Payload, bool Concealment, bool UseFec);

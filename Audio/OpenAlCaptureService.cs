@@ -23,8 +23,13 @@ public sealed class OpenAlCaptureService : IDisposable
     public bool IsAvailable { get; private set; }
     public string FailureReason { get; private set; } = string.Empty;
 
-    public bool Initialize()
+    public bool Initialize(bool logFailure = true)
     {
+        if (disposed)
+        {
+            return false;
+        }
+
         try
         {
             string? deviceName = string.IsNullOrWhiteSpace(config.InputDeviceName) ? null : config.InputDeviceName;
@@ -37,12 +42,16 @@ public sealed class OpenAlCaptureService : IDisposable
             }
 
             IsAvailable = true;
+            FailureReason = string.Empty;
             return true;
         }
         catch (Exception ex)
         {
             FailureReason = ex.Message;
-            capi.Logger.Warning("SimpleVoiceChat: OpenAL capture unavailable: {0}", ex);
+            if (logFailure)
+            {
+                capi.Logger.Warning("SimpleVoiceChat: OpenAL capture unavailable: {0}", ex);
+            }
             IsAvailable = false;
             return false;
         }
@@ -55,8 +64,15 @@ public sealed class OpenAlCaptureService : IDisposable
             return;
         }
 
-        ALC.CaptureStart(captureDevice);
-        captureStarted = true;
+        try
+        {
+            ALC.CaptureStart(captureDevice);
+            captureStarted = true;
+        }
+        catch (Exception ex)
+        {
+            MarkUnavailable("starting", ex);
+        }
     }
 
     public void Stop()
@@ -84,14 +100,30 @@ public sealed class OpenAlCaptureService : IDisposable
             return false;
         }
 
-        int available = ALC.GetInteger(captureDevice, AlcGetInteger.CaptureSamples);
-        if (available < VoiceConstants.SamplesPerFrame)
+        try
         {
+            int available = ALC.GetInteger(captureDevice, AlcGetInteger.CaptureSamples);
+            if (available < VoiceConstants.SamplesPerFrame)
+            {
+                return false;
+            }
+
+            ALC.CaptureSamples(captureDevice, buffer, VoiceConstants.SamplesPerFrame);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            MarkUnavailable("reading", ex);
             return false;
         }
+    }
 
-        ALC.CaptureSamples(captureDevice, buffer, VoiceConstants.SamplesPerFrame);
-        return true;
+    private void MarkUnavailable(string operation, Exception exception)
+    {
+        captureStarted = false;
+        IsAvailable = false;
+        FailureReason = exception.Message;
+        capi.Logger.Warning("SimpleVoiceChat: capture device failed while {0}; automatic recovery will retry: {1}", operation, exception.Message);
     }
 
     public void Dispose()
@@ -114,5 +146,6 @@ public sealed class OpenAlCaptureService : IDisposable
                 capi.Logger.Warning("SimpleVoiceChat: failed closing capture device: {0}", ex.Message);
             }
         }
+        IsAvailable = false;
     }
 }

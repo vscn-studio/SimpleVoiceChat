@@ -1,6 +1,10 @@
 name: Build and package
 
 on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 20 * * *"
   workflow_dispatch:
     inputs:
       mod_version:
@@ -76,8 +80,27 @@ jobs:
           vintage_story_path="$(cd "$(dirname "$api_dll")" && pwd)"
           echo "VINTAGE_STORY=$vintage_story_path" >> "$GITHUB_ENV"
 
+      - name: Restore
+        run: |
+          dotnet restore Tests/SimpleVoiceChat.Tests.csproj
+          dotnet restore Tools/CapacityHarness/CapacityHarness.csproj
+
       - name: Build Release
-        run: dotnet build SimpleVoiceChat.csproj -c Release
+        run: dotnet build SimpleVoiceChat.csproj -c Release --no-restore
+
+      - name: Verify formatting
+        run: |
+          dotnet format SimpleVoiceChat.csproj --verify-no-changes --no-restore
+          dotnet format Tests/SimpleVoiceChat.Tests.csproj --verify-no-changes --no-restore
+          dotnet format Tools/CapacityHarness/CapacityHarness.csproj --verify-no-changes --no-restore
+
+      - name: Run unit and capacity tests
+        run: dotnet test Tests/SimpleVoiceChat.Tests.csproj -c Release --no-restore
+
+      - name: Run 100-player quick capacity harness
+        env:
+          SVC_CAPACITY_ITERATIONS: ${{ github.event_name == 'schedule' && '2000' || '200' }}
+        run: dotnet run --project Tools/CapacityHarness/CapacityHarness.csproj -c Release --no-restore
 
       - name: Package mod
         shell: bash
@@ -90,6 +113,12 @@ jobs:
           test -f "$package_dir/modinfo.json"
           test -f "$package_dir/SimpleVoiceChat.dll"
           test -f "$package_dir/README.md"
+          test -f "$package_dir/Concentus.dll"
+          test -f "$package_dir/THIRD-PARTY-NOTICES.md"
+          test -f "$package_dir/docs/ADMIN.md"
+          test -f "$package_dir/docs/CAPACITY-REPORT.md"
+          test -f "$package_dir/assets/simplevoicechat/lang/en.json"
+          test -f "$package_dir/assets/simplevoicechat/lang/zh-cn.json"
           test -f "$package_dir/assets/simplevoicechat/textures/gui/haojiao.png"
           test -f "$package_dir/assets/simplevoicechat/textures/gui/nohaojiao.png"
 

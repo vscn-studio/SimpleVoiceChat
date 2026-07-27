@@ -266,9 +266,14 @@ public static class VoiceEnvironment
 
         try
         {
-            string watched = entity.WatchedAttributes.ToJsonToken()?.ToString() ?? string.Empty;
-            string attrs = entity.Attributes.ToJsonToken()?.ToString() ?? string.Empty;
-            return ContainsPoisonKeyword(watched) || ContainsPoisonKeyword(attrs);
+            return entity.WatchedAttributes.GetBool("poisoned", false)
+                || entity.WatchedAttributes.GetFloat("poison", 0f) > 0f
+                || entity.WatchedAttributes.GetFloat("intoxication", 0f) > 0f
+                || entity.WatchedAttributes.GetFloat("toxin", 0f) > 0f
+                || entity.Attributes.GetBool("poisoned", false)
+                || entity.Attributes.GetFloat("poison", 0f) > 0f
+                || entity.Attributes.GetFloat("intoxication", 0f) > 0f
+                || entity.Attributes.GetFloat("toxin", 0f) > 0f;
         }
         catch
         {
@@ -276,13 +281,6 @@ public static class VoiceEnvironment
         }
     }
 
-    private static bool ContainsPoisonKeyword(string text)
-    {
-        return text.IndexOf("poison", StringComparison.OrdinalIgnoreCase) >= 0
-            || text.IndexOf("poisoned", StringComparison.OrdinalIgnoreCase) >= 0
-            || text.IndexOf("intox", StringComparison.OrdinalIgnoreCase) >= 0
-            || text.IndexOf("toxin", StringComparison.OrdinalIgnoreCase) >= 0;
-    }
     private readonly struct WeatherSnapshot
     {
         public WeatherSnapshot(float storm, float wind)

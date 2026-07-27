@@ -18,7 +18,10 @@ public static class PacketMapper
             ShoutRange = config.ShoutRange,
             EnableOcclusion = config.EnableOcclusion,
             EnableWeatherEffects = config.EnableWeatherEffects,
-            EnableHudIndicators = config.EnableHudIndicators
+            EnableHudIndicators = config.EnableHudIndicators,
+            ProtocolVersion = VoiceProtocol.CurrentVersion,
+            MaxStreamsPerListener = config.MaxStreamsPerListener,
+            AllowContinuousTalk = config.AllowContinuousTalk
         };
     }
 }
