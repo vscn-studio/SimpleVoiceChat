@@ -1065,6 +1065,39 @@ public sealed class ServerVoiceController : IDisposable
                 controlChannel?.SendPacket(BuildDiagnosticsSnapshot(), fromPlayer);
                 return;
 
+            case "rename":
+                {
+                    bool administrator = fromPlayer.HasPrivilege(Privilege.controlserver);
+                    if (!channels.TryGet(packet.ChannelId, out VoiceChannel channel)
+                        || channel.ExternallyManaged
+                        || !channel.Persistent
+                        || string.IsNullOrWhiteSpace(packet.Name)
+                        || (!administrator && channel.OwnerUid != fromPlayer.PlayerUID))
+                    {
+                        SendFeedback(fromPlayer, "channel-rename-denied");
+                        return;
+                    }
+
+                    string previousName = channel.Name;
+                    channel.SetName(packet.Name.Trim());
+                    if (channel.Name == previousName)
+                    {
+                        SendFeedback(fromPlayer, "channel-renamed", channel.Name);
+                        return;
+                    }
+                    SavePersistentChannels();
+                    foreach (string uid in channel.Members.Keys.Append(fromPlayer.PlayerUID).Distinct(StringComparer.Ordinal))
+                    {
+                        if (onlinePlayersByUid.TryGetValue(uid, out IServerPlayer? member))
+                        {
+                            SendChannelSnapshot(member);
+                        }
+                    }
+                    RecordAudit(fromPlayer, "channel-rename", channel.Id, previousName, channel.Name);
+                    SendFeedback(fromPlayer, "channel-renamed", channel.Name);
+                    return;
+                }
+
             case "create":
                 {
                     if (!fromPlayer.HasPrivilege(Privilege.controlserver)

@@ -386,8 +386,43 @@ public sealed class CoreTests
         Assert.True(Gui.VoiceSettingsActionPolicy.RequiresTarget("tempmute"));
         Assert.True(Gui.VoiceSettingsActionPolicy.RequiresChannel("leave"));
         Assert.True(Gui.VoiceSettingsActionPolicy.RequiresChannel("role"));
+        Assert.True(Gui.VoiceSettingsActionPolicy.RequiresChannel("rename"));
         Assert.False(Gui.VoiceSettingsActionPolicy.RequiresTarget("create-civilization"));
         Assert.False(Gui.VoiceSettingsActionPolicy.RequiresChannel("create-civilization"));
+    }
+
+    [Fact]
+    public void ChannelRenameNormalizesNameAndAdvancesRevision()
+    {
+        VoiceChannel channel = new(
+            "civilization-test",
+            VoiceChannelKind.Civilization,
+            "Old name",
+            "owner",
+            maxMembers: 100,
+            maxActiveTalkers: 3,
+            persistent: true);
+        int revision = channel.Revision;
+
+        channel.SetName("  New civilization  ");
+
+        Assert.Equal("New civilization", channel.Name);
+        Assert.Equal(revision + 1, channel.Revision);
+    }
+
+    [Fact]
+    public void CustomUiBooleanActionAdapterInvokesCallbackOnce()
+    {
+        int invocations = 0;
+        Action action = Gui.UiActionAdapter.FromBoolean(() =>
+        {
+            invocations++;
+            return true;
+        });
+
+        action();
+
+        Assert.Equal(1, invocations);
     }
 
     [Fact]

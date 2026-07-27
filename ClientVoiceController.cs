@@ -506,12 +506,18 @@ public sealed class ClientVoiceController : IDisposable
                         return TextCommandResult.Error(SVCLang.Get("command-usage-player-or-uid", sub));
                     }
 
-                    controlChannel?.SendPacket(new AdminVoiceControlPacket { Action = sub, TargetNameOrUid = nameOrUid });
+                    if (controlChannel?.Connected == true)
+                    {
+                        controlChannel.SendPacket(new AdminVoiceControlPacket { Action = sub, TargetNameOrUid = nameOrUid });
+                    }
                     return TextCommandResult.Success(SVCLang.Get("command-request-admin-control"));
                 }
 
             case "adminmutes":
-                controlChannel?.SendPacket(new AdminVoiceControlPacket { Action = sub });
+                if (controlChannel?.Connected == true)
+                {
+                    controlChannel.SendPacket(new AdminVoiceControlPacket { Action = sub });
+                }
                 return TextCommandResult.Success(SVCLang.Get("command-request-admin-list"));
 
             default:
@@ -555,8 +561,12 @@ public sealed class ClientVoiceController : IDisposable
 
     private void SendHello()
     {
+        if (controlChannel?.Connected != true)
+        {
+            return;
+        }
         lastHelloSentMs = capi.World.ElapsedMilliseconds;
-        controlChannel?.SendPacket(new VoiceHelloPacket
+        controlChannel.SendPacket(new VoiceHelloPacket
         {
             ProtocolVersion = VoiceProtocol.CurrentVersion,
             ModVersion = "0.2.0",
@@ -805,7 +815,11 @@ public sealed class ClientVoiceController : IDisposable
         int page = 0,
         int pageSize = 0)
     {
-        controlChannel?.SendPacket(new ChannelCommandPacket
+        if (controlChannel?.Connected != true)
+        {
+            return;
+        }
+        controlChannel.SendPacket(new ChannelCommandPacket
         {
             Action = action,
             ChannelId = channelId,
@@ -851,7 +865,7 @@ public sealed class ClientVoiceController : IDisposable
         return channelInfos
             .OrderBy(info => info.Kind)
             .ThenBy(info => info.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(info => new VoiceSettingsChannelOption(info.ChannelId, $"{FormatChannelKind(info.Kind)}: {info.Name}", info.LocalRole, info.Kind, info.ExternallyManaged))
+            .Select(info => new VoiceSettingsChannelOption(info.ChannelId, info.Name, info.LocalRole, info.Kind, info.ExternallyManaged))
             .ToArray();
     }
 
@@ -933,7 +947,12 @@ public sealed class ClientVoiceController : IDisposable
             cached.Members.Select(member => new VoiceSettingsMemberOption(member.PlayerUid, member.PlayerName, member.Role)).ToArray());
     }
 
-    private void ManageSelectedChannel(string action, string channelId, string targetUid = "", VoiceChannelRole role = VoiceChannelRole.Member)
+    private void ManageSelectedChannel(
+        string action,
+        string channelId,
+        string targetUid = "",
+        string name = "",
+        VoiceChannelRole role = VoiceChannelRole.Member)
     {
         if (action.StartsWith("create-", StringComparison.Ordinal))
         {
@@ -941,25 +960,36 @@ public sealed class ClientVoiceController : IDisposable
             if (Enum.TryParse(kindText, true, out VoiceChannelKind kind)
                 && kind is >= VoiceChannelKind.Civilization and <= VoiceChannelKind.Radio)
             {
-                string channelName = $"{FormatChannelKind(kind)} - {capi.World.Player.PlayerName}";
+                string channelName = string.IsNullOrWhiteSpace(name)
+                    ? $"{FormatChannelKind(kind)} - {capi.World.Player.PlayerName}"
+                    : name.Trim();
                 SendChannelCommand("create", name: channelName, kind: kind);
             }
             return;
         }
 
-        if (action is "tempmute" or "deafen" or "adminmute" or "adminunmute" or "forceblock" or "unforceblock")
+        if (action == "rename")
         {
-            controlChannel?.SendPacket(new AdminVoiceControlPacket
-            {
-                Action = action,
-                TargetNameOrUid = targetUid,
-                DurationSeconds = action is "tempmute" or "deafen" ? 60 : 0
-            });
+            SendChannelCommand("rename", channelId: channelId, name: name.Trim());
             return;
         }
 
-        string name = action == "role" ? role.ToString() : string.Empty;
-        SendChannelCommand(action, channelId: channelId, targetPlayerUid: targetUid, name: name);
+        if (action is "tempmute" or "deafen" or "adminmute" or "adminunmute" or "forceblock" or "unforceblock")
+        {
+            if (controlChannel?.Connected == true)
+            {
+                controlChannel.SendPacket(new AdminVoiceControlPacket
+                {
+                    Action = action,
+                    TargetNameOrUid = targetUid,
+                    DurationSeconds = action is "tempmute" or "deafen" ? 60 : 0
+                });
+            }
+            return;
+        }
+
+        string roleName = action == "role" ? role.ToString() : string.Empty;
+        SendChannelCommand(action, channelId: channelId, targetPlayerUid: targetUid, name: roleName);
     }
 
     private void SelectChannel(string channelId)
@@ -1319,11 +1349,18 @@ public sealed class ClientVoiceController : IDisposable
         }
 
         SaveConfig();
-        controlChannel?.SendPacket(new MutePlayerPacket { PlayerUid = playerUid, Muted = muted });
+        if (controlChannel?.Connected == true)
+        {
+            controlChannel.SendPacket(new MutePlayerPacket { PlayerUid = playerUid, Muted = muted });
+        }
     }
 
     private void SendState(bool force)
     {
+        if (controlChannel?.Connected != true)
+        {
+            return;
+        }
         long now = capi.World.ElapsedMilliseconds;
         if (!force && now - lastStateSentMs < 1000)
         {
@@ -1331,7 +1368,7 @@ public sealed class ClientVoiceController : IDisposable
         }
 
         lastStateSentMs = now;
-        controlChannel?.SendPacket(new ClientVoiceStatePacket
+        controlChannel.SendPacket(new ClientVoiceStatePacket
         {
             Mode = mode,
             LocalMuted = localMuted,
@@ -1342,7 +1379,7 @@ public sealed class ClientVoiceController : IDisposable
 
     private void SyncMutedPlayersToServer()
     {
-        if (controlChannel == null)
+        if (controlChannel?.Connected != true)
         {
             return;
         }
