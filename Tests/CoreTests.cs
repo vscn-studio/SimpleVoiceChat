@@ -10,6 +10,24 @@ namespace SimpleVoiceChat.Tests;
 public sealed class CoreTests
 {
     [Fact]
+    public void LanguageFilesContainCurrentChannelLabels()
+    {
+        string languageDirectory = Path.Combine(
+            AppContext.BaseDirectory,
+            "assets",
+            "simplevoicechat",
+            "lang");
+
+        foreach (string fileName in new[] { "en.json", "zh-cn.json" })
+        {
+            using System.Text.Json.JsonDocument document = System.Text.Json.JsonDocument.Parse(
+                File.ReadAllText(Path.Combine(languageDirectory, fileName)));
+            Assert.True(document.RootElement.TryGetProperty("simplevoicechat:label-current-channel", out _));
+            Assert.True(document.RootElement.TryGetProperty("simplevoicechat:label-current-chanel", out _));
+        }
+    }
+
+    [Fact]
     public void ControllerLifecycleMakesStartAndDisposeIdempotent()
     {
         ControllerLifecycle lifecycle = new();
@@ -114,6 +132,17 @@ public sealed class CoreTests
         Assert.Equal(VoiceChannelRole.Owner, channel.Members["owner"]);
         Assert.Equal(VoiceChannelRole.Member, channel.Members["member"]);
         Assert.Equal(channel.Id, Assert.Single(channels.GetForPlayer("member")).Id);
+    }
+
+    [Fact]
+    public void SquadInviteExpiresAfterTenSecondsOnServer()
+    {
+        ChannelService channels = new();
+        Assert.True(channels.Invite("owner", "Owner", "member", "Member", 5_000, 12, 3).Succeeded);
+
+        Assert.NotNull(channels.GetPendingInvite("member", 14_999));
+        Assert.Null(channels.GetPendingInvite("member", 15_000));
+        Assert.Equal("invite-missing", channels.Accept("member", 15_000).ErrorCode);
     }
 
     [Fact]
@@ -392,6 +421,15 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void SettingsWindowShowsAdminPageOnlyWithServerPermission()
+    {
+        Assert.Equal(
+            new[] { Gui.VoiceSettingsPage.Audio, Gui.VoiceSettingsPage.Channels, Gui.VoiceSettingsPage.Status },
+            Gui.VoiceSettingsNavigation.BuildPages(hasServerControl: false));
+        Assert.Equal(Gui.VoiceSettingsPage.Admin, Gui.VoiceSettingsNavigation.BuildPages(hasServerControl: true)[^1]);
+    }
+
+    [Fact]
     public void ChannelRenameNormalizesNameAndAdvancesRevision()
     {
         VoiceChannel channel = new(
@@ -411,18 +449,12 @@ public sealed class CoreTests
     }
 
     [Fact]
-    public void CustomUiBooleanActionAdapterInvokesCallbackOnce()
+    public void VoiceInviteDefaultsToDeclineAfterTenSeconds()
     {
-        int invocations = 0;
-        Action action = Gui.UiActionAdapter.FromBoolean(() =>
-        {
-            invocations++;
-            return true;
-        });
+        long deadline = 5_000 + Gui.VoiceInvitePolicy.ResponseTimeoutMilliseconds;
 
-        action();
-
-        Assert.Equal(1, invocations);
+        Assert.False(Gui.VoiceInvitePolicy.HasExpired(14_999, deadline));
+        Assert.True(Gui.VoiceInvitePolicy.HasExpired(15_000, deadline));
     }
 
     [Fact]

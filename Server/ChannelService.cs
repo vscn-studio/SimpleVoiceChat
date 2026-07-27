@@ -372,7 +372,7 @@ public sealed class ChannelService
             inviterName,
             targetUid,
             targetName,
-            nowMilliseconds + 30_000,
+            nowMilliseconds + VoiceConstants.SquadInviteTimeoutMilliseconds,
             squadMaxMembers,
             squadMaxTalkers,
             targetSquad?.Id ?? string.Empty);
@@ -386,7 +386,7 @@ public sealed class ChannelService
         int maximumChannels = 256)
     {
         if (!inviteByTargetUid.Remove(targetUid, out PendingChannelInvite invite)
-            || invite.ExpiresAtMilliseconds < nowMilliseconds)
+            || invite.ExpiresAtMilliseconds <= nowMilliseconds)
         {
             return ChannelInviteResult.Error("invite-missing");
         }
@@ -493,7 +493,7 @@ public sealed class ChannelService
         {
             return null;
         }
-        if (invite.ExpiresAtMilliseconds < nowMilliseconds)
+        if (invite.ExpiresAtMilliseconds <= nowMilliseconds)
         {
             inviteByTargetUid.Remove(targetUid);
             return null;

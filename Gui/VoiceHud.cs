@@ -24,6 +24,7 @@ public sealed class VoiceHud : HudElement
     private readonly ImageSurface?[] volumeSurfaces = new ImageSurface?[VolumeFrameCount + 1];
     private long lastUpdateMs;
     public override double DrawOrder => 0.09;
+    public double ReservedHeight => shouldShowProvider() ? CalculateHudHeight(lastSnapshot) + 18 : 0;
 
     public VoiceHud(ICoreClientAPI capi, Func<VoiceHudSnapshot> snapshotProvider, Func<bool> shouldShowProvider)
         : base(capi)
