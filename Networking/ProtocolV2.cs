@@ -114,6 +114,9 @@ public sealed class VoiceWelcomePacket
 
     [ProtoMember(11)]
     public bool HasServerControl;
+
+    [ProtoMember(12)]
+    public string ServerInstanceId = string.Empty;
 }
 
 [ProtoContract]

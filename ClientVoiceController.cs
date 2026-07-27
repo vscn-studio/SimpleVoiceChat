@@ -59,6 +59,7 @@ public sealed class ClientVoiceController : IDisposable
     private bool settingsPressed;
     private bool toggleTalkPressed;
     private bool voiceHandshakeAccepted;
+    private bool selectedChannelRestorePending;
     private bool hasServerControl;
     private int connectionEpoch;
     private int negotiatedCodec = VoiceProtocol.CodecImaAdpcm;
@@ -89,6 +90,7 @@ public sealed class ClientVoiceController : IDisposable
     {
         this.capi = capi;
         this.config = config;
+        selectedChannelRestorePending = !string.IsNullOrEmpty(config.SelectedChannelId);
         sessionId = NextSessionId();
     }
 
@@ -517,6 +519,7 @@ public sealed class ClientVoiceController : IDisposable
             return;
         }
         serverConfig = packet;
+        ActivateCurrentServerProfile(packet.ServerInstanceId);
         if (serverConfig.ForceImmersive)
         {
             config.EnableOcclusionEffects = true;
@@ -560,6 +563,7 @@ public sealed class ClientVoiceController : IDisposable
         voiceHandshakeAccepted = packet.Accepted
             && packet.ProtocolVersion == VoiceProtocol.CurrentVersion
             && packet.Codec is VoiceProtocol.CodecImaAdpcm or VoiceProtocol.CodecOpus;
+        ActivateCurrentServerProfile(packet.ServerInstanceId);
         connectionEpoch = voiceHandshakeAccepted ? packet.ConnectionEpoch : 0;
         voiceHandshakeAcceptedMs = voiceHandshakeAccepted ? capi.World.ElapsedMilliseconds : 0;
         negotiatedCodec = packet.Codec;
@@ -574,6 +578,7 @@ public sealed class ClientVoiceController : IDisposable
         }
         if (voiceHandshakeAccepted)
         {
+            selectedChannelRestorePending = !string.IsNullOrEmpty(config.SelectedChannelId);
             SendState(force: true);
             SyncMutedPlayersToServer();
         }
@@ -598,19 +603,21 @@ public sealed class ClientVoiceController : IDisposable
         {
             activeChannelTalkerHashesByChannel.Remove(removedChannelId);
         }
-        string selected = packet.SelectedChannelId ?? string.Empty;
-        if (!string.IsNullOrEmpty(selected) && channelInfos.Any(channel => channel.ChannelId == selected))
-        {
-            config.SelectedChannelId = selected;
-        }
-        else if (!channelInfos.Any(channel => channel.ChannelId == config.SelectedChannelId))
-        {
-            config.SelectedChannelId = channelInfos.FirstOrDefault(channel => channel.Kind == VoiceChannelKind.Squad)?.ChannelId ?? string.Empty;
-        }
+        (string channelId, bool restoreOnServer) = ResolveChannelSelection(
+            channelInfos,
+            config.SelectedChannelId,
+            packet.SelectedChannelId,
+            selectedChannelRestorePending);
+        config.SelectedChannelId = channelId;
+        selectedChannelRestorePending = false;
 
         UpdateSquadHudMembers();
         UpdatePendingInvite(packet);
         SaveConfig();
+        if (restoreOnServer)
+        {
+            SendChannelCommand("select", channelId: config.SelectedChannelId);
+        }
         hud?.Refresh();
         settingsDialog?.RefreshData();
     }
@@ -1094,6 +1101,29 @@ public sealed class ClientVoiceController : IDisposable
         SendChannelCommand("select", channelId: channelId);
         UpdateSquadHudMembers();
         hud?.Refresh();
+    }
+
+    internal static (string ChannelId, bool RestoreOnServer) ResolveChannelSelection(
+        ChannelInfoPacket[] channels,
+        string? savedChannelId,
+        string? serverChannelId,
+        bool restorePending)
+    {
+        string serverSelected = serverChannelId ?? string.Empty;
+        if (!string.IsNullOrEmpty(serverSelected)
+            && channels.Any(channel => channel.ChannelId == serverSelected))
+        {
+            return (serverSelected, false);
+        }
+
+        string savedSelected = savedChannelId ?? string.Empty;
+        if (!string.IsNullOrEmpty(savedSelected)
+            && channels.Any(channel => channel.ChannelId == savedSelected))
+        {
+            return (savedSelected, restorePending);
+        }
+
+        return (channels.FirstOrDefault(channel => channel.Kind == VoiceChannelKind.Squad)?.ChannelId ?? string.Empty, false);
     }
 
     private bool AcceptPendingInvite()
@@ -1787,8 +1817,40 @@ public sealed class ClientVoiceController : IDisposable
 
     private void SaveConfig()
     {
+        config.StoreActiveServerProfile();
         config.Normalize();
         capi.StoreModConfig(config, VoiceConstants.ClientConfigFileName);
+    }
+
+    private void ActivateCurrentServerProfile(string? serverIdentifier = null)
+    {
+        string identifier = string.IsNullOrWhiteSpace(serverIdentifier)
+            ? capi.World.SavegameIdentifier
+            : serverIdentifier;
+        if (string.IsNullOrWhiteSpace(identifier)
+            || config.ActiveServerId == identifier)
+        {
+            return;
+        }
+
+        bool previousAdaptiveJitter = config.AdaptiveJitterBuffer;
+        if (!config.ActivateServer(identifier))
+        {
+            return;
+        }
+
+        if (serverConfig.ForceImmersive)
+        {
+            config.EnableOcclusionEffects = true;
+        }
+        SaveConfig();
+
+        if (previousAdaptiveJitter != config.AdaptiveJitterBuffer)
+        {
+            playback?.SetAdaptiveJitter(config.AdaptiveJitterBuffer);
+        }
+        hud?.Refresh();
+        settingsDialog?.RefreshData();
     }
 
     public void Dispose()

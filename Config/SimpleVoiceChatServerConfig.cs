@@ -2,9 +2,10 @@ namespace SimpleVoiceChat.Config;
 
 public sealed class SimpleVoiceChatServerConfig
 {
-    private const int CurrentConfigVersion = 2;
+    private const int CurrentConfigVersion = 3;
 
     public int ConfigVersion { get; set; } = 1;
+    public string ServerInstanceId { get; set; } = string.Empty;
     public bool Enabled { get; set; } = true;
     public bool AllowLegacyProtocol { get; set; } = false;
     public bool AllowAdpcmFallback { get; set; } = false;
@@ -49,7 +50,16 @@ public sealed class SimpleVoiceChatServerConfig
         {
             ConfigVersion = 2;
         }
+        if (ConfigVersion < 3)
+        {
+            ConfigVersion = 3;
+        }
         ConfigVersion = Math.Max(CurrentConfigVersion, ConfigVersion);
+        if (!Guid.TryParse(ServerInstanceId, out Guid serverInstanceId) || serverInstanceId == Guid.Empty)
+        {
+            serverInstanceId = Guid.NewGuid();
+        }
+        ServerInstanceId = serverInstanceId.ToString("N");
         MaxRange = Math.Clamp(MaxRange, 1f, 128f);
         WhisperRange = Math.Clamp(WhisperRange, 1f, MaxRange);
         TalkRange = Math.Clamp(TalkRange, 1f, MaxRange);

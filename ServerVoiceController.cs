@@ -841,9 +841,15 @@ public sealed class ServerVoiceController : IDisposable
             ConnectionEpoch = session.ConnectionEpoch,
             MaxStreamsPerListener = config.MaxStreamsPerListener,
             AllowContinuousTalk = config.AllowContinuousTalk,
-            HasServerControl = player.HasPrivilege(Privilege.controlserver)
+            HasServerControl = player.HasPrivilege(Privilege.controlserver),
+            ServerInstanceId = GetServerInstanceId()
         }, player);
         SendChannelSnapshot(player);
+    }
+
+    private string GetServerInstanceId()
+    {
+        return config.ServerInstanceId;
     }
 
     private void OnVoicePing(IServerPlayer player, VoicePingPacket packet)
@@ -2556,6 +2562,10 @@ public sealed class ServerVoiceController : IDisposable
             {
                 error = "configuration file was empty";
                 return false;
+            }
+            if (string.IsNullOrWhiteSpace(loaded.ServerInstanceId))
+            {
+                loaded.ServerInstanceId = config.ServerInstanceId;
             }
             loaded.Normalize();
             config = loaded;

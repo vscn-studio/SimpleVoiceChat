@@ -2,7 +2,8 @@ namespace SimpleVoiceChat.Config;
 
 public sealed class SimpleVoiceChatClientConfig
 {
-    private const int CurrentConfigVersion = 2;
+    private const int CurrentConfigVersion = 3;
+    private const int MaxServerProfiles = 128;
 
     public int ConfigVersion { get; set; } = 1;
     public string InputDeviceName { get; set; } = string.Empty;
@@ -23,6 +24,12 @@ public sealed class SimpleVoiceChatClientConfig
     public Networking.VoiceTransmitTarget TransmitTarget { get; set; } = Networking.VoiceTransmitTarget.ProximityAndChannel;
     public Dictionary<string, float> PlayerVolumeOverrides { get; set; } = new(StringComparer.Ordinal);
     public List<string> MutedPlayerUids { get; set; } = new();
+    public Dictionary<string, SimpleVoiceChatServerProfile> ServerProfiles { get; set; } = new(StringComparer.Ordinal);
+    public bool NeedsServerProfileMigration { get; set; }
+
+    private string activeServerId = string.Empty;
+
+    internal string ActiveServerId => activeServerId;
 
     public void Normalize()
     {
@@ -51,6 +58,15 @@ public sealed class SimpleVoiceChatClientConfig
             .Distinct(StringComparer.Ordinal)
             .Take(256)
             .ToList();
+
+        ServerProfiles ??= new Dictionary<string, SimpleVoiceChatServerProfile>(StringComparer.Ordinal);
+        ServerProfiles = ServerProfiles
+            .Where(pair => IsValidServerId(pair.Key) && pair.Value != null)
+            .Take(MaxServerProfiles)
+            .ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value.Normalize(),
+                StringComparer.Ordinal);
     }
 
     private void Migrate()
@@ -61,7 +77,145 @@ public sealed class SimpleVoiceChatClientConfig
             ConfigVersion = 2;
         }
 
+        if (ConfigVersion < 3)
+        {
+            NeedsServerProfileMigration = true;
+            ConfigVersion = 3;
+        }
+
         ConfigVersion = Math.Max(CurrentConfigVersion, ConfigVersion);
+    }
+
+    internal bool ActivateServer(string? serverIdentifier)
+    {
+        string serverId = NormalizeServerId(serverIdentifier);
+        if (serverId.Length == 0)
+        {
+            return false;
+        }
+
+        Normalize();
+        if (activeServerId == serverId)
+        {
+            return true;
+        }
+
+        StoreActiveServerProfile();
+        activeServerId = serverId;
+
+        if (ServerProfiles.TryGetValue(serverId, out SimpleVoiceChatServerProfile? profile))
+        {
+            profile.ApplyTo(this);
+        }
+        else if (NeedsServerProfileMigration)
+        {
+            ServerProfiles[serverId] = SimpleVoiceChatServerProfile.From(this);
+            NeedsServerProfileMigration = false;
+        }
+        else
+        {
+            SimpleVoiceChatServerProfile defaults = new();
+            defaults.ApplyTo(this);
+            ServerProfiles[serverId] = defaults;
+        }
+
+        StoreActiveServerProfile();
+        return true;
+    }
+
+    internal void StoreActiveServerProfile()
+    {
+        if (activeServerId.Length == 0)
+        {
+            return;
+        }
+
+        ServerProfiles ??= new Dictionary<string, SimpleVoiceChatServerProfile>(StringComparer.Ordinal);
+        ServerProfiles[activeServerId] = SimpleVoiceChatServerProfile.From(this);
+        while (ServerProfiles.Count > MaxServerProfiles)
+        {
+            string oldest = ServerProfiles.Keys.First();
+            if (oldest == activeServerId)
+            {
+                oldest = ServerProfiles.Keys.Skip(1).First();
+            }
+            ServerProfiles.Remove(oldest);
+        }
+    }
+
+    private static string NormalizeServerId(string? value)
+    {
+        string normalized = (value ?? string.Empty).Trim();
+        return IsValidServerId(normalized) ? normalized : string.Empty;
+    }
+
+    private static bool IsValidServerId(string value)
+    {
+        return value.Length is > 0 and <= 256;
+    }
+
+    private static string Limit(string? value, int maximumLength)
+    {
+        string normalized = value ?? string.Empty;
+        return normalized.Length <= maximumLength ? normalized : normalized[..maximumLength];
+    }
+}
+
+public sealed class SimpleVoiceChatServerProfile
+{
+    public bool EnableOcclusionEffects { get; set; } = true;
+    public bool AdaptiveJitterBuffer { get; set; } = true;
+    public float ChannelOutputVolume { get; set; } = 1f;
+    public string SelectedChannelId { get; set; } = string.Empty;
+    public Networking.VoiceTransmitTarget TransmitTarget { get; set; } = Networking.VoiceTransmitTarget.ProximityAndChannel;
+    public Dictionary<string, float> PlayerVolumeOverrides { get; set; } = new(StringComparer.Ordinal);
+    public List<string> MutedPlayerUids { get; set; } = new();
+
+    internal static SimpleVoiceChatServerProfile From(SimpleVoiceChatClientConfig source)
+    {
+        return new SimpleVoiceChatServerProfile
+        {
+            EnableOcclusionEffects = source.EnableOcclusionEffects,
+            AdaptiveJitterBuffer = source.AdaptiveJitterBuffer,
+            ChannelOutputVolume = source.ChannelOutputVolume,
+            SelectedChannelId = source.SelectedChannelId,
+            TransmitTarget = source.TransmitTarget,
+            PlayerVolumeOverrides = new Dictionary<string, float>(source.PlayerVolumeOverrides, StringComparer.Ordinal),
+            MutedPlayerUids = source.MutedPlayerUids.ToList()
+        };
+    }
+
+    internal void ApplyTo(SimpleVoiceChatClientConfig target)
+    {
+        target.EnableOcclusionEffects = EnableOcclusionEffects;
+        target.AdaptiveJitterBuffer = AdaptiveJitterBuffer;
+        target.ChannelOutputVolume = ChannelOutputVolume;
+        target.SelectedChannelId = SelectedChannelId;
+        target.TransmitTarget = TransmitTarget;
+        target.PlayerVolumeOverrides = new Dictionary<string, float>(PlayerVolumeOverrides ?? new Dictionary<string, float>(), StringComparer.Ordinal);
+        target.MutedPlayerUids = (MutedPlayerUids ?? new List<string>()).ToList();
+    }
+
+    internal SimpleVoiceChatServerProfile Normalize()
+    {
+        SelectedChannelId = Limit(SelectedChannelId, Networking.VoiceProtocol.MaxControlStringLength);
+        if (TransmitTarget is < Networking.VoiceTransmitTarget.Proximity or > Networking.VoiceTransmitTarget.ProximityAndChannel)
+        {
+            TransmitTarget = Networking.VoiceTransmitTarget.ProximityAndChannel;
+        }
+        ChannelOutputVolume = Math.Clamp(ChannelOutputVolume, 0f, 2f);
+        PlayerVolumeOverrides ??= new Dictionary<string, float>(StringComparer.Ordinal);
+        PlayerVolumeOverrides = PlayerVolumeOverrides
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Key) && pair.Key.Length <= Networking.VoiceProtocol.MaxControlStringLength)
+            .Take(256)
+            .ToDictionary(pair => pair.Key, pair => Math.Clamp(pair.Value, 0f, 2f), StringComparer.Ordinal);
+        MutedPlayerUids ??= new List<string>();
+        MutedPlayerUids = MutedPlayerUids
+            .Where(uid => !string.IsNullOrWhiteSpace(uid) && uid.Length <= Networking.VoiceProtocol.MaxControlStringLength)
+            .Distinct(StringComparer.Ordinal)
+            .Take(256)
+            .ToList();
+        return this;
     }
 
     private static string Limit(string? value, int maximumLength)

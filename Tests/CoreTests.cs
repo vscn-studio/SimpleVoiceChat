@@ -501,9 +501,89 @@ public sealed class CoreTests
 
         config.Normalize();
 
-        Assert.Equal(2, config.ConfigVersion);
+        Assert.Equal(3, config.ConfigVersion);
         Assert.False(config.ShowMicrophoneHud);
         Assert.False(config.ShowHudIndicator);
+    }
+
+    [Fact]
+    public void ClientConfigKeepsIndependentProfilesForEachServerWorld()
+    {
+        SimpleVoiceChatClientConfig config = new() { ConfigVersion = 3 };
+
+        Assert.True(config.ActivateServer("world-a"));
+        config.SelectedChannelId = "civilization-a";
+        config.OutputVolume = 0.45f;
+        config.ChannelOutputVolume = 0.45f;
+        config.MutedPlayerUids.Add("player-a");
+        config.StoreActiveServerProfile();
+
+        Assert.True(config.ActivateServer("world-b"));
+        Assert.Equal(string.Empty, config.SelectedChannelId);
+        Assert.Equal(0.45f, config.OutputVolume);
+        Assert.Equal(1f, config.ChannelOutputVolume);
+        Assert.Empty(config.MutedPlayerUids);
+        config.SelectedChannelId = "command-b";
+        config.ChannelOutputVolume = 1.25f;
+        config.StoreActiveServerProfile();
+
+        Assert.True(config.ActivateServer("world-a"));
+        Assert.Equal("civilization-a", config.SelectedChannelId);
+        Assert.Equal(0.45f, config.OutputVolume);
+        Assert.Equal(0.45f, config.ChannelOutputVolume);
+        Assert.Contains("player-a", config.MutedPlayerUids);
+
+        Assert.True(config.ActivateServer("world-b"));
+        Assert.Equal("command-b", config.SelectedChannelId);
+        Assert.Equal(0.45f, config.OutputVolume);
+        Assert.Equal(1.25f, config.ChannelOutputVolume);
+    }
+
+    [Fact]
+    public void VersionTwoClientConfigMigratesIntoFirstServerProfile()
+    {
+        SimpleVoiceChatClientConfig config = new()
+        {
+            ConfigVersion = 2,
+            SelectedChannelId = "legacy-channel",
+            ChannelOutputVolume = 0.7f
+        };
+
+        config.Normalize();
+
+        Assert.Equal(3, config.ConfigVersion);
+        Assert.True(config.NeedsServerProfileMigration);
+        Assert.True(config.ActivateServer("current-world"));
+        Assert.False(config.NeedsServerProfileMigration);
+        Assert.Equal("legacy-channel", config.SelectedChannelId);
+        Assert.Equal(0.7f, config.ServerProfiles["current-world"].ChannelOutputVolume);
+    }
+
+    [Fact]
+    public void SavedChannelIsRestoredWhenNewServerSessionHasNoSelection()
+    {
+        ChannelInfoPacket[] channels =
+        {
+            new() { ChannelId = "civilization-a", Kind = VoiceChannelKind.Civilization },
+            new() { ChannelId = "squad-a", Kind = VoiceChannelKind.Squad }
+        };
+
+        (string selected, bool restore) = ClientVoiceController.ResolveChannelSelection(
+            channels,
+            "civilization-a",
+            string.Empty,
+            restorePending: true);
+
+        Assert.Equal("civilization-a", selected);
+        Assert.True(restore);
+
+        (selected, restore) = ClientVoiceController.ResolveChannelSelection(
+            channels,
+            "removed-channel",
+            string.Empty,
+            restorePending: true);
+        Assert.Equal("squad-a", selected);
+        Assert.False(restore);
     }
 
     [Fact]
@@ -518,7 +598,13 @@ public sealed class CoreTests
 
         config.Normalize();
 
-        Assert.Equal(2, config.ConfigVersion);
+        Assert.Equal(3, config.ConfigVersion);
+        Assert.True(Guid.TryParse(config.ServerInstanceId, out Guid serverInstanceId));
+        Assert.NotEqual(Guid.Empty, serverInstanceId);
+        string stableServerInstanceId = config.ServerInstanceId;
+        config.Normalize();
+        Assert.Equal(stableServerInstanceId, config.ServerInstanceId);
+        Assert.Equal(stableServerInstanceId, PacketMapper.ToPacket(config).ServerInstanceId);
         Assert.Equal(16, config.MaxChannels);
         Assert.Equal(1, config.MaxChannelsPerPlayer);
     }

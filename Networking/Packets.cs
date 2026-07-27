@@ -103,6 +103,9 @@ public sealed class ServerVoiceConfigPacket
     [ProtoMember(14)]
     public bool AllowContinuousTalk;
 
+    [ProtoMember(15)]
+    public string ServerInstanceId = string.Empty;
+
     public float GetRange(VoiceMode mode)
     {
         return mode switch

@@ -21,7 +21,8 @@ public static class PacketMapper
             EnableHudIndicators = config.EnableHudIndicators,
             ProtocolVersion = VoiceProtocol.CurrentVersion,
             MaxStreamsPerListener = config.MaxStreamsPerListener,
-            AllowContinuousTalk = config.AllowContinuousTalk
+            AllowContinuousTalk = config.AllowContinuousTalk,
+            ServerInstanceId = config.ServerInstanceId
         };
     }
 }
