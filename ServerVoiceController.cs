@@ -542,7 +542,7 @@ public sealed class ServerVoiceController : IDisposable
         }
 
         return string.Join("; ", playerChannels.Select(channel =>
-            $"{channel.Name}: {string.Join("、", channel.Members.Keys.Select(uid => onlinePlayersByUid.TryGetValue(uid, out IServerPlayer? online) ? online.PlayerName : uid))}"));
+            $"{channel.Name}: {string.Join("、", channel.Members.Keys.Select(uid => onlinePlayersByUid.TryGetValue(uid, out IServerPlayer? online) ? online.PlayerName : SVCLang.Get("player-offline")))}"));
     }
 
     private void OnPlayerJoin(IServerPlayer player)
@@ -1668,7 +1668,7 @@ public sealed class ServerVoiceController : IDisposable
         return new ChannelMemberPacket
         {
             PlayerUid = uid,
-            PlayerName = onlinePlayersByUid.TryGetValue(uid, out IServerPlayer? online) ? online.PlayerName : uid,
+            PlayerName = onlinePlayersByUid.TryGetValue(uid, out IServerPlayer? online) ? online.PlayerName : string.Empty,
             Role = role
         };
     }

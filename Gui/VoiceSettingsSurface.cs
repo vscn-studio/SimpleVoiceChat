@@ -49,20 +49,13 @@ internal sealed class GuiElementDirectorSurface : GuiElement
 
         context.Save();
         bool docked = kind == DirectorSurfaceKind.DockedWindow;
-        if (docked)
-        {
-            context.Rectangle(x + 0.5d, y + 0.5d, width - 1d, height - 1d);
-        }
-        else
-        {
-            DirectorGuiTheme.RoundedRectangle(
-                context,
-                x + 0.5d,
-                y + 0.5d,
-                width - 1d,
-                height - 1d,
-                DirectorGuiTheme.ScaledCornerRadius);
-        }
+        DirectorGuiTheme.RoundedRectangle(
+            context,
+            x + 0.5d,
+            y + 0.5d,
+            width - 1d,
+            height - 1d,
+            DirectorGuiTheme.ScaledCornerRadius);
         bool window = kind is DirectorSurfaceKind.Window
             or DirectorSurfaceKind.OpaqueWindow
             or DirectorSurfaceKind.DockedWindow;

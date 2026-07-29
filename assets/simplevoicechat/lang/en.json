@@ -157,6 +157,7 @@
   "simplevoicechat:label-pending-invite": "Invite status",
   "simplevoicechat:label-current-status": "Current status",
   "simplevoicechat:player-none": "No other player online",
+  "simplevoicechat:player-offline": "Offline player",
   "simplevoicechat:channel-action-none": "No channel action is currently available",
   "simplevoicechat:channel-action-create": "Create channel",
   "simplevoicechat:button-apply": "Apply",

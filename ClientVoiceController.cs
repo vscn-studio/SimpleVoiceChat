@@ -827,7 +827,7 @@ public sealed class ClientVoiceController : IDisposable
             .Where(member => member.PlayerUid != capi.World.Player.PlayerUID)
             .Take(12)
             .Select(member => new VoiceHudSquadMember(
-                member.PlayerName,
+                DisplayPlayerName(member.PlayerUid, member.PlayerName),
                 activeTalkers?.Contains(VoiceMath.StableUidHash(member.PlayerUid)) == true))
             .ToArray();
     }
@@ -850,11 +850,15 @@ public sealed class ClientVoiceController : IDisposable
             .Where(channel => channel.ChannelId == config.SelectedChannelId)
             .SelectMany(channel => channel.Members ?? Array.Empty<ChannelMemberPacket>())
             .Where(member => member.PlayerUid != capi.World.Player.PlayerUID)
-            .Select(member => new VoiceSettingsPlayerOption(member.PlayerUid, member.PlayerName));
+            .Select(member => new VoiceSettingsPlayerOption(
+                member.PlayerUid,
+                DisplayPlayerName(member.PlayerUid, member.PlayerName)));
         IEnumerable<VoiceSettingsPlayerOption> currentPage = memberPagesByChannel.TryGetValue(config.SelectedChannelId, out ChannelMemberPagePacket? page)
             ? page.Members
                 .Where(member => member.PlayerUid != capi.World.Player.PlayerUID)
-                .Select(member => new VoiceSettingsPlayerOption(member.PlayerUid, member.PlayerName))
+                .Select(member => new VoiceSettingsPlayerOption(
+                    member.PlayerUid,
+                    DisplayPlayerName(member.PlayerUid, member.PlayerName)))
             : Array.Empty<VoiceSettingsPlayerOption>();
         return online.Concat(members).Concat(currentPage)
             .GroupBy(player => player.Id, StringComparer.Ordinal)
@@ -1046,7 +1050,26 @@ public sealed class ClientVoiceController : IDisposable
             cached.TotalMembers,
             cached.Page,
             cached.PageSize,
-            cached.Members.Select(member => new VoiceSettingsMemberOption(member.PlayerUid, member.PlayerName, member.Role)).ToArray());
+            cached.Members.Select(member => new VoiceSettingsMemberOption(
+                member.PlayerUid,
+                DisplayPlayerName(member.PlayerUid, member.PlayerName),
+                member.Role)).ToArray());
+    }
+
+    private string DisplayPlayerName(string playerUid, string? playerName)
+    {
+        string safeName = (playerName ?? string.Empty).Trim();
+        if (safeName.Length > 0 && !safeName.Equals(playerUid, StringComparison.Ordinal))
+        {
+            return safeName;
+        }
+
+        IPlayer? online = capi.World.AllOnlinePlayers.FirstOrDefault(player =>
+            player.PlayerUID.Equals(playerUid, StringComparison.Ordinal));
+        safeName = (online?.PlayerName ?? string.Empty).Trim();
+        return safeName.Length > 0 && !safeName.Equals(playerUid, StringComparison.Ordinal)
+            ? safeName
+            : SVCLang.Get("player-offline");
     }
 
     internal void ManageSelectedChannel(

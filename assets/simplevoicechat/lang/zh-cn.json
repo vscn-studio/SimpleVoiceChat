@@ -157,6 +157,7 @@
   "simplevoicechat:label-pending-invite": "邀请状态",
   "simplevoicechat:label-current-status": "当前状态",
   "simplevoicechat:player-none": "没有其他在线玩家",
+  "simplevoicechat:player-offline": "离线玩家",
   "simplevoicechat:channel-action-none": "当前没有可执行的频道操作",
   "simplevoicechat:channel-action-create": "创建频道",
   "simplevoicechat:button-apply": "应用",

@@ -318,7 +318,7 @@ internal sealed class GuiElementDirectorDropDown : GuiElementDropDown
         }
 
         EnsureTextures();
-        bool hovered = Enabled && Bounds.PointInside(api.Input.MouseX, api.Input.MouseY);
+        bool hovered = Enabled && IsFieldPositionInside(api.Input.MouseX, api.Input.MouseY);
         LoadedTexture field = !Enabled
             ? disabledTexture
             : listMenu.IsOpened
@@ -327,8 +327,27 @@ internal sealed class GuiElementDirectorDropDown : GuiElementDropDown
                     ? focusTexture
                     : hovered ? hoverFieldTexture : normalTexture;
 
-        api.Render.Render2DTexturePremultipliedAlpha(field.TextureId, Bounds);
-        api.Render.Render2DTexturePremultipliedAlpha(valueTexture.TextureId, Bounds);
+        bool clipField = InsideClipBounds is not null;
+        if (clipField)
+        {
+            api.Render.PushScissor(InsideClipBounds, stacking: true);
+        }
+        try
+        {
+            api.Render.Render2DTexturePremultipliedAlpha(field.TextureId, Bounds);
+            api.Render.Render2DTexturePremultipliedAlpha(valueTexture.TextureId, Bounds);
+        }
+        finally
+        {
+            if (clipField)
+            {
+                api.Render.PopScissor();
+            }
+        }
+
+        // The popup intentionally renders after the field scissor is removed.
+        // This keeps scrolled fields inside the viewport without cutting off
+        // the expanded menu.
         listMenu.RenderInteractiveElements(deltaTime);
     }
 
@@ -350,7 +369,7 @@ internal sealed class GuiElementDirectorDropDown : GuiElementDropDown
         }
 
         listMenu.OnMouseDown(api, args);
-        if (!args.Handled && !listMenu.IsOpened && Bounds.PointInside(args.X, args.Y))
+        if (!args.Handled && !listMenu.IsOpened && IsFieldPositionInside(args.X, args.Y))
         {
             ((GuiElementDirectorListMenu)listMenu).OpenDirector();
             DirectorDropdownInputCapture.RegisterOpen(this);
@@ -375,7 +394,7 @@ internal sealed class GuiElementDirectorDropDown : GuiElementDropDown
         }
 
         listMenu.OnMouseUp(api, args);
-        args.Handled |= Bounds.PointInside(args.X, args.Y);
+        args.Handled |= IsFieldPositionInside(args.X, args.Y);
     }
 
     public override void OnMouseWheel(ICoreClientAPI api, MouseWheelEventArgs args)
@@ -395,7 +414,7 @@ internal sealed class GuiElementDirectorDropDown : GuiElementDropDown
             return;
         }
 
-        if (!Bounds.PointInside(api.Input.MouseX, api.Input.MouseY) || listMenu.Values.Length == 0)
+        if (!IsFieldPositionInside(api.Input.MouseX, api.Input.MouseY) || listMenu.Values.Length == 0)
         {
             return;
         }
@@ -410,7 +429,7 @@ internal sealed class GuiElementDirectorDropDown : GuiElementDropDown
 
     public override bool IsPositionInside(int posX, int posY)
         => Visible
-            && (Bounds.PointInside(posX, posY)
+            && (IsFieldPositionInside(posX, posY)
                 || (listMenu.IsOpened && listMenu.IsPositionInside(posX, posY)));
 
     internal bool IsPopupOpen => listMenu.IsOpened;
@@ -447,6 +466,10 @@ internal sealed class GuiElementDirectorDropDown : GuiElementDropDown
         valueStamp = int.MinValue;
         onSelectionChanged?.Invoke(value, selected);
     }
+
+    private bool IsFieldPositionInside(int posX, int posY)
+        => Bounds.PointInside(posX, posY)
+            && (InsideClipBounds is null || InsideClipBounds.PointInside(posX, posY));
 
     private void EnsureTextures()
     {
@@ -2327,6 +2350,7 @@ internal sealed class GuiElementDirectorSlider : GuiElementControl
 {
     private readonly ActionConsumable<int> onChanged;
     private LoadedTexture backgroundTexture;
+    private LoadedTexture sliderTexture;
     private LoadedTexture valueTexture;
     private int minimum;
     private int maximum = 100;
@@ -2342,6 +2366,7 @@ internal sealed class GuiElementDirectorSlider : GuiElementControl
     {
         this.onChanged = onChanged;
         backgroundTexture = new LoadedTexture(capi);
+        sliderTexture = new LoadedTexture(capi);
         valueTexture = new LoadedTexture(capi);
     }
 
@@ -2375,6 +2400,7 @@ internal sealed class GuiElementDirectorSlider : GuiElementControl
         fieldContext.LineWidth = Math.Max(1d, GuiElement.scaled(1d));
         fieldContext.Stroke();
         generateTexture(field, ref backgroundTexture, linearMag: true);
+        ComposeSliderTexture();
         ComposeValueTexture();
     }
 
@@ -2382,25 +2408,15 @@ internal sealed class GuiElementDirectorSlider : GuiElementControl
     {
         _ = deltaTime;
         api.Render.Render2DTexturePremultipliedAlpha(backgroundTexture.TextureId, Bounds);
-        double left = Bounds.renderX + GuiElement.scaled(9d);
         double labelWidth = GuiElement.scaled(58d);
-        double usable = Math.Max(GuiElement.scaled(24d), Bounds.OuterWidth - labelWidth - GuiElement.scaled(18d));
-        double fraction = (double)(current - minimum) / Math.Max(1, maximum - minimum);
-        double centerY = Bounds.renderY + Bounds.OuterHeight / 2d;
-        int muted = ColorUtil.ToRgba(255, 55, 76, 82);
-        int accent = ColorUtil.ToRgba(255, 46, 174, 179);
-        api.Render.RenderRectangle((float)left, (float)(centerY - 2d), 300f, (float)usable, 4f, muted);
-        api.Render.RenderRectangle((float)left, (float)(centerY - 2d), 300.1f,
-            (float)Math.Max(2d, usable * fraction), 4f, accent);
-        double handleX = left + usable * fraction;
-        api.Render.RenderRectangle((float)(handleX - 4d), (float)(centerY - 8d), 300.2f, 8f, 16f,
-            ColorUtil.ToRgba(255, 224, 242, 244));
+        api.Render.Render2DTexturePremultipliedAlpha(sliderTexture.TextureId, Bounds, 300f);
         api.Render.Render2DTexturePremultipliedAlpha(
             valueTexture.TextureId,
             Bounds.renderX + Bounds.OuterWidth - labelWidth,
             Bounds.renderY,
             labelWidth,
-            Bounds.OuterHeight);
+            Bounds.OuterHeight,
+            301f);
     }
 
     public override void OnMouseDownOnElement(ICoreClientAPI api, MouseEvent args)
@@ -2453,6 +2469,7 @@ internal sealed class GuiElementDirectorSlider : GuiElementControl
         {
             return;
         }
+        ComposeSliderTexture();
         ComposeValueTexture();
     }
 
@@ -2462,6 +2479,7 @@ internal sealed class GuiElementDirectorSlider : GuiElementControl
     public override void Dispose()
     {
         backgroundTexture.Dispose();
+        sliderTexture.Dispose();
         valueTexture.Dispose();
         base.Dispose();
     }
@@ -2485,8 +2503,54 @@ internal sealed class GuiElementDirectorSlider : GuiElementControl
             return true;
         }
         current = next;
+        ComposeSliderTexture();
         ComposeValueTexture();
         return !notify || onChanged(current);
+    }
+
+    private void ComposeSliderTexture()
+    {
+        int width = Math.Max(1, Bounds.OuterWidthInt);
+        int height = Math.Max(1, Bounds.OuterHeightInt);
+        using ImageSurface surface = new(Format.Argb32, width, height);
+        using Context context = new(surface);
+
+        double left = GuiElement.scaled(9d);
+        double labelWidth = GuiElement.scaled(58d);
+        double usable = Math.Max(
+            GuiElement.scaled(24d),
+            width - labelWidth - GuiElement.scaled(18d));
+        double fraction = Math.Clamp(
+            (double)(current - minimum) / Math.Max(1, maximum - minimum),
+            0d,
+            1d);
+        double centerY = height / 2d;
+        double trackHeight = GuiElement.scaled(6d);
+        double handleWidth = GuiElement.scaled(10d);
+        double handleHeight = GuiElement.scaled(18d);
+
+        context.Rectangle(left, centerY - trackHeight / 2d, usable, trackHeight);
+        context.SetSourceRGBA(42d / 255d, 61d / 255d, 67d / 255d, 1d);
+        context.Fill();
+
+        context.Rectangle(
+            left,
+            centerY - trackHeight / 2d,
+            Math.Max(trackHeight, usable * fraction),
+            trackHeight);
+        context.SetSourceRGBA(38d / 255d, 190d / 255d, 196d / 255d, 1d);
+        context.Fill();
+
+        double handleX = left + usable * fraction;
+        context.Rectangle(
+            handleX - handleWidth / 2d,
+            centerY - handleHeight / 2d,
+            handleWidth,
+            handleHeight);
+        context.SetSourceRGBA(232d / 255d, 249d / 255d, 250d / 255d, 1d);
+        context.Fill();
+
+        generateTexture(surface, ref sliderTexture, linearMag: false);
     }
 
     private void ComposeValueTexture()

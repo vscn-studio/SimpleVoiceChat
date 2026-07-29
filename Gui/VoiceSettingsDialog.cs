@@ -191,7 +191,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         ElementBounds background = ElementBounds.Fill.WithFixedPadding(3);
         background.WithChildren(content);
         ElementBounds viewport = ElementBounds.Fixed(ContentLeft, ContentTop, ContentWidth, ViewportHeight);
-        contentBounds = ElementBounds.Fixed(0, -scrollPosition, ContentWidth, ViewportHeight);
+        contentBounds = ElementBounds.Fixed(0, 0, ContentWidth, ViewportHeight);
 
         CairoFont titleFont = CairoFont.WhiteSmallishText();
 
@@ -241,6 +241,13 @@ public sealed class VoiceSettingsDialog : GuiDialog
             VoiceSettingsPage.Admin => AddAdminPage(composer),
             _ => AddAudioPage(composer)
         };
+        contentHeight = Math.Max(ViewportHeight, contentHeight);
+        contentBounds.fixedHeight = contentHeight;
+        scrollPosition = Math.Clamp(
+            scrollPosition,
+            0f,
+            (float)Math.Max(0d, contentHeight - ViewportHeight));
+        contentBounds.fixedY = -scrollPosition;
 
         composer
             .EndChildElements()
@@ -267,10 +274,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         GuiElementScrollbar? scrollbar = SingleComposer.GetScrollbar("pageScrollbar");
         if (scrollbar != null)
         {
-            float totalHeight = (float)Math.Max(ViewportHeight, contentHeight);
-            scrollPosition = Math.Clamp(scrollPosition, 0, totalHeight - (float)ViewportHeight);
-            contentBounds.fixedY = -scrollPosition;
-            contentBounds.CalcWorldBounds();
+            float totalHeight = (float)contentHeight;
             suppressScrollCallback = true;
             try
             {
