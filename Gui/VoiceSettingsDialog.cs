@@ -51,8 +51,6 @@ internal static class VoiceSettingsNavigation
 
 public sealed class VoiceSettingsDialog : GuiDialog
 {
-    private const double WindowWidth = 968;
-    private const double WindowHeight = 700;
     private const double NavigationWidth = 184;
     private const double ContentLeft = 198;
     private const double ContentTop = 78;
@@ -69,13 +67,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private double contentHeight = ViewportHeight;
     private bool suppressScrollCallback;
     private bool composeQueued;
-    private double windowOffsetX;
-    private double windowOffsetY;
-    private bool dragging;
-    private int dragStartX;
-    private int dragStartY;
-    private double dragOffsetX;
-    private double dragOffsetY;
 
     private string selectedPlayerUid = string.Empty;
     private string selectedChannelAction = "invite";
@@ -104,54 +95,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
         controller.RequestSettingsRefresh();
         Compose();
         return base.TryOpen();
-    }
-
-    public override void OnMouseDown(MouseEvent args)
-    {
-        if (!args.Handled
-            && args.Button == EnumMouseButton.Left
-            && SingleComposer is { } composer
-            && composer.Bounds.PointInside(args.X, args.Y)
-            && args.Y <= composer.Bounds.absY + GuiElement.scaled(38)
-            && args.X < composer.Bounds.absX + composer.Bounds.OuterWidth - GuiElement.scaled(48))
-        {
-            dragging = true;
-            dragStartX = args.X;
-            dragStartY = args.Y;
-            dragOffsetX = windowOffsetX;
-            dragOffsetY = windowOffsetY;
-            args.Handled = true;
-            return;
-        }
-        base.OnMouseDown(args);
-    }
-
-    public override void OnMouseMove(MouseEvent args)
-    {
-        if (!dragging || SingleComposer is not { } composer)
-        {
-            base.OnMouseMove(args);
-            return;
-        }
-
-        double scale = Math.Max(0.001, GuiElement.scaled(1));
-        windowOffsetX = dragOffsetX + (args.X - dragStartX) / scale;
-        windowOffsetY = dragOffsetY + (args.Y - dragStartY) / scale;
-        composer.Bounds.WithFixedAlignmentOffset(windowOffsetX, windowOffsetY);
-        composer.Bounds.MarkDirtyRecursive();
-        composer.Bounds.CalcWorldBounds();
-        args.Handled = true;
-    }
-
-    public override void OnMouseUp(MouseEvent args)
-    {
-        if (dragging)
-        {
-            dragging = false;
-            args.Handled = true;
-            return;
-        }
-        base.OnMouseUp(args);
     }
 
     public void RefreshData()
@@ -185,27 +128,17 @@ public sealed class VoiceSettingsDialog : GuiDialog
         }
 
         SingleComposer?.Dispose();
-        ElementBounds root = ElementBounds.Fixed(EnumDialogArea.CenterMiddle, 0, 0, WindowWidth, WindowHeight)
-            .WithFixedAlignmentOffset(windowOffsetX, windowOffsetY);
-        ElementBounds content = ElementBounds.Fixed(0, 0, WindowWidth, WindowHeight);
-        ElementBounds background = ElementBounds.Fill.WithFixedPadding(3);
-        background.WithChildren(content);
+        ElementBounds root = ElementStdBounds.AutosizedMainDialog;
+        ElementBounds background = ElementStdBounds.DialogBackground();
         ElementBounds viewport = ElementBounds.Fixed(ContentLeft, ContentTop, ContentWidth, ViewportHeight);
         contentBounds = ElementBounds.Fixed(0, 0, ContentWidth, ViewportHeight);
 
-        CairoFont titleFont = CairoFont.WhiteSmallishText();
+        CairoFont titleFont = CairoFont.WhiteSmallText().WithFontSize(15f);
 
         GuiComposer composer = capi.Gui.CreateCompo("simplevoicechat-settings", root)
-            .AddDirectorDockedSurface(background)
-            .BeginChildElements(content)
-            .AddStaticText(SVCLang.Get("title"), titleFont, ElementBounds.Fixed(14, 8, WindowWidth - 64, 28))
-            .AddDirectorIconButton(
-                DirectorIcon.Close,
-                SVCLang.Get("button-close"),
-                () => { OnClose(); return true; },
-                ElementBounds.Fixed(WindowWidth - 42, 6, 30, 28),
-                EnumButtonStyle.Small,
-                "close")
+            .AddShadedDialogBG(background)
+            .AddDialogTitleBar(SVCLang.Get("title"), OnClose, titleFont)
+            .BeginChildElements(background)
             .AddStaticText(
                 SVCLang.Get("ui-navigation"),
                 CairoFont.WhiteSmallText(),
@@ -242,7 +175,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
             _ => AddAudioPage(composer)
         };
         contentHeight = Math.Max(ViewportHeight, contentHeight);
-        contentBounds.fixedHeight = contentHeight;
         scrollPosition = Math.Clamp(
             scrollPosition,
             0f,
@@ -255,7 +187,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             .EndDirectorStaticClip("pageStaticClipEnd")
             .AddVerticalScrollbar(
                 OnScroll,
-                ElementBounds.Fixed(ContentLeft + ContentWidth + 6, ContentTop, 18, ViewportHeight),
+                ElementBounds.Fixed(ContentLeft + ContentWidth + 6, ContentTop, 16, ViewportHeight),
                 "pageScrollbar")
             .AddDynamicText(
                 controller.HasServerControl ? SVCLang.Get("ui-role-admin") : SVCLang.Get("ui-role-player"),
@@ -266,7 +198,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
                 DirectorIcon.Refresh,
                 SVCLang.Get("button-refresh-status"),
                 RefreshStatus,
-                ElementBounds.Fixed(WindowWidth - 54, FooterY - 2, 34, 30),
+                ElementBounds.Fixed(ContentLeft + ContentWidth - 34, FooterY - 2, 34, 30),
                 EnumButtonStyle.Small,
                 "footerRefresh");
 
@@ -447,14 +379,115 @@ public sealed class VoiceSettingsDialog : GuiDialog
         const double x = 18;
         double y = 16;
         CairoFont section = CairoFont.WhiteSmallText().WithFontSize(15f);
-        CairoFont detail = CairoFont.WhiteDetailText().WithFontSize(13f);
+        DirectorTableRow[] statusRows = ParseTableRows(
+            controller.BuildSettingsStatus(),
+            SVCLang.Get("summary-line-commands"));
+        double statusTableHeight = GuiElementDirectorTable.RequiredHeight(statusRows, 710, 220);
         composer
             .AddStaticText(SVCLang.Get("label-current-status"), section, ElementBounds.Fixed(x, y, 700, 28))
-            .AddStaticText(controller.BuildSettingsStatus(), detail, ElementBounds.Fixed(x, y += 34, 710, 260))
-            .AddStaticText(SVCLang.Get("label-diagnostics"), section, ElementBounds.Fixed(x, y += 276, 700, 28))
-            .AddStaticText(controller.BuildSettingsDiagnostics(), detail, ElementBounds.Fixed(x, y += 34, 710, 210))
-            .AddDirectorButton(SVCLang.Get("button-refresh-status"), RefreshStatus, ElementBounds.Fixed(x, y += 226, 190, 34), EnumButtonStyle.Normal, "refreshStatus");
+            .AddDirectorTable(
+                SVCLang.Get("ui-table-field"),
+                SVCLang.Get("ui-table-value"),
+                statusRows,
+                ElementBounds.Fixed(x, y += 34, 710, statusTableHeight),
+                220,
+                "statusTable");
+
+        y += statusTableHeight + 20;
+        DirectorTableRow[] diagnosticRows = ParseTableRows(controller.BuildSettingsDiagnostics());
+        double diagnosticTableHeight = GuiElementDirectorTable.RequiredHeight(diagnosticRows, 710, 220);
+        composer
+            .AddStaticText(SVCLang.Get("label-diagnostics"), section, ElementBounds.Fixed(x, y, 700, 28))
+            .AddDirectorTable(
+                SVCLang.Get("ui-table-field"),
+                SVCLang.Get("ui-table-value"),
+                diagnosticRows,
+                ElementBounds.Fixed(x, y += 34, 710, diagnosticTableHeight),
+                220,
+                "diagnosticsTable");
+
+        y += diagnosticTableHeight + 20;
+        DirectorTableRow[] commandRows = BuildCommandTableRows();
+        double commandTableHeight = GuiElementDirectorTable.RequiredHeight(commandRows, 710, 300);
+        composer
+            .AddStaticText(SVCLang.Get("ui-command-reference"), section, ElementBounds.Fixed(x, y, 700, 28))
+            .AddDirectorTable(
+                SVCLang.Get("ui-table-command"),
+                SVCLang.Get("ui-table-description"),
+                commandRows,
+                ElementBounds.Fixed(x, y += 34, 710, commandTableHeight),
+                300,
+                "commandTable")
+            .AddDirectorButton(
+                SVCLang.Get("button-refresh-status"),
+                RefreshStatus,
+                ElementBounds.Fixed(x, y += commandTableHeight + 18, 190, 34),
+                EnumButtonStyle.Normal,
+                "refreshStatus");
         return y + 52;
+    }
+
+    private static DirectorTableRow[] ParseTableRows(string summary, params string[] excludedLines)
+    {
+        List<DirectorTableRow> rows = new();
+        string[] lines = (summary ?? string.Empty)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        for (int index = 0; index < lines.Length; index++)
+        {
+            string line = lines[index];
+            if (excludedLines.Any(excluded => string.Equals(excluded, line, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            int separator = FindTableSeparator(line);
+            if (separator > 0 && separator < line.Length - 1)
+            {
+                rows.Add(new DirectorTableRow(
+                    line[..separator].Trim(),
+                    line[(separator + 1)..].Trim()));
+                continue;
+            }
+
+            rows.Add(new DirectorTableRow(
+                SVCLang.Get(index == 0 ? "ui-table-summary-row" : "ui-table-detail-row"),
+                line));
+        }
+
+        return rows.ToArray();
+    }
+
+    private static int FindTableSeparator(string line)
+    {
+        int colon = line.IndexOf(':');
+        int wideColon = line.IndexOf('：');
+        int equals = line.IndexOf('=');
+        int separator = colon < 0 ? wideColon : wideColon < 0 ? colon : Math.Min(colon, wideColon);
+        if (separator < 0 || (equals >= 0 && equals < separator))
+        {
+            separator = equals;
+        }
+        return separator;
+    }
+
+    private static DirectorTableRow[] BuildCommandTableRows()
+    {
+        return new[]
+        {
+            new DirectorTableRow("/svc status", SVCLang.Get("command-table-status")),
+            new DirectorTableRow("/svc volume <0-200>", SVCLang.Get("command-table-volume")),
+            new DirectorTableRow("/svc volumeplayer <player> <0-200>", SVCLang.Get("command-table-volumeplayer")),
+            new DirectorTableRow("/svc mute <player>", SVCLang.Get("command-table-mute")),
+            new DirectorTableRow("/svc unmute <player>", SVCLang.Get("command-table-unmute")),
+            new DirectorTableRow("/svc bind", SVCLang.Get("command-table-bind")),
+            new DirectorTableRow("/svc unbind", SVCLang.Get("command-table-unbind")),
+            new DirectorTableRow("/svc squad", SVCLang.Get("command-table-squad")),
+            new DirectorTableRow("/svc accept", SVCLang.Get("command-table-accept")),
+            new DirectorTableRow("/svc decline", SVCLang.Get("command-table-decline")),
+            new DirectorTableRow("/svc diag", SVCLang.Get("command-table-diag")),
+            new DirectorTableRow("/svc adminmute|adminunmute|forceblock|unforceblock <player|UID>", SVCLang.Get("command-table-admin-control")),
+            new DirectorTableRow("/svc adminmutes", SVCLang.Get("command-table-admin-list"))
+        };
     }
 
     private double AddAdminPage(GuiComposer composer)
@@ -795,7 +828,10 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private void OnScroll(float value)
     {
-        scrollPosition = Math.Max(0, value);
+        scrollPosition = Math.Clamp(
+            value,
+            0f,
+            (float)Math.Max(0d, contentHeight - ViewportHeight));
         if (contentBounds == null) return;
         contentBounds.fixedY = -scrollPosition;
         contentBounds.CalcWorldBounds();

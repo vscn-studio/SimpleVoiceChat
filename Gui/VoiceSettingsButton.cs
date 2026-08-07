@@ -206,15 +206,15 @@ internal sealed class GuiElementDirectorButton : GuiElementControl
         double height = Bounds.OuterHeight;
         bool primary = intent == EnumButtonStyle.Normal;
         (double red, double green, double blue) = danger
-            ? (0.46d, 0.105d, 0.12d)
+            ? (DirectorGuiTheme.DangerR, DirectorGuiTheme.DangerG, DirectorGuiTheme.DangerB)
             : primary
-                ? (0.105d, 0.355d, 0.39d)
-                : (0.105d, 0.13d, 0.145d);
+                ? (DirectorGuiTheme.AccentR, DirectorGuiTheme.AccentG, DirectorGuiTheme.AccentB)
+                : (DirectorGuiTheme.RaisedR, DirectorGuiTheme.RaisedG, DirectorGuiTheme.RaisedB);
         if (state == 1)
         {
-            red += 0.035d;
-            green += danger ? 0.035d : primary ? 0.075d : 0.045d;
-            blue += danger ? 0.035d : primary ? 0.075d : 0.05d;
+            red = Math.Min(1d, red + (danger ? 0.08d : 0.06d));
+            green = Math.Min(1d, green + (danger ? 0.06d : 0.07d));
+            blue = Math.Min(1d, blue + (danger ? 0.04d : 0.03d));
         }
         else if (state == 2)
         {
@@ -227,9 +227,9 @@ internal sealed class GuiElementDirectorButton : GuiElementControl
         context.SetSourceRGBA(red, green, blue, alpha);
         context.FillPreserve();
         context.SetSourceRGBA(
-            danger ? 0.78d : primary ? 0.3d : DirectorGuiTheme.BorderR,
-            danger ? 0.29d : primary ? 0.62d : DirectorGuiTheme.BorderG,
-            danger ? 0.31d : primary ? 0.65d : DirectorGuiTheme.BorderB,
+            danger ? DirectorGuiTheme.DangerBorderR : primary ? DirectorGuiTheme.AccentR : DirectorGuiTheme.BorderR,
+            danger ? DirectorGuiTheme.DangerBorderG : primary ? DirectorGuiTheme.AccentG : DirectorGuiTheme.BorderG,
+            danger ? DirectorGuiTheme.DangerBorderB : primary ? DirectorGuiTheme.AccentB : DirectorGuiTheme.BorderB,
             state == 3 ? 0.16d : danger ? 0.62d : primary ? 0.48d : 0.42d);
         context.LineWidth = 1d;
         context.Stroke();
@@ -257,7 +257,11 @@ internal sealed class GuiElementDirectorButton : GuiElementControl
         FontExtents fontExtents = font.GetFontExtents();
         double x = Math.Max(horizontalPadding, (width - extents.Width) / 2d - extents.XBearing);
         double y = Math.Max(fontExtents.Ascent, (height - fontExtents.Height) / 2d + fontExtents.Ascent);
-        context.SetSourceRGBA(0.92d, 0.97d, 0.98d, contentAlpha);
+        context.SetSourceRGBA(
+            DirectorGuiTheme.TextR,
+            DirectorGuiTheme.TextG,
+            DirectorGuiTheme.TextB,
+            contentAlpha);
         context.MoveTo(x, y);
         context.ShowText(displayText);
         generateTexture(surface, ref target, linearMag: true);
@@ -281,9 +285,9 @@ internal sealed class GuiElementDirectorButton : GuiElementControl
         int y = Math.Max(0, (int)Math.Round((height - size) / 2d));
         int color = ColorUtil.ToRgba(
             Math.Clamp((int)Math.Round(alpha * 255d), 0, 255),
-            235,
-            247,
-            250);
+            (int)Math.Round(DirectorGuiTheme.TextR * 255d),
+            (int)Math.Round(DirectorGuiTheme.TextG * 255d),
+            (int)Math.Round(DirectorGuiTheme.TextB * 255d));
         surface.Flush();
         api.Gui.DrawSvg(iconAsset, surface, x, y, size, size, color);
     }

@@ -6,7 +6,7 @@
     "VSCN-Studio"
   ],
   "description": "适用于大型文明模拟活动的双端语音聊天，支持接近度、文明、指挥、外交、小队、工作人员、广播和无线电频道，以及 Opus、权限与容量保护。",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "dependencies": {
     "game": "1.22.2"
   }

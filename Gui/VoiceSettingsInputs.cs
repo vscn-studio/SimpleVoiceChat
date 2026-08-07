@@ -107,20 +107,27 @@ internal static class DirectorGuiComposerDropdownMouseUpCapturePatch
 internal static class DirectorGuiTheme
 {
     public const double CornerRadius = 4d;
-    public const double SurfaceR = 0.055d;
-    public const double SurfaceG = 0.075d;
-    public const double SurfaceB = 0.086d;
-    public const double RaisedR = 0.095d;
-    public const double RaisedG = 0.125d;
-    public const double RaisedB = 0.14d;
-    public const double BorderR = 0.25d;
+    // Blue surface: #123B5C.
+    public const double SurfaceR = 18d / 255d;
+    public const double SurfaceG = 59d / 255d;
+    public const double SurfaceB = 92d / 255d;
+    public const double RaisedR = 0.065d;
+    public const double RaisedG = 0.15d;
+    public const double RaisedB = 0.19d;
+    public const double BorderR = 0.16d;
     public const double BorderG = 0.34d;
-    public const double BorderB = 0.37d;
-    public const double AccentR = 0.18d;
-    public const double AccentG = 0.68d;
-    public const double AccentB = 0.7d;
+    public const double BorderB = 0.44d;
+    public const double AccentR = 54d / 255d;
+    public const double AccentG = 117d / 255d;
+    public const double AccentB = 150d / 255d;
+    public const double DangerR = 0.62d;
+    public const double DangerG = 0.14d;
+    public const double DangerB = 0.1d;
+    public const double DangerBorderR = 0.86d;
+    public const double DangerBorderG = 0.3d;
+    public const double DangerBorderB = 0.2d;
     public const double TextR = 0.9d;
-    public const double TextG = 0.95d;
+    public const double TextG = 0.94d;
     public const double TextB = 0.96d;
 
     public static double ScaledCornerRadius => GuiElement.scaled(CornerRadius);
@@ -1373,7 +1380,11 @@ internal sealed class GuiElementDirectorListMenu : GuiElementListMenu
         {
             return;
         }
-        context.SetSourceRGBA(0.04d, 0.09d, 0.1d, 0.95d);
+        context.SetSourceRGBA(
+            DirectorGuiTheme.SurfaceR,
+            DirectorGuiTheme.SurfaceG,
+            DirectorGuiTheme.SurfaceB,
+            0.95d);
         context.LineWidth = Math.Max(1.2d, GuiElement.scaled(1.4d));
         context.LineCap = LineCap.Round;
         context.MoveTo(cx - radius * 0.55d, cy);
@@ -2104,7 +2115,11 @@ internal sealed class GuiElementDirectorNumberInput : GuiElementNumberInput
         using Context context = new(surface);
         DirectorGuiTheme.RoundedRectangle(context, 0.5d, 0.5d, surface.Width - 1d, surface.Height - 1d,
             DirectorGuiTheme.ScaledCornerRadius);
-        context.SetSourceRGBA(0.02d, 0.028d, 0.032d, 0.58d);
+        context.SetSourceRGBA(
+            DirectorGuiTheme.SurfaceR,
+            DirectorGuiTheme.SurfaceG,
+            DirectorGuiTheme.SurfaceB,
+            0.58d);
         context.Fill();
         generateTexture(surface, ref disabledOverlayTexture, linearMag: true);
     }
@@ -2334,7 +2349,11 @@ internal sealed class GuiElementDirectorSwitch : GuiElementSwitch
         context.Stroke();
         if (value)
         {
-            context.SetSourceRGBA(0.94d, 0.99d, 0.99d, Enabled ? 1d : 0.4d);
+            context.SetSourceRGBA(
+                DirectorGuiTheme.TextR,
+                DirectorGuiTheme.TextG,
+                DirectorGuiTheme.TextB,
+                Enabled ? 1d : 0.4d);
             context.LineWidth = Math.Max(1.5d, GuiElement.scaled(1.8d));
             context.LineCap = LineCap.Round;
             context.MoveTo(surface.Width * 0.25d, surface.Height * 0.52d);
@@ -2530,7 +2549,11 @@ internal sealed class GuiElementDirectorSlider : GuiElementControl
         double handleHeight = GuiElement.scaled(18d);
 
         context.Rectangle(left, centerY - trackHeight / 2d, usable, trackHeight);
-        context.SetSourceRGBA(42d / 255d, 61d / 255d, 67d / 255d, 1d);
+        context.SetSourceRGBA(
+            DirectorGuiTheme.RaisedR,
+            DirectorGuiTheme.RaisedG,
+            DirectorGuiTheme.RaisedB,
+            1d);
         context.Fill();
 
         context.Rectangle(
@@ -2538,7 +2561,11 @@ internal sealed class GuiElementDirectorSlider : GuiElementControl
             centerY - trackHeight / 2d,
             Math.Max(trackHeight, usable * fraction),
             trackHeight);
-        context.SetSourceRGBA(38d / 255d, 190d / 255d, 196d / 255d, 1d);
+        context.SetSourceRGBA(
+            DirectorGuiTheme.AccentR,
+            DirectorGuiTheme.AccentG,
+            DirectorGuiTheme.AccentB,
+            1d);
         context.Fill();
 
         double handleX = left + usable * fraction;
@@ -2547,7 +2574,11 @@ internal sealed class GuiElementDirectorSlider : GuiElementControl
             centerY - handleHeight / 2d,
             handleWidth,
             handleHeight);
-        context.SetSourceRGBA(232d / 255d, 249d / 255d, 250d / 255d, 1d);
+        context.SetSourceRGBA(
+            DirectorGuiTheme.TextR,
+            DirectorGuiTheme.TextG,
+            DirectorGuiTheme.TextB,
+            1d);
         context.Fill();
 
         generateTexture(surface, ref sliderTexture, linearMag: false);
