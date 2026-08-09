@@ -10,6 +10,84 @@ public enum VoiceRecordingMode
 }
 
 /// <summary>
+/// Holds microphone-test samples in memory so the settings page can verify
+/// capture and playback without creating a recording file.
+/// </summary>
+public sealed class VoiceTestRecordingBuffer
+{
+    private readonly object gate = new();
+    private readonly List<short> samples = new();
+    private RecordedAudioClip? lastClip;
+    private bool recording;
+
+    public bool IsRecording
+    {
+        get
+        {
+            lock (gate)
+            {
+                return recording;
+            }
+        }
+    }
+
+    public RecordedAudioClip? LastClip
+    {
+        get
+        {
+            lock (gate)
+            {
+                return lastClip;
+            }
+        }
+    }
+
+    public void Start()
+    {
+        lock (gate)
+        {
+            samples.Clear();
+            lastClip = null;
+            recording = true;
+        }
+    }
+
+    public bool Stop()
+    {
+        lock (gate)
+        {
+            if (!recording)
+            {
+                return false;
+            }
+
+            recording = false;
+            if (samples.Count == 0)
+            {
+                lastClip = null;
+                return false;
+            }
+
+            lastClip = RecordedAudioClip.FromPcm(samples.ToArray());
+            return true;
+        }
+    }
+
+    public void AppendInput(ReadOnlySpan<short> input)
+    {
+        lock (gate)
+        {
+            if (!recording || input.IsEmpty)
+            {
+                return;
+            }
+
+            samples.AddRange(input.ToArray());
+        }
+    }
+}
+
+/// <summary>
 /// Streams local microphone and playback samples into a PCM WAV file. The
 /// input+output mode stores input on the left channel and playback on the
 /// right channel so the two sources remain distinguishable when replayed.
@@ -313,6 +391,25 @@ public sealed class RecordedAudioClip
     public short[] Samples { get; }
     public int Channels { get; }
     public int SampleRate { get; }
+
+    public static RecordedAudioClip FromPcm(short[] samples, int channels = 1, int sampleRate = VoiceConstants.SampleRate)
+    {
+        ArgumentNullException.ThrowIfNull(samples);
+        if (samples.Length == 0)
+        {
+            throw new ArgumentException("PCM samples cannot be empty.", nameof(samples));
+        }
+        if (channels is < 1 or > 2)
+        {
+            throw new ArgumentOutOfRangeException(nameof(channels));
+        }
+        if (sampleRate <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(sampleRate));
+        }
+
+        return new RecordedAudioClip((short[])samples.Clone(), channels, sampleRate);
+    }
 
     public static bool TryLoad(string path, out RecordedAudioClip? clip, out string error)
     {

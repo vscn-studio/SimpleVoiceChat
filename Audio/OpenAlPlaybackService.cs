@@ -261,6 +261,14 @@ public sealed class OpenAlPlaybackService : IDisposable
             return false;
         }
 
+        return PlayRecording(clip, out error);
+    }
+
+    public bool PlayRecording(RecordedAudioClip clip, out string error)
+    {
+        error = string.Empty;
+        ArgumentNullException.ThrowIfNull(clip);
+
         lock (gate)
         {
             if (disposed)

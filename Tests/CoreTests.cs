@@ -58,6 +58,24 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void MicrophoneTestBufferKeepsAudioInMemory()
+    {
+        VoiceTestRecordingBuffer buffer = new();
+        short[] samples = { 100, -200, 300, -400 };
+
+        buffer.Start();
+        buffer.AppendInput(samples);
+
+        Assert.True(buffer.Stop());
+        Assert.False(buffer.IsRecording);
+        Assert.NotNull(buffer.LastClip);
+        RecordedAudioClip clip = buffer.LastClip!;
+        Assert.Equal(1, clip.Channels);
+        Assert.Equal(VoiceConstants.SampleRate, clip.SampleRate);
+        Assert.Equal(samples, clip.Samples);
+    }
+
+    [Fact]
     public void ChannelPacketsHaveNoChannelTypeField()
     {
         Assert.Null(typeof(ChannelCommandPacket).GetProperty("Kind"));

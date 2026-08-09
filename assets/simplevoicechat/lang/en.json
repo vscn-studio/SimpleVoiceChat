@@ -205,7 +205,7 @@
   "simplevoicechat:label-pending-invite": "Invite status",
   "simplevoicechat:label-performance-mode": "Performance Mode",
   "simplevoicechat:label-player-volume": "Player volume / mute",
-  "simplevoicechat:label-local-recording": "Local recording and playback test",
+  "simplevoicechat:label-local-recording": "Microphone test",
   "simplevoicechat:label-show-mic-hud": "Bottom-Right Mic HUD",
   "simplevoicechat:label-transmit-target": "Transmit target",
   "simplevoicechat:label-voice-state": "Voice state",

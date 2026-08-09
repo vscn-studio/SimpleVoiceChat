@@ -205,7 +205,7 @@
   "simplevoicechat:label-pending-invite": "邀请状态",
   "simplevoicechat:label-performance-mode": "性能模式",
   "simplevoicechat:label-player-volume": "玩家音量 / 静音",
-  "simplevoicechat:label-local-recording": "本地录音与播放测试",
+  "simplevoicechat:label-local-recording": "麦克风测试",
   "simplevoicechat:label-show-mic-hud": "右下角麦克风显示",
   "simplevoicechat:label-transmit-target": "发送目标",
   "simplevoicechat:label-voice-state": "语音状态",

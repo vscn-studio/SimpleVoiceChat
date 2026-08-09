@@ -27,6 +27,7 @@ public sealed class ClientVoiceController : IDisposable
     private OpenAlCaptureService? capture;
     private OpenAlPlaybackService? playback;
     private VoiceRecordingService? recording;
+    private VoiceTestRecordingBuffer? microphoneTest;
     private VoiceHud? hud;
     private VoiceSettingsDialog? settingsDialog;
     private VoiceSetupWizardDialog? setupWizard;
@@ -126,6 +127,7 @@ public sealed class ClientVoiceController : IDisposable
         capture.Initialize();
 
         recording = new VoiceRecordingService(capi);
+        microphoneTest = new VoiceTestRecordingBuffer();
         playback = new OpenAlPlaybackService(capi, config);
         VoiceRecordingService recordingService = recording;
         playback.OutputFrameCaptured = samples => recordingService.AppendOutput(samples);
@@ -1091,6 +1093,77 @@ public sealed class ClientVoiceController : IDisposable
     internal bool HasRecording => recording?.HasRecording == true;
     internal string LastRecordingPath => recording?.LastRecordingPath ?? string.Empty;
     internal VoiceRecordingMode? RecordingMode => recording?.Mode;
+    internal bool IsMicrophoneTestRecording => microphoneTest?.IsRecording == true;
+    internal bool HasMicrophoneTestRecording => microphoneTest?.LastClip != null;
+    internal bool IsMicrophoneTestPlaybackActive => playback?.IsRecordingPlaybackActive == true;
+
+    internal bool ToggleMicrophoneTestRecording()
+    {
+        if (IsMicrophoneTestRecording)
+        {
+            return StopMicrophoneTestRecording();
+        }
+
+        if (microphoneTest == null || capture?.IsAvailable != true)
+        {
+            capi.ShowChatMessage(SVCLang.Get("chat-recording-unavailable", capture?.FailureReason ?? string.Empty));
+            return false;
+        }
+
+        microphoneTest.Start();
+        capture.Start();
+        settingsDialog?.RefreshConfiguration();
+        return true;
+    }
+
+    private bool StopMicrophoneTestRecording()
+    {
+        if (microphoneTest == null || !microphoneTest.IsRecording)
+        {
+            return false;
+        }
+
+        bool captured = microphoneTest.Stop();
+        if (!lastPressed && recording?.IsRecording != true)
+        {
+            capture?.Stop();
+        }
+
+        settingsDialog?.RefreshConfiguration();
+        if (!captured)
+        {
+            capi.ShowChatMessage(SVCLang.Get("chat-recording-empty"));
+        }
+        return captured;
+    }
+
+    internal bool ToggleMicrophoneTestPlayback()
+    {
+        if (IsMicrophoneTestPlaybackActive)
+        {
+            playback?.StopRecordingPlayback();
+            lastRecordingPlaybackActive = false;
+            settingsDialog?.RefreshConfiguration();
+            return true;
+        }
+
+        RecordedAudioClip? clip = microphoneTest?.LastClip;
+        if (clip == null || playback == null)
+        {
+            capi.ShowChatMessage(SVCLang.Get("chat-recording-playback-empty"));
+            return false;
+        }
+
+        if (!playback.PlayRecording(clip, out string error))
+        {
+            capi.ShowChatMessage(SVCLang.Get("chat-recording-playback-failed", error));
+            return false;
+        }
+
+        lastRecordingPlaybackActive = true;
+        settingsDialog?.RefreshConfiguration();
+        return true;
+    }
 
     internal bool ToggleRecordingFromSettings()
     {
@@ -1559,14 +1632,16 @@ public sealed class ClientVoiceController : IDisposable
             return;
         }
         bool pressed = toggleTalkEnabled || IsPushToTalkPressed();
-        bool canSpeak = pressed
+        bool testRecordingActive = microphoneTest?.IsRecording == true;
+        bool canSpeak = !testRecordingActive
+            && pressed
             && !localMuted
             && !globalMuted
             && serverConfig.Enabled
             && voiceHandshakeAccepted
             && capture?.IsAvailable == true
             && voiceChannel?.Connected == true;
-        bool isRecording = recording?.IsRecording == true;
+        bool isRecording = recording?.IsRecording == true || testRecordingActive;
 
         if (pressed && capture?.IsAvailable != true && !captureWarningShown)
         {
@@ -1574,7 +1649,14 @@ public sealed class ClientVoiceController : IDisposable
             capi.ShowChatMessage(SVCLang.Get("chat-mic-unavailable", capture?.FailureReason ?? string.Empty));
         }
 
-        if (canSpeak)
+        if (testRecordingActive)
+        {
+            // A microphone test must stay local and must never transmit voice.
+            lastPressed = false;
+            capture?.Start();
+            DrainCapturedFrames(sendVoice: false);
+        }
+        else if (canSpeak)
         {
             if (!lastPressed)
             {
@@ -1864,6 +1946,10 @@ public sealed class ClientVoiceController : IDisposable
             if (recording?.IsRecording == true)
             {
                 recording.AppendInput(captureBuffer);
+            }
+            if (microphoneTest?.IsRecording == true)
+            {
+                microphoneTest.AppendInput(captureBuffer);
             }
             if (!sendVoice)
             {
@@ -2203,6 +2289,7 @@ public sealed class ClientVoiceController : IDisposable
         playback = null;
         recording?.Dispose();
         recording = null;
+        microphoneTest = null;
         hud?.TryClose();
         hud?.Dispose();
         hud = null;

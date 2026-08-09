@@ -373,27 +373,27 @@ public sealed class VoiceSettingsDialog : GuiDialog
         composer.AddStaticText(SVCLang.Get("label-local-recording"), label,
             ElementBounds.Fixed(labelX, recordingY + 3, 210, 30));
         AddFlatButton(composer,
-            controller.IsRecording
+            controller.IsMicrophoneTestRecording
                 ? SVCLang.Get("button-recording-stop")
                 : SVCLang.Get("button-recording-start"),
-            controller.ToggleRecordingFromSettings,
+            controller.ToggleMicrophoneTestRecording,
             ElementBounds.Fixed(controlX, recordingY, 190, controlHeight),
             "recording-toggle",
-            active: controller.IsRecording);
+            active: controller.IsMicrophoneTestRecording);
         AddFlatButton(composer,
-            controller.IsRecordingPlaybackActive
+            controller.IsMicrophoneTestPlaybackActive
                 ? SVCLang.Get("button-play-recording-stop")
                 : SVCLang.Get("button-play-recording-start"),
-            controller.ToggleRecordingPlaybackFromSettings,
+            controller.ToggleMicrophoneTestPlayback,
             ElementBounds.Fixed(controlX + 202, recordingY, 190, controlHeight),
             "recording-playback-toggle",
-            active: controller.IsRecordingPlaybackActive);
+            active: controller.IsMicrophoneTestPlaybackActive);
         composer.AddStaticText(
-            controller.IsRecording
+            controller.IsMicrophoneTestRecording
                 ? SVCLang.Get("recording-status-recording")
-                : controller.IsRecordingPlaybackActive
+                : controller.IsMicrophoneTestPlaybackActive
                     ? SVCLang.Get("recording-status-playback")
-                    : controller.HasRecording
+                    : controller.HasMicrophoneTestRecording
                         ? SVCLang.Get("recording-status-ready")
                         : SVCLang.Get("recording-status-none"),
             CairoFont.WhiteDetailText().WithColor(new[] { 0.78, 0.82, 0.88, 1.0 }),
