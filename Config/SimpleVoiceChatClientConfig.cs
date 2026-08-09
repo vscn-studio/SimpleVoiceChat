@@ -11,8 +11,11 @@ public sealed class SimpleVoiceChatClientConfig
     public float OutputVolume { get; set; } = 1f;
     public float MicGain { get; set; } = 1f;
     public float NoiseGate { get; set; } = 0.015f;
+    public float VoiceActivationThreshold { get; set; } = 0.08f;
     public string PushToTalkKey { get; set; } = "N";
     public string ModeCycleKey { get; set; } = "LBracket";
+    public bool PreferVoiceActivation { get; set; }
+    // Legacy setting retained so existing configuration files migrate cleanly.
     public bool PreferContinuousTalk { get; set; }
     public bool InitialSetupCompleted { get; set; }
     public bool InitialSetupPromptShown { get; set; }
@@ -50,6 +53,11 @@ public sealed class SimpleVoiceChatClientConfig
         OutputVolume = Math.Clamp(OutputVolume, 0f, 2f);
         MicGain = Math.Clamp(MicGain, 0.1f, 4f);
         NoiseGate = Math.Clamp(NoiseGate, 0f, 0.2f);
+        VoiceActivationThreshold = Math.Clamp(VoiceActivationThreshold, 0.005f, 0.2f);
+        if (VoiceActivationThreshold < NoiseGate)
+        {
+            VoiceActivationThreshold = NoiseGate;
+        }
         ChannelOutputVolume = Math.Clamp(ChannelOutputVolume, 0f, 2f);
         ShowHudIndicator = ShowMicrophoneHud;
         PlayerVolumeOverrides ??= new Dictionary<string, float>(StringComparer.Ordinal);
@@ -78,6 +86,12 @@ public sealed class SimpleVoiceChatClientConfig
 
     private void Migrate()
     {
+        if (PreferContinuousTalk)
+        {
+            PreferVoiceActivation = true;
+            PreferContinuousTalk = false;
+        }
+
         if (ConfigVersion < 2)
         {
             ShowMicrophoneHud = ShowHudIndicator;

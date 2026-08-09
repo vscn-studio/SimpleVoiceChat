@@ -165,6 +165,372 @@ internal static class VoiceSettingsComposerExtensions
         composer.AddInteractiveElement(new VoiceSettingsSlider(composer.Api, changed, bounds), key);
         return composer;
     }
+
+    public static GuiComposer AddVoiceKeyBinding(this GuiComposer composer, Action<string> changed, string value, ElementBounds bounds, string key)
+    {
+        composer.AddInteractiveElement(new VoiceSettingsKeyBinding(composer.Api, bounds, value, changed), key);
+        return composer;
+    }
+
+    public static GuiComposer AddVoiceLevelMeter(this GuiComposer composer, Func<float> level, ElementBounds bounds, string key)
+    {
+        composer.AddInteractiveElement(new VoiceSettingsLevelMeter(composer.Api, bounds, level), key);
+        return composer;
+    }
+
+    public static GuiComposer AddVoiceActivationThresholdControl(
+        this GuiComposer composer,
+        Func<float> microphoneLevel,
+        ActionConsumable<int> noiseGateChanged,
+        ActionConsumable<int> triggerChanged,
+        ElementBounds bounds,
+        string key)
+    {
+        composer.AddInteractiveElement(new VoiceActivationThresholdControl(
+            composer.Api, bounds, microphoneLevel, noiseGateChanged, triggerChanged), key);
+        return composer;
+    }
+}
+
+internal sealed class VoiceSettingsLevelMeter : GuiElementControl
+{
+    private readonly Func<float> level;
+    private readonly LoadedTexture fillTexture;
+
+    public override bool Focusable => false;
+
+    public VoiceSettingsLevelMeter(ICoreClientAPI capi, ElementBounds bounds, Func<float> level)
+        : base(capi, bounds)
+    {
+        this.level = level;
+        fillTexture = new LoadedTexture(capi);
+    }
+
+    public override void ComposeElements(Context ctx, ImageSurface surface)
+    {
+        Bounds.CalcWorldBounds();
+        ctx.Rectangle(Bounds.drawX, Bounds.drawY, Bounds.InnerWidth, Bounds.InnerHeight);
+        ctx.SetSourceRGBA(0.15, 0.18, 0.22, 0.98);
+        ctx.FillPreserve();
+        ctx.SetSourceRGBA(0.84, 0.89, 0.96, 0.72);
+        ctx.LineWidth = GuiElement.scaled(1);
+        ctx.Stroke();
+        using ImageSurface fillSurface = new(Format.Argb32, 2, 2);
+        using Context fillContext = new(fillSurface);
+        fillContext.SetSourceRGBA(0.93, 0.95, 0.98, 0.96);
+        fillContext.Paint();
+        GuiElement.GenerateTexture(api, fillSurface, ref fillTexture.TextureId);
+    }
+
+    public override void RenderInteractiveElements(float deltaTime)
+    {
+        double fraction = Math.Clamp(level() / 0.2f, 0f, 1f);
+        if (fraction > 0.001)
+        {
+            api.Render.Render2DTexturePremultipliedAlpha(
+                fillTexture.TextureId, Bounds.renderX, Bounds.renderY, Bounds.InnerWidth * fraction, Bounds.InnerHeight);
+        }
+    }
+
+    public override void Dispose()
+    {
+        fillTexture.Dispose();
+        base.Dispose();
+    }
+}
+
+/// <summary>
+/// Single compact control for the voice-activation test. One live microphone
+/// meter contains two draggable handles for the noise gate and trigger level.
+/// </summary>
+internal sealed class VoiceActivationThresholdControl : GuiElementControl
+{
+    private readonly Func<float> microphoneLevel;
+    private readonly ActionConsumable<int> noiseGateChanged;
+    private readonly ActionConsumable<int> triggerChanged;
+    private readonly LoadedTexture texture;
+    private int noiseGate;
+    private int triggerThreshold;
+    private int activeThumb = -1;
+    private float lastMicrophoneLevel = -1f;
+    private int lastNoiseGate = -1;
+    private int lastTriggerThreshold = -1;
+
+    public override bool Focusable => Enabled;
+
+    public VoiceActivationThresholdControl(
+        ICoreClientAPI capi,
+        ElementBounds bounds,
+        Func<float> microphoneLevel,
+        ActionConsumable<int> noiseGateChanged,
+        ActionConsumable<int> triggerChanged)
+        : base(capi, bounds)
+    {
+        this.microphoneLevel = microphoneLevel;
+        this.noiseGateChanged = noiseGateChanged;
+        this.triggerChanged = triggerChanged;
+        texture = new LoadedTexture(capi);
+    }
+
+    public void Configure(int noiseGate, int triggerThreshold)
+    {
+        this.noiseGate = Math.Clamp(noiseGate, 0, 200);
+        this.triggerThreshold = Math.Clamp(triggerThreshold, this.noiseGate, 200);
+        lastMicrophoneLevel = -1f;
+        Redraw();
+    }
+
+    public override void ComposeElements(Context ctx, ImageSurface surface)
+    {
+        Bounds.CalcWorldBounds();
+        Redraw();
+    }
+
+    public override void RenderInteractiveElements(float deltaTime)
+    {
+        float level = Math.Clamp(microphoneLevel(), 0f, 0.2f);
+        if (texture.TextureId == 0
+            || Math.Abs(level - lastMicrophoneLevel) > 0.001f
+            || noiseGate != lastNoiseGate
+            || triggerThreshold != lastTriggerThreshold)
+        {
+            Redraw();
+        }
+
+        api.Render.Render2DTexturePremultipliedAlpha(texture.TextureId, Bounds);
+    }
+
+    public override void OnMouseDownOnElement(ICoreClientAPI api, MouseEvent args)
+    {
+        base.OnMouseDownOnElement(api, args);
+        if (!Enabled)
+        {
+            return;
+        }
+
+        activeThumb = TrackIndex(args.X);
+        if (activeThumb >= 0)
+        {
+            UpdateValue(args.X, activeThumb);
+            args.Handled = true;
+        }
+    }
+
+    public override void OnMouseMove(ICoreClientAPI api, MouseEvent args)
+    {
+        if (activeThumb < 0 || !Enabled)
+        {
+            return;
+        }
+
+        UpdateValue(args.X, activeThumb);
+        args.Handled = true;
+    }
+
+    public override void OnMouseUpOnElement(ICoreClientAPI api, MouseEvent args)
+    {
+        if (activeThumb >= 0)
+        {
+            activeThumb = -1;
+            args.Handled = true;
+        }
+        base.OnMouseUpOnElement(api, args);
+    }
+
+    private int TrackIndex(int screenX)
+    {
+        Bounds.CalcWorldBounds();
+        double localX = screenX - Bounds.renderX;
+        double left = GuiElement.scaled(12);
+        double width = Bounds.OuterWidth - GuiElement.scaled(24);
+        double fraction = Math.Clamp((localX - left) / width, 0d, 1d);
+        double noisePosition = noiseGate / 200d;
+        double triggerPosition = triggerThreshold / 200d;
+        return Math.Abs(fraction - noisePosition) <= Math.Abs(fraction - triggerPosition) ? 0 : 1;
+    }
+
+    private void UpdateValue(int screenX, int thumb)
+    {
+        Bounds.CalcWorldBounds();
+        double left = GuiElement.scaled(12);
+        double trackWidth = Bounds.OuterWidth - GuiElement.scaled(24);
+        double fraction = Math.Clamp((screenX - Bounds.renderX - left) / trackWidth, 0d, 1d);
+        int value = (int)Math.Round(fraction * 200d);
+        if (thumb == 0)
+        {
+            noiseGate = Math.Min(value, triggerThreshold);
+            noiseGateChanged(noiseGate);
+        }
+        else
+        {
+            triggerThreshold = Math.Max(value, Math.Max(noiseGate, 5));
+            triggerChanged(triggerThreshold);
+        }
+        Redraw();
+    }
+
+    private void Redraw()
+    {
+        int width = Math.Max(1, Bounds.OuterWidthInt);
+        int height = Math.Max(1, Bounds.OuterHeightInt);
+        float level = Math.Clamp(microphoneLevel(), 0f, 0.2f);
+        double levelFraction = level / 0.2d;
+        using ImageSurface surface = new(Format.Argb32, width, height);
+        using Context context = new(surface);
+        double trackWidth = width - GuiElement.scaled(24);
+        double trackLeft = GuiElement.scaled(12);
+        double trackTop = GuiElement.scaled(27);
+        double trackHeight = Math.Max(GuiElement.scaled(18), height - trackTop - GuiElement.scaled(7));
+        CairoFont label = CairoFont.WhiteSmallText().WithFontSize(12).WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        label.SetupContext(context);
+        DrawTrack(context, label, trackLeft, trackWidth, trackTop, trackHeight, levelFraction,
+            noiseGate, triggerThreshold);
+        GuiElement.GenerateTexture(api, surface, ref texture.TextureId);
+        lastMicrophoneLevel = level;
+        lastNoiseGate = noiseGate;
+        lastTriggerThreshold = triggerThreshold;
+    }
+
+    private static void DrawTrack(
+        Context context,
+        CairoFont label,
+        double left,
+        double width,
+        double top,
+        double height,
+        double levelFraction,
+        int noiseGate,
+        int triggerThreshold)
+    {
+        context.SetSourceRGBA(0.15, 0.18, 0.22, 0.98);
+        context.Rectangle(left, top, width, height);
+        context.FillPreserve();
+        context.SetSourceRGBA(0.84, 0.89, 0.96, 0.72);
+        context.LineWidth = GuiElement.scaled(1);
+        context.Stroke();
+
+        if (levelFraction > 0.001)
+        {
+            context.SetSourceRGBA(0.88, 0.91, 0.95, 0.72);
+            context.Rectangle(left + 1, top + 1, Math.Max(0, (width - 2) * levelFraction), height - 2);
+            context.Fill();
+        }
+
+        double handleWidth = GuiElement.scaled(6);
+        double noiseHandleX = left + (width - handleWidth) * noiseGate / 200d;
+        double triggerHandleX = left + (width - handleWidth) * triggerThreshold / 200d;
+        context.SetSourceRGBA(0.62, 0.66, 0.72, 1.0);
+        context.Rectangle(noiseHandleX, top - GuiElement.scaled(3), handleWidth, height + GuiElement.scaled(6));
+        context.Fill();
+        context.SetSourceRGBA(0.98, 0.99, 1.0, 1.0);
+        context.Rectangle(triggerHandleX, top - GuiElement.scaled(3), handleWidth, height + GuiElement.scaled(6));
+        context.Fill();
+
+        label.SetupContext(context);
+        context.SetSourceRGBA(0.9, 0.92, 0.96, 1.0);
+        string noiseLabel = SVCLang.Get("setup-noise-gate");
+        string triggerLabel = SVCLang.Get("setup-voice-trigger-threshold");
+        context.MoveTo(left, GuiElement.scaled(16));
+        context.ShowText(noiseLabel);
+        TextExtents triggerExtents = context.TextExtents(triggerLabel);
+        context.MoveTo(left + width - triggerExtents.XAdvance, GuiElement.scaled(16));
+        context.ShowText(triggerLabel);
+    }
+
+    public override void Dispose()
+    {
+        texture.Dispose();
+        base.Dispose();
+    }
+}
+
+internal sealed class VoiceSettingsKeyBinding : GuiElementControl
+{
+    private readonly Action<string> changed;
+    private readonly CairoFont font;
+    private LoadedTexture texture;
+    private string value;
+    private bool capturing;
+
+    public override bool Focusable => Enabled;
+
+    public VoiceSettingsKeyBinding(ICoreClientAPI capi, ElementBounds bounds, string value, Action<string> changed)
+        : base(capi, bounds)
+    {
+        this.value = string.IsNullOrWhiteSpace(value) ? "N" : value;
+        this.changed = changed;
+        font = CairoFont.WhiteSmallText().WithFontSize(14).WithColor(new[] { 0.96, 0.97, 1.0, 1.0 }).WithOrientation(EnumTextOrientation.Center);
+        texture = new LoadedTexture(capi);
+    }
+
+    public override void ComposeElements(Context ctx, ImageSurface surface)
+    {
+        Bounds.CalcWorldBounds();
+        Redraw();
+    }
+
+    public override void RenderInteractiveElements(float deltaTime)
+    {
+        api.Render.Render2DTexturePremultipliedAlpha(texture.TextureId, Bounds);
+    }
+
+    private void Redraw()
+    {
+        int width = Math.Max(1, Bounds.OuterWidthInt);
+        int height = Math.Max(1, Bounds.OuterHeightInt);
+        using ImageSurface surface = new(Format.Argb32, width, height);
+        using Context context = new(surface);
+        context.Rectangle(0, 0, width, height);
+        context.SetSourceRGBA(0.15, 0.18, 0.22, Enabled ? 0.98 : 0.45);
+        context.FillPreserve();
+        context.SetSourceRGBA(0.84, 0.89, 0.96, capturing ? 0.98 : 0.72);
+        context.LineWidth = GuiElement.scaled(1);
+        context.Stroke();
+        font.SetupContext(context);
+        string text = capturing ? SVCLang.Get("setup-key-binding-waiting") : value;
+        TextExtents extents = context.TextExtents(text);
+        context.SetSourceRGBA(0.96, 0.97, 1.0, 1.0);
+        context.MoveTo((width - extents.XAdvance) / 2d - extents.XBearing, (height - context.FontExtents.Height) / 2d + context.FontExtents.Ascent);
+        context.ShowText(text);
+        GuiElement.GenerateTexture(api, surface, ref texture.TextureId);
+    }
+
+    public override void OnMouseDownOnElement(ICoreClientAPI api, MouseEvent args)
+    {
+        base.OnMouseDownOnElement(api, args);
+        if (!Enabled) return;
+        capturing = true;
+        Redraw();
+        args.Handled = true;
+    }
+
+    public override void OnKeyDown(ICoreClientAPI api, KeyEvent args)
+    {
+        if (!HasFocus || !Enabled || !capturing)
+        {
+            return;
+        }
+
+        GlKeys key = Enum.IsDefined(typeof(GlKeys), args.KeyCode) ? (GlKeys)args.KeyCode : GlKeys.Unknown;
+        if (key is GlKeys.Unknown or GlKeys.LControl or GlKeys.RControl or GlKeys.AltLeft or GlKeys.AltRight or GlKeys.LShift or GlKeys.RShift)
+        {
+            args.Handled = true;
+            return;
+        }
+
+        value = key.ToString();
+        capturing = false;
+        changed(value);
+        Redraw();
+        args.Handled = true;
+        api.Gui.PlaySound("menubutton");
+    }
+
+    public override void Dispose()
+    {
+        texture.Dispose();
+        base.Dispose();
+    }
 }
 
 /// <summary>

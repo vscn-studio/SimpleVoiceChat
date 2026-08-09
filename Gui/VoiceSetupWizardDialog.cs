@@ -21,13 +21,17 @@ internal enum VoiceSetupStep
 public sealed class VoiceSetupWizardDialog : GuiDialog
 {
     private const double PanelWidth = 560;
+    private const double PanelHeight = 430;
     private const string ComposerKey = "simplevoicechat-setup-wizard";
+    private const string FontAwesomeCloseIcon = "svc-fa-xmark";
+    private static readonly AssetLocation FontAwesomeCloseAsset = new("simplevoicechat", "icons/fontawesome/xmark.svg");
 
     private readonly ClientVoiceController controller;
     private readonly SimpleVoiceChatClientConfig config;
     private VoiceSetupStep step;
     private int frameWidth;
     private int frameHeight;
+    private bool monitoringMicrophone;
 
     public VoiceSetupWizardDialog(ICoreClientAPI capi, ClientVoiceController controller)
         : base(capi)
@@ -47,6 +51,7 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
     public override bool TryOpen()
     {
         step = VoiceSetupStep.Welcome;
+        monitoringMicrophone = false;
         Compose();
         return base.TryOpen();
     }
@@ -56,6 +61,11 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
         if (frameWidth != capi.Render.FrameWidth || frameHeight != capi.Render.FrameHeight)
         {
             Compose();
+        }
+        if (step == VoiceSetupStep.Activation && SingleComposer != null)
+        {
+            SingleComposer.GetDynamicText("mic-level")?.SetNewText(
+                SVCLang.Get("setup-mic-level", Math.Round(controller.MicrophoneRms * 100f)));
         }
         base.OnRenderGUI(deltaTime);
     }
@@ -71,34 +81,37 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
         return true;
     }
 
+    public override void OnGuiClosed()
+    {
+        controller.SetSetupMicrophoneMonitoring(false);
+        monitoringMicrophone = false;
+        base.OnGuiClosed();
+    }
+
     private void Compose()
     {
         frameWidth = capi.Render.FrameWidth;
         frameHeight = capi.Render.FrameHeight;
-        double guiScale = Math.Max(0.001, GuiElement.scaled(1));
-        double screenWidth = frameWidth / guiScale;
-        double screenHeight = frameHeight / guiScale;
-        double panelHeight = step == VoiceSetupStep.Levels ? 430 : 350;
-        double panelX = Math.Max(8, (screenWidth - PanelWidth) / 2d);
-        double panelY = Math.Max(8, (screenHeight - panelHeight) / 2d);
-        ElementBounds root = ElementBounds.Fixed(EnumDialogArea.FixedTop, 0, 0, screenWidth, screenHeight);
-        ElementBounds overlayBounds = ElementBounds.Fixed(0, 0, screenWidth, screenHeight);
-        ElementBounds panelBounds = ElementBounds.Fixed(panelX, panelY, PanelWidth, panelHeight);
+        double panelHeight = step == VoiceSetupStep.Activation ? 460 : step == VoiceSetupStep.Levels ? PanelHeight : 350;
+        ElementBounds root = ElementBounds.Fixed(EnumDialogArea.CenterMiddle, 0, 0, PanelWidth, panelHeight);
+        ElementBounds panelBounds = ElementBounds.Fixed(0, 0, PanelWidth, panelHeight);
 
         SingleComposer?.Dispose();
-        GuiElementDialogBackground backdrop = new(capi, overlayBounds, withTitlebar: false, strokeWidth: 0, alpha: 0.74f)
-        {
-            FullBlur = true
-        };
+        capi.Gui.Icons.CustomIcons[FontAwesomeCloseIcon] = capi.Gui.Icons.SvgIconSource(FontAwesomeCloseAsset);
         GuiComposer composer = capi.Gui.CreateCompo(ComposerKey, root)
-            .AddStaticElement(backdrop)
-            .AddStaticCustomDraw(panelBounds, DrawPanelBackground);
+            .AddStaticCustomDraw(panelBounds, DrawPanelBackground)
+            .AddInteractiveElement(new VoiceSettingsIconButton(
+                capi,
+                ElementBounds.Fixed(PanelWidth - 42, 10, 28, 28),
+                FontAwesomeCloseIcon,
+                _ => Cancel()), "close");
 
-        double x = panelX + 36;
+        double x = 36;
         double width = PanelWidth - 72;
         CairoFont titleFont = CairoFont.WhiteSmallishText()
-            .WithFontSize(21)
-            .WithColor(new[] { 0.98, 0.99, 1.0, 1.0 });
+            .WithFontSize(20)
+            .WithColor(new[] { 0.98, 0.99, 1.0, 1.0 })
+            .WithOrientation(EnumTextOrientation.Center);
         CairoFont bodyFont = CairoFont.WhiteSmallText()
             .WithFontSize(14)
             .WithColor(new[] { 0.87, 0.91, 0.96, 1.0 });
@@ -106,25 +119,31 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
             .WithFontSize(15)
             .WithColor(new[] { 0.96, 0.97, 1.0, 1.0 });
 
-        composer.AddStaticText(SVCLang.Get("setup-title"), titleFont, ElementBounds.Fixed(x, panelY + 28, width, 30));
-        AddStepIndicator(composer, panelX, panelY, panelHeight);
+        composer.AddStaticText(SVCLang.Get("setup-title"), titleFont, ElementBounds.Fixed(x, 10, width, 30));
+        bool shouldMonitor = step == VoiceSetupStep.Activation;
+        if (monitoringMicrophone != shouldMonitor)
+        {
+            monitoringMicrophone = shouldMonitor;
+            controller.SetSetupMicrophoneMonitoring(shouldMonitor);
+        }
+        AddStepIndicator(composer, 0, 0, panelHeight);
 
         switch (step)
         {
             case VoiceSetupStep.Input:
-                ComposeInputStep(composer, x, panelY, width, panelHeight, bodyFont, labelFont);
+                ComposeInputStep(composer, x, 0, width, panelHeight, bodyFont, labelFont);
                 break;
             case VoiceSetupStep.Output:
-                ComposeOutputStep(composer, x, panelY, width, panelHeight, bodyFont, labelFont);
+                ComposeOutputStep(composer, x, 0, width, panelHeight, bodyFont, labelFont);
                 break;
             case VoiceSetupStep.Activation:
-                ComposeActivationStep(composer, x, panelY, width, panelHeight, bodyFont, labelFont);
+                ComposeActivationStep(composer, x, 0, width, panelHeight, bodyFont, labelFont);
                 break;
             case VoiceSetupStep.Levels:
-                ComposeLevelsStep(composer, x, panelY, width, panelHeight, bodyFont, labelFont);
+                ComposeLevelsStep(composer, x, 0, width, panelHeight, bodyFont, labelFont);
                 break;
             default:
-                ComposeWelcomeStep(composer, x, panelY, width, panelHeight, bodyFont, labelFont);
+                ComposeWelcomeStep(composer, x, 0, width, panelHeight, bodyFont, labelFont);
                 break;
         }
 
@@ -170,21 +189,32 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
 
     private void ComposeActivationStep(GuiComposer composer, double x, double panelY, double width, double panelHeight, CairoFont bodyFont, CairoFont labelFont)
     {
-        bool continuous = config.PreferContinuousTalk;
-        string[] keyValues = { "N", "V", "B", "CapsLock" };
-        string[] keyNames = { "N", "V", "B", SVCLang.Get("setup-key-caps-lock") };
-        int selected = Math.Max(0, Array.IndexOf(keyValues, config.PushToTalkKey));
+        bool voiceActivation = config.PreferVoiceActivation;
 
         composer
-            .AddStaticText(SVCLang.Get("setup-activation-description"), bodyFont, ElementBounds.Fixed(x, panelY + 78, width, 40))
-            .AddStaticText(SVCLang.Get("setup-activation-mode"), labelFont, ElementBounds.Fixed(x, panelY + 126, width, 24));
+            .AddStaticText(SVCLang.Get("setup-activation-description"), bodyFont, ElementBounds.Fixed(x, panelY + 78, width, 58))
+            .AddStaticText(SVCLang.Get("setup-activation-mode"), labelFont, ElementBounds.Fixed(x, panelY + 145, width, 24));
         AddWizardButton(composer, SVCLang.Get("setup-push-to-talk"), () => SetActivationMode(false),
-            ElementBounds.Fixed(x, panelY + 156, (width - 10) / 2, 38), "push", primary: !continuous);
-        AddWizardButton(composer, SVCLang.Get("setup-continuous-talk"), () => SetActivationMode(true),
-            ElementBounds.Fixed(x + (width + 10) / 2, panelY + 156, (width - 10) / 2, 38), "continuous", primary: continuous);
+            ElementBounds.Fixed(x, panelY + 177, (width - 10) / 2, 38), "push", primary: !voiceActivation);
+        AddWizardButton(composer, SVCLang.Get("setup-voice-activation-mode"), () => SetActivationMode(true),
+            ElementBounds.Fixed(x + (width + 10) / 2, panelY + 177, (width - 10) / 2, 38), "voice", primary: voiceActivation);
         composer
-            .AddStaticText(SVCLang.Get("setup-push-to-talk-key"), labelFont, ElementBounds.Fixed(x, panelY + 213, width, 24))
-            .AddVoiceDropDown(keyValues, keyNames, selected, OnPushToTalkKeySelected, ElementBounds.Fixed(x, panelY + 244, width, 34), "push-to-talk-key");
+            .AddStaticText(
+                $"{SVCLang.Get("setup-push-to-talk-key")}: {config.PushToTalkKey}",
+                labelFont,
+                ElementBounds.Fixed(x, panelY + 238, width, 24));
+        composer.AddDynamicText(SVCLang.Get("setup-mic-level", Math.Round(controller.MicrophoneRms * 100f)), labelFont,
+            ElementBounds.Fixed(x, panelY + 286, width, 24), "mic-level")
+            .AddVoiceActivationThresholdControl(
+                () => controller.MicrophoneRms,
+                value => { controller.SetNoiseGateFromSettings(value); return true; },
+                value => { controller.SetVoiceActivationThresholdFromSetup(value); return true; },
+                ElementBounds.Fixed(x, panelY + 320, width, 58),
+                "activation-levels");
+        VoiceActivationThresholdControl thresholdControl = (VoiceActivationThresholdControl)composer.GetElement("activation-levels");
+        thresholdControl.Configure(
+            (int)Math.Round(config.NoiseGate * 1000),
+            (int)Math.Round(config.VoiceActivationThreshold * 1000));
         AddNavigation(composer, x, panelY, width, panelHeight);
     }
 
@@ -198,12 +228,10 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
             .AddVoiceSlider(value => { controller.SetOutputVolumeFromSettings(value); return true; }, ElementBounds.Fixed(x + sliderX, panelY + 137, sliderWidth, 24), "output-volume")
             .AddStaticText(SVCLang.Get("label-mic-gain"), labelFont, ElementBounds.Fixed(x, panelY + 188, sliderX - 20, 24))
             .AddVoiceSlider(value => { controller.SetMicGainFromSettings(value); return true; }, ElementBounds.Fixed(x + sliderX, panelY + 188, sliderWidth, 24), "mic-gain")
-            .AddStaticText(SVCLang.Get("label-noise-gate"), labelFont, ElementBounds.Fixed(x, panelY + 239, sliderX - 20, 24))
-            .AddVoiceSlider(value => { controller.SetNoiseGateFromSettings(value); return true; }, ElementBounds.Fixed(x + sliderX, panelY + 239, sliderWidth, 24), "noise-gate");
+            .AddStaticText(SVCLang.Get("setup-mic-gain-description"), bodyFont, ElementBounds.Fixed(x, panelY + 239, width, 26));
 
         ConfigureSlider(composer, "output-volume", (int)Math.Round(config.OutputVolume * 100), 0, 200, "%");
         ConfigureSlider(composer, "mic-gain", (int)Math.Round(config.MicGain * 100), 10, 400, "%");
-        ConfigureSlider(composer, "noise-gate", (int)Math.Round(config.NoiseGate * 1000), 0, 200);
         AddNavigation(composer, x, panelY, width, panelHeight, SVCLang.Get("button-finish"));
     }
 
@@ -228,7 +256,7 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
             .WithFontSize(13)
             .WithColor(new[] { 0.72, 0.78, 0.86, 1.0 })
             .WithOrientation(EnumTextOrientation.Right);
-        composer.AddStaticText(text, detail, ElementBounds.Fixed(panelX + PanelWidth - 150, panelY + 33, 114, 22));
+        composer.AddStaticText(text, detail, ElementBounds.Fixed(panelX + PanelWidth - 150, panelY + 48, 114, 22));
     }
 
     private static void AddWizardButton(GuiComposer composer, string text, ActionConsumable action, ElementBounds bounds, string key, bool primary)
@@ -314,21 +342,13 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
         }
     }
 
-    private void OnPushToTalkKeySelected(string value, bool selected)
-    {
-        if (selected)
-        {
-            controller.SetPushToTalkKeyFromSetup(value);
-        }
-    }
-
     private static void DrawPanelBackground(Context ctx, ImageSurface surface, ElementBounds bounds)
     {
         bounds.CalcWorldBounds();
         GuiElement.RoundRectangle(ctx, bounds.bgDrawX, bounds.bgDrawY, bounds.OuterWidth, bounds.OuterHeight, GuiElement.scaled(4));
-        ctx.SetSourceRGBA(0.015, 0.02, 0.028, 0.94);
+        ctx.SetSourceRGBA(0.015, 0.02, 0.028, 0.84);
         ctx.FillPreserve();
-        ctx.SetSourceRGBA(0.78, 0.82, 0.9, 0.30);
+        ctx.SetSourceRGBA(0.78, 0.82, 0.9, 0.22);
         ctx.LineWidth = GuiElement.scaled(1);
         ctx.Stroke();
     }
@@ -336,19 +356,10 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
     private static void DrawButtonBackground(Context ctx, ElementBounds bounds, bool primary)
     {
         bounds.CalcWorldBounds();
-        GuiElement.RoundRectangle(ctx, bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight, GuiElement.scaled(4));
-        if (primary)
-        {
-            ctx.SetSourceRGBA(0.24, 0.55, 0.69, 1.0);
-            ctx.FillPreserve();
-            ctx.SetSourceRGBA(0.62, 0.84, 0.96, 0.95);
-        }
-        else
-        {
-            ctx.SetSourceRGBA(0.20, 0.23, 0.28, 0.96);
-            ctx.FillPreserve();
-            ctx.SetSourceRGBA(0.78, 0.83, 0.90, 0.72);
-        }
+        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
+        ctx.SetSourceRGBA(0.62, 0.66, 0.72, primary ? 0.36 : 0.22);
+        ctx.FillPreserve();
+        ctx.SetSourceRGBA(0.92, 0.95, 1.0, primary ? 0.95 : 0.88);
         ctx.LineWidth = GuiElement.scaled(1);
         ctx.Stroke();
     }

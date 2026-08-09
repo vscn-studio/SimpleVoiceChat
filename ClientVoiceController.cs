@@ -54,7 +54,6 @@ public sealed class ClientVoiceController : IDisposable
     private int sessionId;
     private bool localMuted;
     private bool globalMuted;
-    private bool toggleTalkEnabled;
     private bool lastPressed;
     private bool lastSpeaking;
     private bool captureWarningShown;
@@ -93,6 +92,10 @@ public sealed class ClientVoiceController : IDisposable
     private bool serverTransmitBlocked;
     private bool channelTransmitBlocked;
     private bool lastRecordingPlaybackActive;
+    private float lastMicRms;
+    private bool voiceActivationTriggered;
+    private int voiceActivationHangoverFrames;
+    private bool setupMicrophoneMonitoring;
 
     public ClientVoiceController(ICoreClientAPI capi, SimpleVoiceChatClientConfig config)
     {
@@ -105,8 +108,10 @@ public sealed class ClientVoiceController : IDisposable
     internal SimpleVoiceChatClientConfig SettingsConfig => config;
     internal bool LocalMuted => localMuted;
     internal bool GlobalMuted => globalMuted;
-    internal bool ContinuousTalkEnabled => toggleTalkEnabled;
+    internal bool ContinuousTalkEnabled => config.PreferVoiceActivation;
     internal bool ContinuousTalkAllowed => serverConfig.AllowContinuousTalk;
+    internal bool VoiceActivationEnabled => config.PreferVoiceActivation;
+    internal float MicrophoneRms => lastMicRms;
     internal bool OcclusionForced => serverConfig.ForceImmersive;
 
     public void Start()
@@ -117,7 +122,6 @@ public sealed class ClientVoiceController : IDisposable
         }
         config.EnableNoiseSuppression &= VoiceProcessingCapabilities.NoiseSuppressionAvailable;
         config.EnableEchoCancellation &= VoiceProcessingCapabilities.EchoCancellationAvailable;
-        toggleTalkEnabled = config.PreferContinuousTalk;
         SaveConfig();
         RegisterChannels();
         RegisterHotkeys();
@@ -226,7 +230,7 @@ public sealed class ClientVoiceController : IDisposable
             if (!toggleTalkPressed)
             {
                 toggleTalkPressed = true;
-                ToggleContinuousTalk();
+                ToggleVoiceActivation();
             }
             return true;
         });
@@ -313,10 +317,6 @@ public sealed class ClientVoiceController : IDisposable
     private void ToggleLocalMute()
     {
         localMuted = !localMuted;
-        if (localMuted)
-        {
-            toggleTalkEnabled = false;
-        }
         capi.ShowChatMessage(SVCLang.Get("chat-local-mute", localMuted ? SVCLang.Get("chat-local-mute-on") : SVCLang.Get("chat-local-mute-off")));
         SendState(force: true);
         hud?.Refresh();
@@ -325,26 +325,18 @@ public sealed class ClientVoiceController : IDisposable
     private void ToggleGlobalMute()
     {
         globalMuted = !globalMuted;
-        if (globalMuted)
-        {
-            toggleTalkEnabled = false;
-        }
         capi.ShowChatMessage(SVCLang.Get("chat-global-mute", globalMuted ? SVCLang.Get("state-off") : SVCLang.Get("state-on")));
         SendState(force: true);
         hud?.Refresh();
     }
 
-    private void ToggleContinuousTalk()
+    private void ToggleVoiceActivation()
     {
-        if (!serverConfig.AllowContinuousTalk)
-        {
-            toggleTalkEnabled = false;
-            capi.ShowChatMessage(SVCLang.Get("chat-continuous-disabled"));
-            hud?.Refresh();
-            return;
-        }
-        toggleTalkEnabled = !toggleTalkEnabled;
-        capi.ShowChatMessage(SVCLang.Get("chat-continuous-talk", toggleTalkEnabled ? SVCLang.Get("state-on") : SVCLang.Get("state-off")));
+        config.PreferVoiceActivation = !config.PreferVoiceActivation;
+        SaveConfig();
+        capi.ShowChatMessage(SVCLang.Get(
+            "chat-voice-activation-mode",
+            config.PreferVoiceActivation ? SVCLang.Get("mode-voice-activation") : SVCLang.Get("mode-push-to-talk")));
         SendState(force: true);
         hud?.Refresh();
     }
@@ -367,9 +359,9 @@ public sealed class ClientVoiceController : IDisposable
 
     private void SetContinuousTalk(bool enabled)
     {
-        if (toggleTalkEnabled != enabled)
+        if (config.PreferVoiceActivation != enabled)
         {
-            ToggleContinuousTalk();
+            ToggleVoiceActivation();
         }
     }
 
@@ -537,14 +529,6 @@ public sealed class ClientVoiceController : IDisposable
         if (serverConfig.ForceImmersive)
         {
             config.EnableOcclusionEffects = true;
-        }
-        if (!serverConfig.AllowContinuousTalk)
-        {
-            toggleTalkEnabled = false;
-        }
-        else if (config.PreferContinuousTalk)
-        {
-            toggleTalkEnabled = true;
         }
         SaveConfig();
         hud?.Refresh();
@@ -1114,10 +1098,10 @@ public sealed class ClientVoiceController : IDisposable
         ReinitializePlayback();
     }
 
-    internal void SetVoiceActivationFromSetup(bool continuous)
+    internal void SetVoiceActivationFromSetup(bool voiceActivation)
     {
-        config.PreferContinuousTalk = continuous;
-        toggleTalkEnabled = continuous && serverConfig.AllowContinuousTalk;
+        config.PreferVoiceActivation = voiceActivation;
+        config.PreferContinuousTalk = false;
         SaveConfig();
         SendState(force: true);
         hud?.Refresh();
@@ -1174,7 +1158,29 @@ public sealed class ClientVoiceController : IDisposable
     internal void SetNoiseGateFromSettings(int value)
     {
         config.NoiseGate = Math.Clamp(value / 1000f, 0f, 0.2f);
+        config.VoiceActivationThreshold = Math.Max(config.VoiceActivationThreshold, config.NoiseGate);
         SaveConfig();
+    }
+
+    internal void SetVoiceActivationThresholdFromSetup(int value)
+    {
+        SetVoiceActivationThresholdFromSettings(value);
+    }
+
+    internal void SetVoiceActivationThresholdFromSettings(int value)
+    {
+        config.VoiceActivationThreshold = Math.Clamp(value / 1000f, Math.Max(config.NoiseGate, 0.005f), 0.2f);
+        SaveConfig();
+    }
+
+    internal void SetSetupMicrophoneMonitoring(bool enabled)
+    {
+        setupMicrophoneMonitoring = enabled;
+        if (!enabled && microphoneTest?.IsRecording != true && recording?.IsRecording != true)
+        {
+            capture?.Stop();
+            lastMicRms = 0f;
+        }
     }
 
     internal bool IsRecording => recording?.IsRecording == true;
@@ -1720,10 +1726,13 @@ public sealed class ClientVoiceController : IDisposable
         {
             return;
         }
-        bool pressed = toggleTalkEnabled || IsPushToTalkPressed();
+        bool pushToTalkPressed = IsPushToTalkPressed();
+        bool activationMode = config.PreferVoiceActivation;
+        bool pressed = activationMode || pushToTalkPressed;
         bool testRecordingActive = microphoneTest?.IsRecording == true;
-        bool canSpeak = !testRecordingActive
-            && pressed
+        bool setupMonitoringActive = setupMicrophoneMonitoring;
+        bool voiceReady = !testRecordingActive
+            && !setupMonitoringActive
             && !localMuted
             && !globalMuted
             && serverConfig.Enabled
@@ -1731,7 +1740,7 @@ public sealed class ClientVoiceController : IDisposable
             && capture?.IsAvailable == true
             && voiceChannel?.Connected == true;
         bool isRecording = recording?.IsRecording == true || testRecordingActive;
-
+        bool canSpeak = false;
         if (pressed && capture?.IsAvailable != true && !captureWarningShown)
         {
             captureWarningShown = true;
@@ -1745,7 +1754,23 @@ public sealed class ClientVoiceController : IDisposable
             capture?.Start();
             DrainCapturedFrames(sendVoice: false);
         }
-        else if (canSpeak)
+        else if (setupMonitoringActive)
+        {
+            lastPressed = false;
+            capture?.Start();
+            DrainCapturedFrames(sendVoice: false);
+        }
+        else if (voiceReady && activationMode)
+        {
+            if (!lastPressed)
+            {
+                BeginVoiceSession();
+            }
+            capture?.Start();
+            bool triggered = DrainCapturedFrames(sendVoice: true, requireVoiceActivation: true);
+            canSpeak = triggered;
+        }
+        else if (voiceReady && pushToTalkPressed)
         {
             if (!lastPressed)
             {
@@ -1753,10 +1778,11 @@ public sealed class ClientVoiceController : IDisposable
                 capture?.Start();
             }
             DrainCapturedFrames(sendVoice: true);
+            canSpeak = true;
         }
         else if (lastPressed)
         {
-            DrainCapturedFrames(sendVoice: true);
+            DrainCapturedFrames(sendVoice: voiceReady);
             if (!isRecording)
             {
                 capture?.Stop();
@@ -1768,9 +1794,10 @@ public sealed class ClientVoiceController : IDisposable
             DrainCapturedFrames(sendVoice: false);
         }
 
-        if (!canSpeak)
+        if (!canSpeak && !setupMonitoringActive)
         {
             lastMicLevel = 0f;
+            lastMicRms = 0f;
         }
 
         lastPressed = canSpeak;
@@ -2020,11 +2047,17 @@ public sealed class ClientVoiceController : IDisposable
         capi.ShowChatMessage(SVCLang.Get("chat-output-device-switched", string.IsNullOrWhiteSpace(config.OutputDeviceName) ? SVCLang.Get("default-speaker") : config.OutputDeviceName));
     }
 
-    private void DrainCapturedFrames(bool sendVoice)
+    private bool DrainCapturedFrames(bool sendVoice, bool requireVoiceActivation = false)
     {
         int processedFrames = 0;
         bool hadFrame = false;
         float peakMicLevel = 0f;
+        bool activationDetected = false;
+        if (!requireVoiceActivation)
+        {
+            voiceActivationHangoverFrames = 0;
+            voiceActivationTriggered = false;
+        }
 
         while (processedFrames < MaxCaptureFramesPerTick && capture?.TryReadFrame(captureBuffer) == true)
         {
@@ -2032,6 +2065,16 @@ public sealed class ClientVoiceController : IDisposable
             processedFrames++;
 
             VoiceFrameStats stats = capturePreprocessor.Process(captureBuffer, config.MicGain, config.NoiseGate);
+            lastMicRms = stats.Rms;
+            if (requireVoiceActivation && stats.Active && stats.Rms >= config.VoiceActivationThreshold)
+            {
+                activationDetected = true;
+                voiceActivationHangoverFrames = 8;
+            }
+            else if (requireVoiceActivation && voiceActivationHangoverFrames > 0)
+            {
+                voiceActivationHangoverFrames--;
+            }
             if (recording?.IsRecording == true)
             {
                 recording.AppendInput(captureBuffer);
@@ -2044,7 +2087,8 @@ public sealed class ClientVoiceController : IDisposable
             {
                 continue;
             }
-            if (!stats.Active)
+            bool active = stats.Active && (!requireVoiceActivation || activationDetected || voiceActivationHangoverFrames > 0);
+            if (!active)
             {
                 continue;
             }
@@ -2070,6 +2114,12 @@ public sealed class ClientVoiceController : IDisposable
         {
             lastMicLevel = peakMicLevel;
         }
+
+        if (requireVoiceActivation)
+        {
+            voiceActivationTriggered = activationDetected || voiceActivationHangoverFrames > 0;
+        }
+        return !requireVoiceActivation || voiceActivationTriggered;
     }
 
     private void SendCapturedFrame(byte[] payload, VoiceFrameStats stats)
@@ -2243,9 +2293,9 @@ public sealed class ClientVoiceController : IDisposable
         }
         if (lastSpeaking)
         {
-            return toggleTalkEnabled ? SVCLang.Get("hud-status-always-talking") : SVCLang.Get("hud-status-speaking");
+            return config.PreferVoiceActivation ? SVCLang.Get("hud-status-always-talking") : SVCLang.Get("hud-status-speaking");
         }
-        return toggleTalkEnabled ? SVCLang.Get("hud-status-always-standby") : SVCLang.Get("hud-status-mic-ready");
+        return config.PreferVoiceActivation ? SVCLang.Get("hud-status-always-standby") : SVCLang.Get("hud-status-mic-ready");
     }
 
     private bool ShouldShowHud()
@@ -2285,7 +2335,7 @@ public sealed class ClientVoiceController : IDisposable
             $"{SVCLang.Get("summary-line-mic", capture?.IsAvailable == true ? (localMuted ? SVCLang.Get("state-muted") : SVCLang.Get("state-ready")) : SVCLang.Get("state-unavailable"))}\n" +
             $"{SVCLang.Get("summary-line-playback-volume", (int)(config.OutputVolume * 100))}\n" +
             $"{SVCLang.Get("summary-line-push-to-talk", ptt)}\n" +
-            $"{SVCLang.Get("summary-line-toggle-talk", toggleTalk, toggleTalkEnabled ? SVCLang.Get("state-on") : SVCLang.Get("state-off"))}\n" +
+            $"{SVCLang.Get("summary-line-toggle-talk", toggleTalk, config.PreferVoiceActivation ? SVCLang.Get("state-on") : SVCLang.Get("state-off"))}\n" +
             $"{SVCLang.Get("summary-line-cycle-mode", cycle, cycleAlt)}\n" +
             $"{SVCLang.Get("summary-line-local-global", localMute, globalMute)}\n" +
             $"{settingsLine}\n" +

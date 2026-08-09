@@ -1,0 +1,190 @@
+<h1>SimpleVoiceChat 使用与管理指南</h1>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr>
+<th style="padding: 6px 8px; text-align: left;">项目</th>
+<th style="padding: 6px 8px; text-align: left;">当前版本口径</th>
+</tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;">模组名称</td><td style="padding: 6px 8px; vertical-align: top;">SimpleVoiceChat（简单语音对话）</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">模组版本</td><td style="padding: 6px 8px; vertical-align: top;"><code>1.0.0</code></td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">游戏版本</td><td style="padding: 6px 8px; vertical-align: top;">Vintage Story <code>1.22.2</code></td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">语音协议</td><td style="padding: 6px 8px; vertical-align: top;">协议 V3；Opus 为首选编码，是否允许 ADPCM 回退由服务器配置决定</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">安装范围</td><td style="padding: 6px 8px; vertical-align: top;">客户端和服务器均需安装同一版本</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">文档核对日期</td><td style="padding: 6px 8px; vertical-align: top;"><code>2026-08-10</code></td></tr>
+</tbody></table>
+<p>SimpleVoiceChat 提供接近度语音、耳语/正常/大喊模式、自定义频道、玩家本地音量与静音、录音、音频处理、权限管理和容量保护。服务器只负责鉴权、路由和转发，客户端负责采集、播放及本地设置。</p>
+<div style="border-left: 4px solid #e03e2d; padding: 8px 12px; margin: 12px 0; background-color: #fff5f5;"><p style="color: #e03e2d; margin: 0;"><strong>重要：</strong> 当前发行包使用协议 V3。客户端与服务器版本不一致时，语音握手可能被拒绝；请不要同时放置多个 SimpleVoiceChat 压缩包。</p></div>
+
+<h2>一、安装与首次进入</h2>
+<ol>
+<li>关闭 Vintage Story 客户端和服务器。</li>
+<li>删除 Mods 目录中旧的 SimpleVoiceChat 压缩包，只保留目标版本。</li>
+<li>将 <code>SimpleVoiceChat-v1.0.0.zip</code> 放入客户端和服务器的 <code>Mods</code> 目录。</li>
+<li>先启动服务器，再启动客户端并进入世界。</li>
+<li>第一次使用时，聊天框会提示按 <code>'</code> 进入设置。该提示不会直接打开窗口。</li>
+<li>按 <code>'</code> 打开首次设置向导。欢迎页可以选择“跳过初始设置，进入设置窗口”，也可以按“取消”关闭或按“确认”开始配置。</li>
+</ol>
+<p>向导依次配置输入设备、输出设备、发言方式、麦克风音量测试、噪声门和自由麦触发阈值。窗口为居中弹窗，不会遮住整个游戏视口。按键触发默认使用 <code>N</code>，完成或跳过后，按 <code>'</code> 会打开主设置窗口。</p>
+
+<h2>二、默认快捷键</h2>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">功能</th><th style="padding: 6px 8px; text-align: left;">默认快捷键</th><th style="padding: 6px 8px; text-align: left;">说明</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;">按住说话</td><td style="padding: 6px 8px; vertical-align: top;"><code>N</code></td><td style="padding: 6px 8px; vertical-align: top;">按住发送麦克风，松开停止。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">按键触发/自由麦切换</td><td style="padding: 6px 8px; vertical-align: top;"><code>Alt + N</code></td><td style="padding: 6px 8px; vertical-align: top;">在按键触发和语音触发通话（自由麦）之间切换。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">切换说话模式</td><td style="padding: 6px 8px; vertical-align: top;"><code>[</code> 或 <code>]</code></td><td style="padding: 6px 8px; vertical-align: top;">在耳语、正常说话、大喊之间循环。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">麦克风静音</td><td style="padding: 6px 8px; vertical-align: top;"><code>Ctrl + -</code></td><td style="padding: 6px 8px; vertical-align: top;">停止发送自己的麦克风。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">拒听/恢复收听</td><td style="padding: 6px 8px; vertical-align: top;"><code>;</code></td><td style="padding: 6px 8px; vertical-align: top;">停止或恢复播放全部远端语音。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">打开语音窗口</td><td style="padding: 6px 8px; vertical-align: top;"><code>'</code></td><td style="padding: 6px 8px; vertical-align: top;">首次使用打开向导，之后打开主设置窗口。</td></tr>
+</tbody></table>
+<p>默认按住说话键为 <code>N</code>，<code>Alt + N</code> 保留为按键触发/自由麦模式切换。需要修改按键时，请在游戏按键设置中的 Simple Voice Chat 分类修改；首次设置向导不再提供按键捕获控件。</p>
+
+<h2>三、发言方式与自由麦</h2>
+<p><strong>按键触发：</strong>按住绑定的按键（默认 <code>N</code>）时发送语音。</p>
+<p><strong>语音触发通话（自由麦）：</strong>麦克风持续监听输入，只有音量超过触发阈值才开始发送。向导中的单条矩形音量条实时显示麦克风声音，并提供两个滑块手柄：噪声门用于过滤底噪，触发阈值用于决定何时开始发送。玩家可以边说话边调整两个手柄。</p>
+
+<h2>三、主窗口与设置页</h2>
+<p>主窗口是紧凑的主页：顶部居中显示 <strong>Simple Voice Chat</strong>，下方是“设置”“频道”，拥有 <code>controlserver</code> 权限的玩家还会看到“管理员”。主页底部是一排正方形图标按钮和两个快速下拉菜单：</p>
+<ul>
+<li>麦克风图标：切换本地麦克风开启/静音。</li>
+<li>扬声器图标：切换拒听/恢复收听。</li>
+<li>眼睛图标：显示/隐藏右下角 HUD。</li>
+<li>录音图标：开始或停止实际录音。开始时会先弹出录音模式选择。</li>
+<li>快速频道：选择当前频道；空值表示不选择频道。</li>
+<li>快速发送形式：仅接近度、仅当前频道、接近度和当前频道。</li>
+</ul>
+<p>打开弹窗后只显示当前层，关闭弹窗会返回上一层，不会堆叠多个可操作窗口。</p>
+
+<h3>设置（音频）</h3>
+<p>“设置”页使用单行控件，包含输入设备、输出设备、播放音量和麦克风增益。自由麦的噪声门和触发阈值在首次设置向导中配置，也可继续在对应设置项中调整。滑块内部直接显示数值，数值不会被滑块遮挡。</p>
+<p>“麦克风测试”用于本机测试，不会发送到服务器，也不会写入录音文件：点击“开始录音”开始，点击“停止录音”结束，再点击“播放录音”或“停止播放”检查扬声器。测试音频保存在内存中，离开游戏后不会保留。</p>
+<p>下面的开关包括麦克风静音、拒听、自适应抖动缓冲、遮挡/传播修正和性能模式。噪声抑制与回声消除配置目前不在界面中显示；遮挡效果在服务器强制开启时不能关闭。</p>
+
+<h2>四、接近度语音</h2>
+<p>接近度语音不要求加入频道。服务器默认范围为：</p>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">模式</th><th style="padding: 6px 8px; text-align: left;">默认距离</th><th style="padding: 6px 8px; text-align: left;">用途</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;">耳语</td><td style="padding: 6px 8px; vertical-align: top;"><code>8</code> 格</td><td style="padding: 6px 8px; vertical-align: top;">近距离私语。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">正常说话</td><td style="padding: 6px 8px; vertical-align: top;"><code>18</code> 格</td><td style="padding: 6px 8px; vertical-align: top;">日常交流。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">大喊</td><td style="padding: 6px 8px; vertical-align: top;"><code>35</code> 格</td><td style="padding: 6px 8px; vertical-align: top;">通知较远处玩家。</td></tr>
+</tbody></table>
+<p>服务器管理员可用 <code>/svc setrange whisper|talk|shout &lt;格数&gt;</code> 修改范围；服务器还会限制最高范围。</p>
+
+<h2>五、频道页面与分页</h2>
+<p>所有玩家都可以查看自己有权看到的频道列表。管理员可以查看全部频道；普通玩家看不到“隐藏”频道，除非已经加入该频道。开放频道可直接加入，密码频道会弹窗要求输入密码，隐藏频道只能通过频道主持人或所有者邀请加入。</p>
+<ol>
+<li>进入主页后点击“频道”。</li>
+<li>在顶部搜索框输入频道名称或 ID，然后点击“搜索”。输入过程中不会立即刷新列表；点击右侧“取消”会清空搜索并恢复全部可见频道。</li>
+<li>每个频道卡片显示名称、人数、锁定状态、频道类型和唯一 ID。点击 ID 可复制到剪贴板。</li>
+<li>点击卡片或“选择频道”按钮选择当前频道；点击齿轮图标打开频道设置；对未加入的开放/密码频道点击加入。</li>
+</ol>
+<p>频道列表每页最多显示 6 行。列表底部的“上一页 / 第 X / Y 页 / 下一页”用于切换页面，按钮在第一页或最后一页自动禁用。底部玩家图标打开玩家列表，“创建频道”打开创建频道弹窗。</p>
+
+<h3>创建频道</h3>
+<p>默认情况下所有玩家都可以创建频道。服务器管理员可以使用 <code>/svc channelallow off</code> 禁止普通玩家创建，使用 <code>/svc channelallow on</code> 恢复。创建频道时填写名称、可选密码并选择类型：</p>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">类型</th><th style="padding: 6px 8px; text-align: left;">列表可见性</th><th style="padding: 6px 8px; text-align: left;">加入方式</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;">开放</td><td style="padding: 6px 8px; vertical-align: top;">可见</td><td style="padding: 6px 8px; vertical-align: top;">玩家可直接加入。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">密码</td><td style="padding: 6px 8px; vertical-align: top;">可见</td><td style="padding: 6px 8px; vertical-align: top;">输入正确密码后加入。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">隐藏</td><td style="padding: 6px 8px; vertical-align: top;">普通玩家不可见，管理员可见</td><td style="padding: 6px 8px; vertical-align: top;">只能通过频道所有者或频道主持人邀请。</td></tr>
+</tbody></table>
+<p>创建者即为频道所有者。频道 ID 使用不重复且不会复用的 <code>channel-数字</code> 格式，例如 <code>channel-12</code>。频道最大 100 名成员，默认最多 3 名同时发言者。</p>
+
+<h3>频道角色与操作</h3>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">角色</th><th style="padding: 6px 8px; text-align: left;">权限</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;">所有者</td><td style="padding: 6px 8px; vertical-align: top;">创建者；可邀请、移出、频道禁言/封禁较低角色，设置角色，锁定/解锁和解散自己的频道。当前图形界面的改名控件位于管理员页面。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">频道主持人</td><td style="padding: 6px 8px; vertical-align: top;">可邀请玩家，并对低于自己的成员执行移出、禁言、解除禁言、封禁和解除封禁；不能修改所有者。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">成员</td><td style="padding: 6px 8px; vertical-align: top;">可以发言和收听（受频道席位、禁言和服务器管制影响），可以离开频道。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">只听</td><td style="padding: 6px 8px; vertical-align: top;">可以收听，不能在该频道发言。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">封禁</td><td style="padding: 6px 8px; vertical-align: top;">不能加入或使用该频道。</td></tr>
+</tbody></table>
+<p>玩家列表中的音量滑块和静音按钮只改变本机收听效果。玩家设置齿轮中的管理操作会按照当前玩家在频道中的权限过滤；普通玩家不会看到管理员专属的全服管制操作。</p>
+
+<h3>离开、转移所有权与解散</h3>
+<p>在频道操作中点击“离开频道”或“解散频道”后，必须先确认。确认弹窗左侧为“取消”，右侧为“确认”；即使频道只有一名玩家，解散也不会跳过确认。</p>
+<p>如果频道所有者在频道中仍有其他成员，服务器会再次要求选择：</p>
+<ul>
+<li>转移频道所有者：目标必须是当前频道中的玩家。</li>
+<li>删除频道：会弹出解散确认，确认后删除频道。</li>
+</ul>
+<p>所有者不会在离开后随机转移给某个玩家。所有者离开且频道没有其他成员时，确认后频道会被移除。关闭任一弹窗只返回上一个窗口，底层窗口不会继续拦截鼠标。</p>
+
+<h2>六、玩家列表与实际录音</h2>
+<p>频道页底部的玩家图标打开玩家列表。玩家列表每页最多显示 6 名玩家，支持按玩家名称或 ID 搜索，搜索必须点击“搜索”，右侧“取消”恢复全部玩家。每名玩家卡片包含本地音量滑块、静音图标和设置齿轮；设置和静音不会改变服务器权限。</p>
+<p>主页底部的录音图标才是实际录音功能。点击后选择“仅录制输入”或“录制输入与输出”，再次点击录音图标停止并保存 WAV 文件。录音保存到：</p>
+<p><code>AppData\Roaming\VintagestoryData\ModData\SimpleVoiceChat</code></p>
+<p>“麦克风测试”与实际录音不同：设置页测试音频只保存在内存中，用于开始/停止录制和播放检查，不生成文件。</p>
+
+<h2>七、管理员页面与权限</h2>
+<p>拥有 Vintage Story <code>controlserver</code> 权限并完成语音握手的玩家，主页顶部会看到“管理员”按钮。管理员页面不创建频道入口；频道创建仍通过频道页底部“创建频道”，或使用服务器命令。管理员可以查看全部频道和玩家，并执行服务端再次鉴权的管理操作：</p>
+<ul>
+<li>频道：添加/移出成员、设置只听/成员/频道主持人、禁言/解除禁言、封禁/解除封禁、锁定/解锁、改名、解散。</li>
+<li>玩家：临时禁言、强制拒听、持久禁言、解除持久禁言、全服屏蔽、解除全服屏蔽。</li>
+</ul>
+<p>管理员通过“添加成员”把玩家加入频道时，目标玩家以普通成员加入，不会获得频道所有者身份。频道所有者仍是创建频道的玩家，服务器管理员通过 <code>controlserver</code> 权限执行管理操作。</p>
+<p>由外部频道提供器管理的频道，其成员、角色和名称由外部系统决定，不能在本模组中本地添加、移出、改角色、改名、离开或解散；管理员仍可执行允许的锁定、频道禁言和封禁操作。</p>
+
+<h2>八、玩家命令参考</h2>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">命令</th><th style="padding: 6px 8px; text-align: left;">作用</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc status</code></td><td style="padding: 6px 8px; vertical-align: top;">查看本地语音模式、麦克风、音量、快捷键和诊断摘要。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc volume &lt;0-200&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">设置本机总体播放音量。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc volumeplayer &lt;玩家名&gt; &lt;0-200&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">设置指定玩家在本机的播放音量。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc mute &lt;玩家名&gt;</code> / <code>/svc unmute &lt;玩家名&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">在本机静音或恢复指定玩家。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelinvite &lt;玩家名&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">邀请玩家加入当前已选择的频道；需要频道主持人或所有者权限。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelleave [频道ID]</code></td><td style="padding: 6px 8px; vertical-align: top;">请求离开频道。GUI 操作有确认弹窗，命令直接发送请求。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channel</code></td><td style="padding: 6px 8px; vertical-align: top;">请求刷新当前频道状态。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc diag</code></td><td style="padding: 6px 8px; vertical-align: top;">请求语音诊断信息。</td></tr>
+</tbody></table>
+
+<h2>九、服务器管理员命令</h2>
+<p>以下命令要求 <code>controlserver</code> 权限。尖括号表示必填参数。频道 ID 使用 <code>channel-数字</code>，可在频道页点击 ID 复制或用 <code>/svc channels</code> 查询。</p>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">命令</th><th style="padding: 6px 8px; text-align: left;">作用</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc status</code></td><td style="padding: 6px 8px; vertical-align: top;">查看服务器开关、范围、频道数量和全服管制数量。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc enable</code> / <code>/svc disable</code></td><td style="padding: 6px 8px; vertical-align: top;">启用或停用全部语音转发。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelallow on|off</code></td><td style="padding: 6px 8px; vertical-align: top;">允许或禁止普通玩家创建频道，默认是 <code>on</code>。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc setrange whisper|talk|shout &lt;格数&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">修改接近度语音范围。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channels</code></td><td style="padding: 6px 8px; vertical-align: top;">列出频道 ID、类型、所有者、人数、发言席位和锁定状态。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelcreate &lt;名称&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">创建开放持久频道；图形界面可额外选择密码或隐藏类型。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelinvite &lt;频道ID&gt; &lt;玩家&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">向指定频道发送邀请。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelleave &lt;频道ID&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">以命令方式请求玩家离开指定频道。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channeladd &lt;频道ID&gt; &lt;玩家或UID&gt;</code> / <code>/svc channelremove ...</code></td><td style="padding: 6px 8px; vertical-align: top;">添加或移出频道成员。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelrole &lt;频道ID&gt; &lt;玩家或UID&gt; listenonly|member|moderator</code></td><td style="padding: 6px 8px; vertical-align: top;">设置频道角色；不能通过此命令设置所有者。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channellock &lt;频道ID&gt;</code> / <code>/svc channelunlock &lt;频道ID&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">锁定或解锁频道。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelmute|channelunmute &lt;频道ID&gt; &lt;玩家或UID&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">在指定频道禁言或恢复玩家。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelban|channelunban &lt;频道ID&gt; &lt;玩家或UID&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">在指定频道封禁或解除封禁玩家。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc tempmute &lt;玩家&gt; [秒]</code> / <code>/svc deafen &lt;玩家&gt; [秒]</code></td><td style="padding: 6px 8px; vertical-align: top;">临时禁言或强制拒听，默认 60 秒。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc adminmute|adminunmute &lt;玩家或UID&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">添加或解除持久全局禁言。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc forceblock|unforceblock &lt;玩家或UID&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">添加或解除全服语音屏蔽。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc adminmutes</code></td><td style="padding: 6px 8px; vertical-align: top;">查看持久禁言和全服屏蔽列表。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc playerdiag &lt;玩家&gt;</code> / <code>/svc diag</code></td><td style="padding: 6px 8px; vertical-align: top;">查看玩家连接或服务器路由诊断。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc audit</code> / <code>/svc metrics reset</code></td><td style="padding: 6px 8px; vertical-align: top;">查看最近管理审计或重置滚动指标。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc reload</code></td><td style="padding: 6px 8px; vertical-align: top;">重新加载并归一化服务器配置；失败时保留旧配置。</td></tr>
+</tbody></table>
+
+<h2>十、容量、配置与隐私</h2>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">项目</th><th style="padding: 6px 8px; text-align: left;">默认值或位置</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;">频道成员</td><td style="padding: 6px 8px; vertical-align: top;">每个频道最多 100 人。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">频道同时发言</td><td style="padding: 6px 8px; vertical-align: top;">默认最多 3 人，服务端可调整。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">每名玩家频道数</td><td style="padding: 6px 8px; vertical-align: top;">默认最多 8 个显式频道。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">服务器频道总数</td><td style="padding: 6px 8px; vertical-align: top;">默认最多 256 个，配置边界为 16-512。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">主要配置</td><td style="padding: 6px 8px; vertical-align: top;"><code>SimpleVoiceChat.Server.json</code>、<code>SimpleVoiceChat.Client.json</code>。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">管理审计</td><td style="padding: 6px 8px; vertical-align: top;"><code>SimpleVoiceChat.Audit.json</code>；记录管理操作，不记录语音内容。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">实际录音</td><td style="padding: 6px 8px; vertical-align: top;"><code>AppData\Roaming\VintagestoryData\ModData\SimpleVoiceChat</code>；仅客户端本地保存。</td></tr>
+</tbody></table>
+<p>服务端转发压缩语音帧，不常态解码、混音或保存语音载荷。本模组不提供端到端加密，传输保护依赖 Vintage Story 底层连接。实际录音属于玩家主动操作，应按服务器和活动隐私规则管理。</p>
+
+<h2>十一、常见问题</h2>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">现象</th><th style="padding: 6px 8px; text-align: left;">处理</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;">第一次按 <code>'</code> 没有设置窗口</td><td style="padding: 6px 8px; vertical-align: top;">先查看聊天框提示；第一次会打开向导，完成或跳过后才打开主窗口。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">下拉菜单或搜索无法使用</td><td style="padding: 6px 8px; vertical-align: top;">搜索需要点击“搜索”按钮，输入单个字符不会立即刷新；弹窗只显示最上层。更新至同一版本并重新进入窗口。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">列表看不到第七行</td><td style="padding: 6px 8px; vertical-align: top;">频道和玩家列表每页最多 6 行，使用底部分页器切换。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">频道无法加入</td><td style="padding: 6px 8px; vertical-align: top;">检查频道是否锁定、密码是否正确、是否被封禁、是否达到每人 8 个频道上限。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">频道发言席位已满</td><td style="padding: 6px 8px; vertical-align: top;">频道同时发言人数达到上限，稍后重试；只听角色和禁言玩家不能发言。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">提示协议 V3 不兼容</td><td style="padding: 6px 8px; vertical-align: top;">客户端和服务器必须都升级到 <code>1.0.0</code>，并确认双方都安装了模组。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">麦克风测试没有文件</td><td style="padding: 6px 8px; vertical-align: top;">这是设计行为。设置页“麦克风测试”只在内存中录制；需要保存文件时使用主页录音图标。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">所有者离开频道</td><td style="padding: 6px 8px; vertical-align: top;">多人频道必须转移所有权给当前成员或确认删除；不会随机转移。离开和解散都有二次确认。</td></tr>
+</tbody></table>
+
+<h2>十二、权限速查</h2>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">问题</th><th style="padding: 6px 8px; text-align: left;">答案</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;">普通玩家可以创建频道吗？</td><td style="padding: 6px 8px; vertical-align: top;"><strong>默认可以</strong>，管理员可用 <code>/svc channelallow off</code> 关闭。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">谁是频道所有者？</td><td style="padding: 6px 8px; vertical-align: top;">创建频道的玩家。管理员添加成员不会自动成为所有者。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">谁可以邀请玩家？</td><td style="padding: 6px 8px; vertical-align: top;">频道所有者和频道主持人；管理员可使用管理员添加操作。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">普通玩家能看到隐藏频道吗？</td><td style="padding: 6px 8px; vertical-align: top;">不能。必须被邀请，或已经是该频道成员。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">频道主持人等同管理员吗？</td><td style="padding: 6px 8px; vertical-align: top;">不等同。频道主持人只管理所属频道；管理员拥有 <code>controlserver</code> 的全服管理权限。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">所有者离开后谁接任？</td><td style="padding: 6px 8px; vertical-align: top;">所有者必须在弹窗中指定当前频道成员，或确认删除频道；不会随机接任。</td></tr>
+</tbody></table>

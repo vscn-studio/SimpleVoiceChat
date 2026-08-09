@@ -1,11 +1,12 @@
 {
   "type": "code",
   "modid": "simplevoicechat",
-  "name": "简单语音对话",
+  "name": "Simple Voice Chat",
   "authors": [
     "VSCN-Studio"
   ],
-  "description": "适用于 Vintage Story 的通用语音聊天模组，支持接近度语音、自定义频道、音频处理、权限管理和容量保护。",
+  "description": "A general-purpose voice chat mod for Vintage Story with proximity voice, custom channels, audio processing, permission management, and capacity safeguards.",
+  "iconpath": "modicon.png",
   "version": "1.0.0",
   "dependencies": {
     "game": "1.22.2"

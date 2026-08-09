@@ -11,6 +11,16 @@ namespace SimpleVoiceChat.Tests;
 
 public sealed class CoreTests
 {
+    [Theory]
+    [InlineData("leave")]
+    [InlineData("disband")]
+    [InlineData("delete-owned-channel")]
+    public void DestructiveChannelActionsRequireConfirmation(string action)
+    {
+        Assert.True(Gui.VoiceSettingsActionPolicy.RequiresConfirmation(action));
+        Assert.False(Gui.VoiceSettingsActionPolicy.RequiresConfirmation("lock"));
+    }
+
     [Fact]
     public void ProtocolVersionThreeRejectsVersionTwo()
     {
@@ -233,6 +243,23 @@ public sealed class CoreTests
         Assert.Equal(4, firstInstall.ConfigVersion);
         Assert.False(firstInstall.InitialSetupCompleted);
         Assert.False(firstInstall.InitialSetupPromptShown);
+    }
+
+    [Fact]
+    public void ClientConfigurationMigratesLegacyContinuousTalkToVoiceActivation()
+    {
+        SimpleVoiceChatClientConfig config = new()
+        {
+            PreferContinuousTalk = true,
+            NoiseGate = 0.12f,
+            VoiceActivationThreshold = 0.02f
+        };
+
+        config.Normalize();
+
+        Assert.True(config.PreferVoiceActivation);
+        Assert.False(config.PreferContinuousTalk);
+        Assert.True(config.VoiceActivationThreshold >= config.NoiseGate);
     }
 
     [Fact]
