@@ -1023,7 +1023,7 @@ internal sealed class VoiceSettingsIconToggleButton : GuiElementControl
         using Context ctx = new(surface);
         double width = Bounds.OuterWidth;
         double height = Bounds.OuterHeight;
-        GuiElement.RoundRectangle(ctx, 0, 0, width, height, GuiElement.scaled(4));
+        ctx.Rectangle(0, 0, width, height);
         ctx.SetSourceRGBA(0.62, 0.66, 0.72, On ? 0.36 : 0.22);
         ctx.FillPreserve();
         ctx.SetSourceRGBA(0.92, 0.95, 1.0, Enabled ? 0.95 : 0.45);
