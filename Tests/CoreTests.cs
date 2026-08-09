@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text;
 using SimpleVoiceChat.Audio;
 using SimpleVoiceChat.Config;
 using SimpleVoiceChat.Integration;
@@ -17,6 +18,43 @@ public sealed class CoreTests
         Assert.True(VoiceProtocol.IsCompatible(3));
         Assert.False(VoiceProtocol.IsCompatible(2));
         Assert.False(VoiceProtocol.IsCompatible(4));
+    }
+
+    [Fact]
+    public void RecordedAudioClipLoadsPcmWavTracks()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"simplevoicechat-recording-{Guid.NewGuid():N}.wav");
+        try
+        {
+            using (FileStream stream = File.Create(path))
+            using (BinaryWriter writer = new(stream))
+            {
+                short[] samples = { 1000, -1000, 2000, -2000 };
+                writer.Write(Encoding.ASCII.GetBytes("RIFF"));
+                writer.Write(44);
+                writer.Write(Encoding.ASCII.GetBytes("WAVEfmt "));
+                writer.Write(16);
+                writer.Write((short)1);
+                writer.Write((short)2);
+                writer.Write(VoiceConstants.SampleRate);
+                writer.Write(VoiceConstants.SampleRate * 4);
+                writer.Write((short)4);
+                writer.Write((short)16);
+                writer.Write(Encoding.ASCII.GetBytes("data"));
+                writer.Write(samples.Length * sizeof(short));
+                foreach (short sample in samples) writer.Write(sample);
+            }
+
+            Assert.True(RecordedAudioClip.TryLoad(path, out RecordedAudioClip? clip, out string error), error);
+            Assert.NotNull(clip);
+            Assert.Equal(2, clip!.Channels);
+            Assert.Equal(VoiceConstants.SampleRate, clip.SampleRate);
+            Assert.Equal(new short[] { 1000, -1000, 2000, -2000 }, clip.Samples);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
     }
 
     [Fact]

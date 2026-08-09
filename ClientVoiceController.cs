@@ -26,6 +26,7 @@ public sealed class ClientVoiceController : IDisposable
     private IClientNetworkChannel? voiceChannel;
     private OpenAlCaptureService? capture;
     private OpenAlPlaybackService? playback;
+    private VoiceRecordingService? recording;
     private VoiceHud? hud;
     private VoiceSettingsDialog? settingsDialog;
     private VoiceSetupWizardDialog? setupWizard;
@@ -90,6 +91,7 @@ public sealed class ClientVoiceController : IDisposable
     private long transmitBlockedUntilMs;
     private bool serverTransmitBlocked;
     private bool channelTransmitBlocked;
+    private bool lastRecordingPlaybackActive;
 
     public ClientVoiceController(ICoreClientAPI capi, SimpleVoiceChatClientConfig config)
     {
@@ -123,7 +125,10 @@ public sealed class ClientVoiceController : IDisposable
         capture = new OpenAlCaptureService(capi, config);
         capture.Initialize();
 
+        recording = new VoiceRecordingService(capi);
         playback = new OpenAlPlaybackService(capi, config);
+        VoiceRecordingService recordingService = recording;
+        playback.OutputFrameCaptured = samples => recordingService.AppendOutput(samples);
         playback.Initialize();
 
         hud = new VoiceHud(capi, BuildHudSnapshot, ShouldShowHud);
@@ -1081,6 +1086,97 @@ public sealed class ClientVoiceController : IDisposable
         SaveConfig();
     }
 
+    internal bool IsRecording => recording?.IsRecording == true;
+    internal bool IsRecordingPlaybackActive => playback?.IsRecordingPlaybackActive == true;
+    internal bool HasRecording => recording?.HasRecording == true;
+    internal string LastRecordingPath => recording?.LastRecordingPath ?? string.Empty;
+    internal VoiceRecordingMode? RecordingMode => recording?.Mode;
+
+    internal bool ToggleRecordingFromSettings()
+    {
+        if (IsRecording)
+        {
+            return StopRecordingFromSettings();
+        }
+
+        settingsDialog?.OpenRecordingModeOverlay();
+        return true;
+    }
+
+    internal bool StartRecordingFromSettings(VoiceRecordingMode mode)
+    {
+        if (recording == null || capture?.IsAvailable != true)
+        {
+            capi.ShowChatMessage(SVCLang.Get("chat-recording-unavailable", capture?.FailureReason ?? string.Empty));
+            return false;
+        }
+
+        if (!recording.Start(mode, out string error))
+        {
+            capi.ShowChatMessage(SVCLang.Get("chat-recording-failed", error));
+            return false;
+        }
+
+        capture.Start();
+        settingsDialog?.RefreshConfiguration();
+        capi.ShowChatMessage(SVCLang.Get("chat-recording-started", mode == VoiceRecordingMode.InputOnly
+            ? SVCLang.Get("recording-mode-input")
+            : SVCLang.Get("recording-mode-input-output")));
+        return true;
+    }
+
+    internal bool StopRecordingFromSettings()
+    {
+        if (recording == null || !recording.IsRecording)
+        {
+            return false;
+        }
+
+        bool saved = recording.Stop(out string path);
+        if (!lastPressed)
+        {
+            capture?.Stop();
+        }
+
+        settingsDialog?.RefreshConfiguration();
+        if (saved)
+        {
+            capi.ShowChatMessage(SVCLang.Get("chat-recording-stopped", Path.GetFileName(path)));
+        }
+        else
+        {
+            capi.ShowChatMessage(SVCLang.Get("chat-recording-empty"));
+        }
+        return saved;
+    }
+
+    internal bool ToggleRecordingPlaybackFromSettings()
+    {
+        if (IsRecordingPlaybackActive)
+        {
+            playback?.StopRecordingPlayback();
+            settingsDialog?.RefreshConfiguration();
+            return true;
+        }
+
+        if (!HasRecording || playback == null)
+        {
+            capi.ShowChatMessage(SVCLang.Get("chat-recording-playback-empty"));
+            return false;
+        }
+
+        if (!playback.PlayRecording(LastRecordingPath, out string error))
+        {
+            capi.ShowChatMessage(SVCLang.Get("chat-recording-playback-failed", error));
+            return false;
+        }
+
+        lastRecordingPlaybackActive = true;
+        settingsDialog?.RefreshConfiguration();
+        capi.ShowChatMessage(SVCLang.Get("chat-recording-playback-started"));
+        return true;
+    }
+
     internal void SetNoiseSuppressionFromSettings(bool enabled)
     {
         config.EnableNoiseSuppression = enabled && VoiceProcessingCapabilities.NoiseSuppressionAvailable;
@@ -1470,6 +1566,7 @@ public sealed class ClientVoiceController : IDisposable
             && voiceHandshakeAccepted
             && capture?.IsAvailable == true
             && voiceChannel?.Connected == true;
+        bool isRecording = recording?.IsRecording == true;
 
         if (pressed && capture?.IsAvailable != true && !captureWarningShown)
         {
@@ -1484,12 +1581,20 @@ public sealed class ClientVoiceController : IDisposable
                 BeginVoiceSession();
                 capture?.Start();
             }
-            CaptureAndSend();
+            DrainCapturedFrames(sendVoice: true);
         }
         else if (lastPressed)
         {
-            CaptureAndSend();
-            capture?.Stop();
+            DrainCapturedFrames(sendVoice: true);
+            if (!isRecording)
+            {
+                capture?.Stop();
+            }
+        }
+        else if (isRecording)
+        {
+            capture?.Start();
+            DrainCapturedFrames(sendVoice: false);
         }
 
         if (!canSpeak)
@@ -1606,11 +1711,12 @@ public sealed class ClientVoiceController : IDisposable
             return;
         }
         playback?.Update(serverConfig);
-    }
-
-    private void CaptureAndSend()
-    {
-        DrainCapturedFrames();
+        bool playbackActive = playback?.IsRecordingPlaybackActive == true;
+        if (playbackActive != lastRecordingPlaybackActive)
+        {
+            lastRecordingPlaybackActive = playbackActive;
+            settingsDialog?.RefreshConfiguration();
+        }
     }
 
     private bool IsPushToTalkPressed()
@@ -1732,11 +1838,18 @@ public sealed class ClientVoiceController : IDisposable
     {
         playback?.Dispose();
         playback = new OpenAlPlaybackService(capi, config);
+        if (recording != null)
+        {
+            VoiceRecordingService recordingService = recording;
+            playback.OutputFrameCaptured = samples => recordingService.AppendOutput(samples);
+        }
         playback.Initialize();
+        lastRecordingPlaybackActive = false;
+        settingsDialog?.RefreshConfiguration();
         capi.ShowChatMessage(SVCLang.Get("chat-output-device-switched", string.IsNullOrWhiteSpace(config.OutputDeviceName) ? SVCLang.Get("default-speaker") : config.OutputDeviceName));
     }
 
-    private void DrainCapturedFrames()
+    private void DrainCapturedFrames(bool sendVoice)
     {
         int processedFrames = 0;
         bool hadFrame = false;
@@ -1748,6 +1861,14 @@ public sealed class ClientVoiceController : IDisposable
             processedFrames++;
 
             VoiceFrameStats stats = capturePreprocessor.Process(captureBuffer, config.MicGain, config.NoiseGate);
+            if (recording?.IsRecording == true)
+            {
+                recording.AppendInput(captureBuffer);
+            }
+            if (!sendVoice)
+            {
+                continue;
+            }
             if (!stats.Active)
             {
                 continue;
@@ -2080,6 +2201,8 @@ public sealed class ClientVoiceController : IDisposable
         voiceEncoder = null;
         playback?.Dispose();
         playback = null;
+        recording?.Dispose();
+        recording = null;
         hud?.TryClose();
         hud?.Dispose();
         hud = null;

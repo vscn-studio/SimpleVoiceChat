@@ -38,7 +38,8 @@ internal enum VoiceSettingsOverlay
     Channel,
     Players,
     Player,
-    CreateChannel
+    CreateChannel,
+    RecordingMode
 }
 
 internal static class VoiceSettingsNavigation
@@ -95,6 +96,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private static readonly AssetLocation EyeAsset = new("simplevoicechat", "gui/svc_eye.png");
     private static readonly AssetLocation NoEyeAsset = new("simplevoicechat", "gui/svc_no_eye.png");
     private static readonly AssetLocation PlayersAsset = new("simplevoicechat", "gui/svc_players.png");
+    private static readonly AssetLocation RecordingAsset = new("simplevoicechat", "gui/svc_record_vinyl.png");
+    private static readonly AssetLocation RecordingStopAsset = new("simplevoicechat", "gui/svc_record_stop.png");
 
     private readonly ClientVoiceController controller;
     private readonly SimpleVoiceChatClientConfig config;
@@ -177,7 +180,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         }
 
         SingleComposer?.Dispose();
-        bool home = selectedPage == VoiceSettingsPage.Home;
+        bool home = selectedPage == VoiceSettingsPage.Home && overlay == VoiceSettingsOverlay.None;
         double windowWidth = home ? HomeWindowWidth : WindowWidth;
         double windowHeight = home ? HomeWindowHeight : WindowHeight;
         activeViewportHeight = home ? HomeViewportHeight : ViewportHeight;
@@ -362,8 +365,39 @@ public sealed class VoiceSettingsDialog : GuiDialog
         ConfigureSlider(composer, "micGain", (int)Math.Round(config.MicGain * 100), 10, 400, "%");
         ConfigureSlider(composer, "noiseGate", (int)Math.Round(config.NoiseGate * 1000), 0, 200);
 
-        // Keep the first behavior row clear of the final audio slider.
         y += 54;
+        double recordingY = y;
+        composer.AddStaticText(SVCLang.Get("label-local-recording"), label,
+            ElementBounds.Fixed(labelX, recordingY + 3, 210, 30));
+        AddFlatButton(composer,
+            controller.IsRecording
+                ? SVCLang.Get("button-recording-stop")
+                : SVCLang.Get("button-recording-start"),
+            controller.ToggleRecordingFromSettings,
+            ElementBounds.Fixed(controlX, recordingY, 190, controlHeight),
+            "recording-toggle",
+            active: controller.IsRecording);
+        AddFlatButton(composer,
+            controller.IsRecordingPlaybackActive
+                ? SVCLang.Get("button-play-recording-stop")
+                : SVCLang.Get("button-play-recording-start"),
+            controller.ToggleRecordingPlaybackFromSettings,
+            ElementBounds.Fixed(controlX + 202, recordingY, 190, controlHeight),
+            "recording-playback-toggle",
+            active: controller.IsRecordingPlaybackActive);
+        composer.AddStaticText(
+            controller.IsRecording
+                ? SVCLang.Get("recording-status-recording")
+                : controller.IsRecordingPlaybackActive
+                    ? SVCLang.Get("recording-status-playback")
+                    : controller.HasRecording
+                        ? SVCLang.Get("recording-status-ready")
+                        : SVCLang.Get("recording-status-none"),
+            CairoFont.WhiteDetailText().WithColor(new[] { 0.78, 0.82, 0.88, 1.0 }),
+            ElementBounds.Fixed(controlX + 404, recordingY + 3, 190, 30));
+
+        // Keep the first behavior row clear of the recording controls.
+        y = recordingY + 54;
         double behaviorY = y;
         AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-mic-muted"), "localMute", controller.LocalMuted, controller.SetLocalMutedFromSettings);
         AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-deafened"), "globalMute", controller.GlobalMuted, controller.SetGlobalMutedFromSettings);
@@ -386,6 +420,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         const double quickY = 104;
         const double quickIconSize = 42;
         const double quickGap = 6;
+        const int quickIconCount = 4;
 
         // Keep both quick selectors inside the compact home window.  Their
         // popup is drawn independently, so a selector must never rely on the
@@ -396,7 +431,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
                 160,
                 Math.Floor((activeContentWidth
                     - ContentLeft
-                    - (ContentLeft + quickIconSize * 3 + quickGap * 3)
+                    - (ContentLeft + quickIconSize * quickIconCount + quickGap * quickIconCount)
                     - quickGap) / 2d)));
 
         AddFlatButton(
@@ -422,6 +457,14 @@ public sealed class VoiceSettingsDialog : GuiDialog
         x += quickIconSize + quickGap;
         AddIconToggle(composer, EyeAsset, NoEyeAsset, config.ShowMicrophoneHud,
             controller.SetHudVisibleFromSettings, ElementBounds.Fixed(x, quickY, quickIconSize, quickIconSize), "quick-hud");
+        x += quickIconSize + quickGap;
+        AssetLocation recordingIcon = controller.IsRecording ? RecordingStopAsset : RecordingAsset;
+        VoiceSettingsImageButton recordingButton = new(
+            composer.Api,
+            ElementBounds.Fixed(x, quickY, quickIconSize, quickIconSize),
+            recordingIcon,
+            _ => controller.ToggleRecordingFromSettings());
+        composer.AddInteractiveElement(recordingButton, "quick-recording");
         x += quickIconSize + quickGap;
 
         VoiceSettingsChannelOption[] channels = controller.BuildChannelOptions();
@@ -539,7 +582,41 @@ public sealed class VoiceSettingsDialog : GuiDialog
             case VoiceSettingsOverlay.CreateChannel:
                 AddCreateChannelOverlay(composer);
                 break;
+            case VoiceSettingsOverlay.RecordingMode:
+                AddRecordingModeOverlay(composer);
+                break;
         }
+    }
+
+    private void AddRecordingModeOverlay(GuiComposer composer)
+    {
+        const double x = 190;
+        const double y = 190;
+        const double width = 560;
+        const double height = 220;
+        AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("recording-mode-title"));
+        AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "recording-mode-close");
+        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        composer.AddStaticText(SVCLang.Get("recording-mode-description"), label,
+            ElementBounds.Fixed(x + 24, y + 60, width - 48, 28));
+        AddFlatButton(composer, SVCLang.Get("recording-mode-input"),
+            () => StartRecordingMode(VoiceRecordingMode.InputOnly),
+            ElementBounds.Fixed(x + 24, y + 104, (width - 60) / 2d, 42),
+            "recording-mode-input");
+        AddFlatButton(composer, SVCLang.Get("recording-mode-input-output"),
+            () => StartRecordingMode(VoiceRecordingMode.InputAndOutput),
+            ElementBounds.Fixed(x + 36 + (width - 60) / 2d, y + 104, (width - 60) / 2d, 42),
+            "recording-mode-input-output");
+    }
+
+    private bool StartRecordingMode(VoiceRecordingMode mode)
+    {
+        bool started = controller.StartRecordingFromSettings(mode);
+        if (started)
+        {
+            CloseOverlay();
+        }
+        return started;
     }
 
     private void AddChannelOverlay(GuiComposer composer)
@@ -946,6 +1023,18 @@ public sealed class VoiceSettingsDialog : GuiDialog
         PushOverlayState();
         playerOverlayScroll = 0;
         overlay = VoiceSettingsOverlay.Players;
+        QueueCompose();
+    }
+
+    internal void OpenRecordingModeOverlay()
+    {
+        if (overlay != VoiceSettingsOverlay.None)
+        {
+            return;
+        }
+
+        PushOverlayState();
+        overlay = VoiceSettingsOverlay.RecordingMode;
         QueueCompose();
     }
 

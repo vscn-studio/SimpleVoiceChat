@@ -15,6 +15,8 @@ public sealed class OpenAlPlaybackService : IDisposable
     private const int TargetQueuedBuffers = 5;
     private const int StreamBufferCount = 8;
     private const int MaxRemoteStreams = 12;
+    private const int RecordingBufferCount = 4;
+    private const int RecordingChunkFrames = 8;
 
     private readonly ICoreClientAPI capi;
     private readonly SimpleVoiceChatClientConfig clientConfig;
@@ -31,6 +33,26 @@ public sealed class OpenAlPlaybackService : IDisposable
     private bool hasEffectsExtension;
     private bool contextWarningShown;
     private bool disposed;
+    private RecordedAudioClip? pendingRecordingClip;
+    private RecordedAudioClip? recordingClip;
+    private readonly Queue<int> recordingFreeBuffers = new();
+    private int recordingSource;
+    private int recordingQueuedBuffers;
+    private int recordingSampleOffset;
+    private bool recordingStopRequested;
+
+    public Action<short[]>? OutputFrameCaptured { get; set; }
+
+    public bool IsRecordingPlaybackActive
+    {
+        get
+        {
+            lock (gate)
+            {
+                return pendingRecordingClip != null || recordingClip != null;
+            }
+        }
+    }
 
     public OpenAlPlaybackService(ICoreClientAPI capi, SimpleVoiceChatClientConfig clientConfig)
     {
@@ -182,6 +204,7 @@ public sealed class OpenAlPlaybackService : IDisposable
             {
                 lock (gate)
                 {
+                    UpdateRecordingPlayback();
                     DrainPendingEncodedFrames();
                     long now = capi.World.ElapsedMilliseconds;
                     List<long>? remove = null;
@@ -227,6 +250,37 @@ public sealed class OpenAlPlaybackService : IDisposable
         {
             return streams.TryGetValue(entityId, out RemoteVoiceStream? stream)
                 && capi.World.ElapsedMilliseconds - stream.LastPacketMilliseconds < 250;
+        }
+    }
+
+    public bool PlayRecording(string path, out string error)
+    {
+        error = string.Empty;
+        if (!RecordedAudioClip.TryLoad(path, out RecordedAudioClip? clip, out error) || clip == null)
+        {
+            return false;
+        }
+
+        lock (gate)
+        {
+            if (disposed)
+            {
+                error = "The playback service is unavailable.";
+                return false;
+            }
+
+            pendingRecordingClip = clip;
+            recordingStopRequested = false;
+        }
+        return true;
+    }
+
+    public void StopRecordingPlayback()
+    {
+        lock (gate)
+        {
+            pendingRecordingClip = null;
+            recordingStopRequested = true;
         }
     }
 
@@ -422,6 +476,7 @@ public sealed class OpenAlPlaybackService : IDisposable
     {
         if (stream.Buffer.TryDequeue(out samples))
         {
+            CaptureOutputFrame(samples);
             return true;
         }
         if (!stream.DecodedEncodedFrames.TryDequeue(out samples!))
@@ -439,7 +494,120 @@ public sealed class OpenAlPlaybackService : IDisposable
         {
             decodeSignal.Release();
         }
+        CaptureOutputFrame(samples);
         return true;
+    }
+
+    private void CaptureOutputFrame(short[] samples)
+    {
+        if (OutputFrameCaptured == null)
+        {
+            return;
+        }
+
+        try
+        {
+            OutputFrameCaptured(samples);
+        }
+        catch (Exception ex)
+        {
+            capi.Logger.Warning("SimpleVoiceChat: recording playback frame failed: {0}", ex.Message);
+        }
+    }
+
+    private void UpdateRecordingPlayback()
+    {
+        if (recordingStopRequested)
+        {
+            recordingStopRequested = false;
+            StopRecordingPlaybackInternal();
+        }
+
+        if (pendingRecordingClip != null)
+        {
+            RecordedAudioClip clip = pendingRecordingClip;
+            pendingRecordingClip = null;
+            StopRecordingPlaybackInternal();
+            StartRecordingPlaybackInternal(clip);
+        }
+
+        if (recordingClip == null || recordingSource == 0)
+        {
+            return;
+        }
+
+        int processed = AL.GetSource(recordingSource, ALGetSourcei.BuffersProcessed);
+        while (processed-- > 0)
+        {
+            int buffer = AL.SourceUnqueueBuffer(recordingSource);
+            recordingFreeBuffers.Enqueue(buffer);
+            recordingQueuedBuffers = Math.Max(0, recordingQueuedBuffers - 1);
+        }
+
+        int samplesPerChunk = VoiceConstants.SamplesPerFrame * RecordingChunkFrames * recordingClip.Channels;
+        while (recordingFreeBuffers.Count > 0 && recordingSampleOffset < recordingClip.Samples.Length)
+        {
+            int buffer = recordingFreeBuffers.Dequeue();
+            int count = Math.Min(samplesPerChunk, recordingClip.Samples.Length - recordingSampleOffset);
+            short[] chunk = new short[count];
+            Array.Copy(recordingClip.Samples, recordingSampleOffset, chunk, 0, count);
+            ALFormat format = recordingClip.Channels == 2 ? ALFormat.Stereo16 : ALFormat.Mono16;
+            AL.BufferData(buffer, format, chunk, recordingClip.SampleRate);
+            AL.SourceQueueBuffer(recordingSource, buffer);
+            recordingSampleOffset += count;
+            recordingQueuedBuffers++;
+        }
+
+        if (recordingQueuedBuffers > 0
+            && AL.GetSource(recordingSource, ALGetSourcei.SourceState) != (int)ALSourceState.Playing)
+        {
+            AL.SourcePlay(recordingSource);
+        }
+
+        if (recordingSampleOffset >= recordingClip.Samples.Length && recordingQueuedBuffers == 0)
+        {
+            StopRecordingPlaybackInternal();
+        }
+    }
+
+    private void StartRecordingPlaybackInternal(RecordedAudioClip clip)
+    {
+        recordingClip = clip;
+        recordingSampleOffset = 0;
+        recordingQueuedBuffers = 0;
+        recordingSource = AL.GenSource();
+        AL.Source(recordingSource, ALSourceb.Looping, false);
+        AL.Source(recordingSource, ALSourcef.Gain, Math.Clamp(clientConfig.OutputVolume, 0f, 2f));
+        AL.Source(recordingSource, ALSourcef.RolloffFactor, 0f);
+        AL.Source(recordingSource, ALSourcef.ReferenceDistance, 1f);
+        foreach (int buffer in AL.GenBuffers(RecordingBufferCount))
+        {
+            recordingFreeBuffers.Enqueue(buffer);
+        }
+    }
+
+    private void StopRecordingPlaybackInternal()
+    {
+        if (recordingSource != 0)
+        {
+            AL.SourceStop(recordingSource);
+            int queued = AL.GetSource(recordingSource, ALGetSourcei.BuffersQueued);
+            while (queued-- > 0)
+            {
+                recordingFreeBuffers.Enqueue(AL.SourceUnqueueBuffer(recordingSource));
+            }
+            AL.DeleteSource(recordingSource);
+            recordingSource = 0;
+        }
+
+        while (recordingFreeBuffers.Count > 0)
+        {
+            AL.DeleteBuffer(recordingFreeBuffers.Dequeue());
+        }
+
+        recordingClip = null;
+        recordingQueuedBuffers = 0;
+        recordingSampleOffset = 0;
     }
 
     private async Task DecodeWorkerLoop(CancellationToken cancellationToken)
@@ -490,6 +658,9 @@ public sealed class OpenAlPlaybackService : IDisposable
         }
         lock (gate)
         {
+            pendingRecordingClip = null;
+            recordingStopRequested = false;
+            StopRecordingPlaybackInternal();
             foreach (RemoteVoiceStream stream in streams.Values)
             {
                 stream.Dispose();
