@@ -19,7 +19,6 @@ public sealed class OpenAlPlaybackService : IDisposable
     private readonly ICoreClientAPI capi;
     private readonly SimpleVoiceChatClientConfig clientConfig;
     private readonly Dictionary<long, RemoteVoiceStream> streams = new();
-    private readonly Queue<DecodedVoiceFrame> pendingFrames = new();
     private readonly Queue<EncodedVoiceFrame> pendingEncodedFrames = new();
     private readonly object gate = new();
     private readonly CancellationTokenSource decodeCancellation = new();
@@ -82,48 +81,7 @@ public sealed class OpenAlPlaybackService : IDisposable
         }
     }
 
-    public void Enqueue(VoiceFramePacket packet, ServerVoiceConfigPacket serverConfig, float gainMultiplier = 1f)
-    {
-        if (packet.Payload == null || packet.Payload.Length == 0)
-        {
-            return;
-        }
-
-        short[] decoded = new short[VoiceConstants.SamplesPerFrame];
-        int written = ImaAdpcmCodec.Decode(packet.Payload, decoded);
-        if (written <= 0)
-        {
-            return;
-        }
-
-        if (written < decoded.Length)
-        {
-            Array.Clear(decoded, written, decoded.Length - written);
-        }
-
-        DecodedVoiceFrame frame = new(
-            packet.SenderEntityId,
-            packet.SessionId,
-            packet.Sequence,
-            packet.Mode,
-            packet.Rms,
-            packet.SquadRelay,
-            new Vec3f(packet.X, packet.Y, packet.Z),
-            decoded,
-            Math.Clamp(gainMultiplier, 0f, 2f));
-
-        lock (gate)
-        {
-            while (pendingFrames.Count >= MaxPendingDecodedFrames)
-            {
-                pendingFrames.Dequeue();
-            }
-
-            pendingFrames.Enqueue(frame);
-        }
-    }
-
-    public void Enqueue(VoiceRelayFrameV2Packet packet, int codec, float gainMultiplier = 1f)
+    public void Enqueue(VoiceRelayFrameV3Packet packet, int codec, float gainMultiplier = 1f)
     {
         if (packet.Payload == null
             || packet.Payload.Length == 0
@@ -166,7 +124,6 @@ public sealed class OpenAlPlaybackService : IDisposable
 
             lock (gate)
             {
-                DrainPendingFrames(serverConfig);
                 DrainPendingEncodedFrames();
                 long now = capi.World.ElapsedMilliseconds;
                 List<long>? remove = null;
@@ -235,7 +192,7 @@ public sealed class OpenAlPlaybackService : IDisposable
                 hasContext ? SVCLang.Get("playback-debug-ctx-ok") : SVCLang.Get("playback-debug-ctx-wait"),
                 hasEffectsExtension ? SVCLang.Get("playback-debug-efx-ok") : SVCLang.Get("playback-debug-efx-none"),
                 streams.Count,
-                pendingFrames.Count + pendingEncodedFrames.Count,
+                pendingEncodedFrames.Count,
                 jitterFrames,
                 queuedBuffers,
                 averageTargetDelay,
@@ -254,7 +211,7 @@ public sealed class OpenAlPlaybackService : IDisposable
         Vec3d listener = playerEntity.Pos.XYZ;
         float range = Math.Min(serverConfig.GetRange(stream.Mode), serverConfig.MaxRange);
         float gain = clientConfig.OutputVolume * stream.ExternalGain;
-        if (stream.SquadRelay)
+        if (stream.ChannelRelay)
         {
             gain = 0.82f * clientConfig.OutputVolume * stream.ExternalGain;
         }
@@ -262,14 +219,14 @@ public sealed class OpenAlPlaybackService : IDisposable
         VoiceEnvironmentSnapshot env = GetEnvironment(stream, serverConfig);
         gain *= env.VolumeMultiplier;
 
-        Vec3f playbackPosition = stream.SquadRelay
+        Vec3f playbackPosition = stream.ChannelRelay
             ? new Vec3f((float)listener.X, (float)listener.Y, (float)listener.Z)
             : stream.Position;
 
         AL.Source(stream.Source, ALSource3f.Position, playbackPosition.X, playbackPosition.Y, playbackPosition.Z);
         AL.Source(stream.Source, ALSourcef.Gain, Math.Clamp(gain, 0f, 2f));
-        AL.Source(stream.Source, ALSourcef.RolloffFactor, stream.SquadRelay ? 0f : CalculateRolloff(range));
-        AL.Source(stream.Source, ALSourcef.ReferenceDistance, stream.SquadRelay ? 1f : CalculateReferenceDistance(range));
+        AL.Source(stream.Source, ALSourcef.RolloffFactor, stream.ChannelRelay ? 0f : CalculateRolloff(range));
+        AL.Source(stream.Source, ALSourcef.ReferenceDistance, stream.ChannelRelay ? 1f : CalculateReferenceDistance(range));
         AL.Source(stream.Source, ALSourcef.MaxDistance, 9999f);
         AL.Source(stream.Source, ALSourcef.Pitch, env.Pitch);
         ApplyLowPass(stream, env.LowPass);
@@ -277,52 +234,6 @@ public sealed class OpenAlPlaybackService : IDisposable
         if (stream.QueuedBuffers > 0 && AL.GetSource(stream.Source, ALGetSourcei.SourceState) != (int)ALSourceState.Playing)
         {
             AL.SourcePlay(stream.Source);
-        }
-    }
-
-    private void DrainPendingFrames(ServerVoiceConfigPacket serverConfig)
-    {
-        int processed = 0;
-        while (pendingFrames.Count > 0 && processed++ < MaxDecodedFramesPerTick)
-        {
-            DecodedVoiceFrame frame = pendingFrames.Dequeue();
-            if (!streams.TryGetValue(frame.EntityId, out RemoteVoiceStream? stream))
-            {
-                stream = TryCreateStream(frame.EntityId);
-                if (stream == null)
-                {
-                    continue;
-                }
-            }
-
-            if (stream.SessionId > frame.SessionId)
-            {
-                continue;
-            }
-
-            if (stream.SessionId != frame.SessionId)
-            {
-                stream.ResetForSession(frame.SessionId);
-            }
-
-            stream.Position = frame.Position;
-            stream.Mode = frame.Mode;
-            stream.SquadRelay = frame.SquadRelay;
-            stream.ExternalGain = frame.GainMultiplier;
-            stream.LastPacketMilliseconds = capi.World.ElapsedMilliseconds;
-
-            short[] samples = frame.Samples;
-            if (!hasEffectsExtension)
-            {
-                VoiceEnvironmentSnapshot env = GetEnvironment(stream, serverConfig);
-                stream.Effects.Process(samples, env);
-            }
-            stream.Buffer.Enqueue(frame.Sequence, samples, capi.World.ElapsedMilliseconds);
-        }
-
-        while (pendingFrames.Count > MaxPendingDecodedFrames / 2)
-        {
-            pendingFrames.Dequeue();
         }
     }
 
@@ -353,7 +264,7 @@ public sealed class OpenAlPlaybackService : IDisposable
             stream.EnsureDecoder(frame.Codec);
             stream.Position = frame.Position;
             stream.Mode = frame.Mode;
-            stream.SquadRelay = frame.ChannelRelay;
+            stream.ChannelRelay = frame.ChannelRelay;
             stream.ExternalGain = frame.GainMultiplier;
             stream.LastPacketMilliseconds = capi.World.ElapsedMilliseconds;
             stream.EncodedBuffer.Enqueue(frame.Sequence, frame.Payload, capi.World.ElapsedMilliseconds);
@@ -421,7 +332,7 @@ public sealed class OpenAlPlaybackService : IDisposable
             clientConfig,
             serverConfig,
             stream.Mode,
-            stream.SquadRelay);
+            stream.ChannelRelay);
         stream.LastEnvironmentMilliseconds = now;
         return stream.CachedEnvironment;
     }
@@ -583,7 +494,7 @@ public sealed class OpenAlPlaybackService : IDisposable
         public long LastPacketMilliseconds { get; set; }
         public Vec3f Position { get; set; } = new();
         public VoiceMode Mode { get; set; } = VoiceMode.Talk;
-        public bool SquadRelay { get; set; }
+        public bool ChannelRelay { get; set; }
         public float ExternalGain { get; set; } = 1f;
         public VoiceEffectsProcessor Effects { get; } = new();
         public float LastLowPassGainHf { get; set; } = 1f;
@@ -703,17 +614,6 @@ public sealed class OpenAlPlaybackService : IDisposable
             }
         }
     }
-
-    private readonly record struct DecodedVoiceFrame(
-        long EntityId,
-        int SessionId,
-        ushort Sequence,
-        VoiceMode Mode,
-        float Rms,
-        bool SquadRelay,
-        Vec3f Position,
-        short[] Samples,
-        float GainMultiplier);
 
     private readonly record struct EncodedVoiceFrame(
         long EntityId,

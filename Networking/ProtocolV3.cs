@@ -4,11 +4,13 @@ namespace SimpleVoiceChat.Networking;
 
 public static class VoiceProtocol
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
     public const int CodecImaAdpcm = 1;
     public const int CodecOpus = 2;
     public const int ImaAdpcmPayloadBytes = 164;
     public const int MaxControlStringLength = 128;
+
+    public static bool IsCompatible(int version) => version == CurrentVersion;
 }
 
 public enum VoiceTransmitTarget
@@ -21,19 +23,7 @@ public enum VoiceTransmitTarget
 public enum VoiceRelayKind
 {
     Proximity = 0,
-    Channel = 1,
-    PriorityBroadcast = 2
-}
-
-public enum VoiceChannelKind
-{
-    Squad = 0,
-    Civilization = 1,
-    Command = 2,
-    Diplomacy = 3,
-    Staff = 4,
-    Broadcast = 5,
-    Radio = 6
+    Channel = 1
 }
 
 public enum VoiceChannelRole
@@ -41,7 +31,7 @@ public enum VoiceChannelRole
     Banned = 0,
     ListenOnly = 1,
     Member = 2,
-    Officer = 3,
+    Moderator = 3,
     Owner = 4
 }
 
@@ -49,7 +39,7 @@ public enum VoiceChannelRole
 public enum VoiceCapability
 {
     None = 0,
-    ProtocolV2 = 1 << 0,
+    ProtocolV3 = 1 << 0,
     ChannelDeltas = 1 << 1,
     AdaptiveJitter = 1 << 2,
     Opus = 1 << 3,
@@ -140,7 +130,7 @@ public sealed class VoicePongPacket
 }
 
 [ProtoContract]
-public sealed class VoiceFrameV2Packet
+public sealed class VoiceFrameV3Packet
 {
     [ProtoMember(1)]
     public int ConnectionEpoch;
@@ -171,7 +161,7 @@ public sealed class VoiceFrameV2Packet
 }
 
 [ProtoContract]
-public sealed class VoiceRelayFrameV2Packet
+public sealed class VoiceRelayFrameV3Packet
 {
     [ProtoMember(1)]
     public int SenderUidHash;
@@ -233,12 +223,9 @@ public sealed class ChannelCommandPacket
     public string Name = string.Empty;
 
     [ProtoMember(5)]
-    public VoiceChannelKind Kind;
-
-    [ProtoMember(6)]
     public int Page;
 
-    [ProtoMember(7)]
+    [ProtoMember(6)]
     public int PageSize;
 }
 
@@ -265,24 +252,21 @@ public sealed class ChannelInfoPacket
     public string Name = string.Empty;
 
     [ProtoMember(3)]
-    public VoiceChannelKind Kind;
-
-    [ProtoMember(4)]
     public int Revision;
 
-    [ProtoMember(5)]
+    [ProtoMember(4)]
     public VoiceChannelRole LocalRole;
 
-    [ProtoMember(6)]
+    [ProtoMember(5)]
     public ChannelMemberPacket[] Members = Array.Empty<ChannelMemberPacket>();
 
-    [ProtoMember(7)]
+    [ProtoMember(6)]
     public int MemberCount;
 
-    [ProtoMember(8)]
+    [ProtoMember(7)]
     public bool Locked;
 
-    [ProtoMember(9)]
+    [ProtoMember(8)]
     public bool ExternallyManaged;
 }
 

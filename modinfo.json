@@ -5,8 +5,8 @@
   "authors": [
     "VSCN-Studio"
   ],
-  "description": "适用于大型文明模拟活动的双端语音聊天，支持接近度、文明、指挥、外交、小队、工作人员、广播和无线电频道，以及 Opus、权限与容量保护。",
-  "version": "0.3.0",
+  "description": "适用于 Vintage Story 的通用语音聊天模组，支持接近度语音、自定义频道、音频处理、权限管理和容量保护。",
+  "version": "1.0.0",
   "dependencies": {
     "game": "1.22.2"
   }

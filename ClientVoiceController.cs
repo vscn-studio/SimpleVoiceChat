@@ -72,7 +72,7 @@ public sealed class ClientVoiceController : IDisposable
     private float lastMicLevel;
     private float lastRemoteVoiceLevel;
     private long lastVoiceLevelMs;
-    private VoiceHudSquadMember[] squadHudMembers = Array.Empty<VoiceHudSquadMember>();
+    private VoiceHudChannelMember[] channelHudMembers = Array.Empty<VoiceHudChannelMember>();
     private ChannelInfoPacket[] channelInfos = Array.Empty<ChannelInfoPacket>();
     private readonly Dictionary<string, ChannelMemberPagePacket> memberPagesByChannel = new(StringComparer.Ordinal);
     private readonly Dictionary<string, HashSet<int>> activeChannelTalkerHashesByChannel = new(StringComparer.Ordinal);
@@ -85,6 +85,9 @@ public sealed class ClientVoiceController : IDisposable
     private long lastVoiceProbeSentMs;
     private long voiceHandshakeAcceptedMs;
     private long lastCaptureRecoveryAttemptMs;
+    private long transmitBlockedUntilMs;
+    private bool serverTransmitBlocked;
+    private bool channelTransmitBlocked;
 
     public ClientVoiceController(ICoreClientAPI capi, SimpleVoiceChatClientConfig config)
     {
@@ -146,9 +149,7 @@ public sealed class ClientVoiceController : IDisposable
             .RegisterMessageType<ClientVoiceStatePacket>()
             .RegisterMessageType<ServerVoiceConfigPacket>()
             .RegisterMessageType<MutePlayerPacket>()
-            .RegisterMessageType<SquadBindPacket>()
             .RegisterMessageType<AdminVoiceControlPacket>()
-            .RegisterMessageType<SquadHudPacket>()
             .RegisterMessageType<VoiceHelloPacket>()
             .RegisterMessageType<VoiceWelcomePacket>()
             .RegisterMessageType<ChannelCommandPacket>()
@@ -159,7 +160,6 @@ public sealed class ClientVoiceController : IDisposable
             .RegisterMessageType<VoiceFeedbackPacket>()
             .RegisterMessageType<VoiceDiagnosticsPacket>()
             .SetMessageHandler<ServerVoiceConfigPacket>(OnServerConfig)
-            .SetMessageHandler<SquadHudPacket>(OnSquadHud)
             .SetMessageHandler<VoiceWelcomePacket>(OnVoiceWelcome)
             .SetMessageHandler<ChannelSnapshotPacket>(OnChannelSnapshot)
             .SetMessageHandler<ChannelMemberDeltaPacket>(OnChannelMemberDelta)
@@ -169,13 +169,11 @@ public sealed class ClientVoiceController : IDisposable
             .SetMessageHandler<VoiceDiagnosticsPacket>(OnVoiceDiagnostics);
 
         voiceChannel = capi.Network.RegisterUdpChannel(VoiceConstants.VoiceChannelName)
-            .RegisterMessageType<VoiceFramePacket>()
-            .RegisterMessageType<VoiceFrameV2Packet>()
-            .RegisterMessageType<VoiceRelayFrameV2Packet>()
+            .RegisterMessageType<VoiceFrameV3Packet>()
+            .RegisterMessageType<VoiceRelayFrameV3Packet>()
             .RegisterMessageType<VoicePingPacket>()
             .RegisterMessageType<VoicePongPacket>()
-            .SetMessageHandler<VoiceFramePacket>(OnVoiceFrame)
-            .SetMessageHandler<VoiceRelayFrameV2Packet>(OnVoiceRelayFrameV2)
+            .SetMessageHandler<VoiceRelayFrameV3Packet>(OnVoiceRelayFrameV3)
             .SetMessageHandler<VoicePongPacket>(OnVoicePong);
     }
 
@@ -436,33 +434,30 @@ public sealed class ClientVoiceController : IDisposable
                     return TextCommandResult.Success(muted ? SVCLang.Get("command-mute-player", player.PlayerName) : SVCLang.Get("command-unmute-player", player.PlayerName));
                 }
 
-            case "bind":
+            case "channelinvite":
                 {
-                    IPlayer? target = GetSelectedPlayer();
+                    string name = args.RawArgs.PopWord("");
+                    IPlayer? target = capi.World.AllOnlinePlayers.FirstOrDefault(player =>
+                        player.PlayerName.Equals(name, StringComparison.OrdinalIgnoreCase));
                     if (target == null)
                     {
-                        return TextCommandResult.Error(SVCLang.Get("command-bind-face-player"));
+                        return TextCommandResult.Error(SVCLang.Get("command-usage-channel-invite"));
                     }
-
-                    SendChannelCommand("invite", targetPlayerUid: target.PlayerUID);
-                    return TextCommandResult.Success(SVCLang.Get("command-request-bind-squad", target.PlayerName));
+                    if (string.IsNullOrWhiteSpace(config.SelectedChannelId))
+                    {
+                        return TextCommandResult.Error(SVCLang.Get("chat-channel-action-requires-channel"));
+                    }
+                    SendChannelCommand("invite", config.SelectedChannelId, target.PlayerUID);
+                    return TextCommandResult.Success(SVCLang.Get("command-request-channel-invite", target.PlayerName));
                 }
 
-            case "unbind":
-                SendChannelCommand("leave", channelId: config.SelectedChannelId);
-                return TextCommandResult.Success(SVCLang.Get("command-request-leave-squad"));
+            case "channelleave":
+                SendChannelCommand("leave", channelId: args.RawArgs.PopWord(config.SelectedChannelId));
+                return TextCommandResult.Success(SVCLang.Get("command-request-leave-channel"));
 
-            case "squad":
+            case "channel":
                 SendChannelCommand("request");
-                return TextCommandResult.Success(SVCLang.Get("command-request-squad-status"));
-
-            case "accept":
-                SendChannelCommand("accept");
-                return TextCommandResult.Success(SVCLang.Get("command-invite-accepted"));
-
-            case "decline":
-                SendChannelCommand("decline");
-                return TextCommandResult.Success(SVCLang.Get("command-invite-declined"));
+                return TextCommandResult.Success(SVCLang.Get("command-request-channel-status"));
 
             case "diag":
                 SendChannelCommand("diagnostics");
@@ -543,9 +538,9 @@ public sealed class ClientVoiceController : IDisposable
         controlChannel.SendPacket(new VoiceHelloPacket
         {
             ProtocolVersion = VoiceProtocol.CurrentVersion,
-            ModVersion = "0.3.0",
+            ModVersion = "1.0.0",
             SupportedCodecs = new[] { VoiceProtocol.CodecOpus, VoiceProtocol.CodecImaAdpcm },
-            Capabilities = (int)(VoiceCapability.ProtocolV2
+            Capabilities = (int)(VoiceCapability.ProtocolV3
                 | VoiceCapability.ChannelDeltas
                 | VoiceCapability.ChannelMemberPaging
                 | VoiceCapability.AdaptiveJitter
@@ -561,8 +556,14 @@ public sealed class ClientVoiceController : IDisposable
             return;
         }
         voiceHandshakeAccepted = packet.Accepted
-            && packet.ProtocolVersion == VoiceProtocol.CurrentVersion
+            && VoiceProtocol.IsCompatible(packet.ProtocolVersion)
             && packet.Codec is VoiceProtocol.CodecImaAdpcm or VoiceProtocol.CodecOpus;
+        if (voiceHandshakeAccepted)
+        {
+            transmitBlockedUntilMs = 0;
+            serverTransmitBlocked = false;
+            channelTransmitBlocked = false;
+        }
         ActivateCurrentServerProfile(packet.ServerInstanceId);
         connectionEpoch = voiceHandshakeAccepted ? packet.ConnectionEpoch : 0;
         voiceHandshakeAcceptedMs = voiceHandshakeAccepted ? capi.World.ElapsedMilliseconds : 0;
@@ -611,7 +612,7 @@ public sealed class ClientVoiceController : IDisposable
         config.SelectedChannelId = channelId;
         selectedChannelRestorePending = false;
 
-        UpdateSquadHudMembers();
+        UpdateChannelHudMembers();
         UpdatePendingInvite(packet);
         SaveConfig();
         if (restoreOnServer)
@@ -666,7 +667,7 @@ public sealed class ClientVoiceController : IDisposable
             memberPagesByChannel.Remove(packet.ChannelId);
             SendChannelCommand("members", channelId: packet.ChannelId, page: cachedPage.Page, pageSize: SettingsMemberPageSize);
         }
-        UpdateSquadHudMembers();
+        UpdateChannelHudMembers();
         hud?.Refresh();
         settingsDialog?.RefreshData();
     }
@@ -712,7 +713,7 @@ public sealed class ClientVoiceController : IDisposable
             }
         }
 
-        UpdateSquadHudMembers();
+        UpdateChannelHudMembers();
         hud?.Refresh();
     }
 
@@ -722,6 +723,7 @@ public sealed class ClientVoiceController : IDisposable
         {
             return;
         }
+        UpdateHudAccessState(packet);
         string message = LocalizeFeedback(packet);
         if (!string.IsNullOrWhiteSpace(message))
         {
@@ -783,7 +785,6 @@ public sealed class ClientVoiceController : IDisposable
         string channelId = "",
         string targetPlayerUid = "",
         string name = "",
-        VoiceChannelKind kind = VoiceChannelKind.Squad,
         int page = 0,
         int pageSize = 0)
     {
@@ -797,7 +798,6 @@ public sealed class ClientVoiceController : IDisposable
             ChannelId = channelId,
             TargetPlayerUid = targetPlayerUid,
             Name = name,
-            Kind = kind,
             Page = page,
             PageSize = pageSize
         });
@@ -812,21 +812,21 @@ public sealed class ClientVoiceController : IDisposable
         return Math.Clamp(playerGain * channelGain, 0f, 2f);
     }
 
-    private void UpdateSquadHudMembers()
+    private void UpdateChannelHudMembers()
     {
         ChannelInfoPacket? channel = channelInfos.FirstOrDefault(info => info.ChannelId == config.SelectedChannelId)
-            ?? channelInfos.FirstOrDefault(info => info.Kind == VoiceChannelKind.Squad);
+            ?? channelInfos.FirstOrDefault();
         if (channel == null)
         {
-            squadHudMembers = Array.Empty<VoiceHudSquadMember>();
+            channelHudMembers = Array.Empty<VoiceHudChannelMember>();
             return;
         }
         activeChannelTalkerHashesByChannel.TryGetValue(channel.ChannelId, out HashSet<int>? activeTalkers);
 
-        squadHudMembers = (channel.Members ?? Array.Empty<ChannelMemberPacket>())
+        channelHudMembers = (channel.Members ?? Array.Empty<ChannelMemberPacket>())
             .Where(member => member.PlayerUid != capi.World.Player.PlayerUID)
             .Take(12)
-            .Select(member => new VoiceHudSquadMember(
+            .Select(member => new VoiceHudChannelMember(
                 DisplayPlayerName(member.PlayerUid, member.PlayerName),
                 activeTalkers?.Contains(VoiceMath.StableUidHash(member.PlayerUid)) == true))
             .ToArray();
@@ -835,9 +835,8 @@ public sealed class ClientVoiceController : IDisposable
     internal VoiceSettingsChannelOption[] BuildChannelOptions()
     {
         return channelInfos
-            .OrderBy(info => info.Kind)
-            .ThenBy(info => info.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(info => new VoiceSettingsChannelOption(info.ChannelId, info.Name, info.LocalRole, info.Kind, info.ExternallyManaged))
+            .OrderBy(info => info.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(info => new VoiceSettingsChannelOption(info.ChannelId, info.Name, info.LocalRole, info.ExternallyManaged))
             .ToArray();
     }
 
@@ -1056,6 +1055,57 @@ public sealed class ClientVoiceController : IDisposable
                 member.Role)).ToArray());
     }
 
+    private void UpdateHudAccessState(VoiceFeedbackPacket packet)
+    {
+        string code = (packet.Code ?? string.Empty).Trim().ToLowerInvariant();
+        long now = capi.World.ElapsedMilliseconds;
+        switch (code)
+        {
+            case "transmit-blocked":
+                if (packet.Arguments is { Length: > 0 }
+                    && long.TryParse(packet.Arguments[0], out long seconds)
+                    && seconds > 0)
+                {
+                    transmitBlockedUntilMs = now + Math.Min(seconds, 86_400) * 1_000;
+                }
+                else
+                {
+                    serverTransmitBlocked = true;
+                }
+                break;
+
+            case "transmit-restored":
+                serverTransmitBlocked = false;
+                transmitBlockedUntilMs = 0;
+                break;
+
+            case "channel-not-authorized":
+                channelTransmitBlocked = true;
+                break;
+
+            case "channel-transmit-blocked":
+                if (packet.Arguments is { Length: > 0 }
+                    && string.Equals(packet.Arguments[0], config.SelectedChannelId, StringComparison.Ordinal))
+                {
+                    channelTransmitBlocked = true;
+                }
+                break;
+
+            case "channel-transmit-restored":
+                if (packet.Arguments is { Length: > 0 }
+                    && string.Equals(packet.Arguments[0], config.SelectedChannelId, StringComparison.Ordinal))
+                {
+                    channelTransmitBlocked = false;
+                }
+                break;
+
+            case "protocol-suspended":
+                transmitBlockedUntilMs = now + 60_000;
+                break;
+        }
+        hud?.Refresh();
+    }
+
     private string DisplayPlayerName(string playerUid, string? playerName)
     {
         string safeName = (playerName ?? string.Empty).Trim();
@@ -1079,17 +1129,12 @@ public sealed class ClientVoiceController : IDisposable
         string name = "",
         VoiceChannelRole role = VoiceChannelRole.Member)
     {
-        if (action.StartsWith("create-", StringComparison.Ordinal))
+        if (action == "create-channel" || action == "create")
         {
-            string kindText = action["create-".Length..];
-            if (Enum.TryParse(kindText, true, out VoiceChannelKind kind)
-                && kind is >= VoiceChannelKind.Civilization and <= VoiceChannelKind.Radio)
-            {
-                string channelName = string.IsNullOrWhiteSpace(name)
-                    ? $"{FormatChannelKind(kind)} - {capi.World.Player.PlayerName}"
-                    : name.Trim();
-                SendChannelCommand("create", name: channelName, kind: kind);
-            }
+            string channelName = string.IsNullOrWhiteSpace(name)
+                ? $"{SVCLang.Get("channel-default-name")} - {capi.World.Player.PlayerName}"
+                : name.Trim();
+            SendChannelCommand("create", name: channelName);
             return;
         }
 
@@ -1103,8 +1148,9 @@ public sealed class ClientVoiceController : IDisposable
             && string.Equals(config.SelectedChannelId, channelId, StringComparison.Ordinal))
         {
             config.SelectedChannelId = string.Empty;
+            channelTransmitBlocked = false;
             SaveConfig();
-            UpdateSquadHudMembers();
+            UpdateChannelHudMembers();
             hud?.Refresh();
         }
 
@@ -1129,9 +1175,10 @@ public sealed class ClientVoiceController : IDisposable
     private void SelectChannel(string channelId)
     {
         config.SelectedChannelId = channelId;
+        channelTransmitBlocked = false;
         SaveConfig();
         SendChannelCommand("select", channelId: channelId);
-        UpdateSquadHudMembers();
+        UpdateChannelHudMembers();
         hud?.Refresh();
     }
 
@@ -1160,7 +1207,7 @@ public sealed class ClientVoiceController : IDisposable
             return (string.Empty, false);
         }
 
-        return (channels.FirstOrDefault(channel => channel.Kind == VoiceChannelKind.Squad)?.ChannelId ?? string.Empty, false);
+        return (channels.FirstOrDefault()?.ChannelId ?? string.Empty, false);
     }
 
     private bool AcceptPendingInvite()
@@ -1255,47 +1302,7 @@ public sealed class ClientVoiceController : IDisposable
         SendChannelCommand("diagnostics");
     }
 
-    private void OnSquadHud(SquadHudPacket packet)
-    {
-        if (!lifecycle.IsStarted)
-        {
-            return;
-        }
-        int count = Math.Min(packet.MemberNames.Length, packet.Speaking.Length);
-        VoiceHudSquadMember[] members = new VoiceHudSquadMember[count];
-        for (int index = 0; index < count; index++)
-        {
-            members[index] = new VoiceHudSquadMember(packet.MemberNames[index], packet.Speaking[index]);
-        }
-
-        squadHudMembers = members;
-        hud?.Refresh();
-    }
-
-    private void OnVoiceFrame(VoiceFramePacket packet)
-    {
-        if (!lifecycle.IsStarted
-            || !serverConfig.Enabled
-            || globalMuted
-            || packet.Payload == null
-            || packet.SenderEntityId == capi.World.Player.Entity.EntityId)
-        {
-            return;
-        }
-
-        IPlayer? sender = capi.World.AllOnlinePlayers.FirstOrDefault(p => p.Entity?.EntityId == packet.SenderEntityId);
-        if (sender != null && config.MutedPlayerUids.Contains(sender.PlayerUID))
-        {
-            return;
-        }
-
-        playback?.Enqueue(packet, serverConfig, GetPlaybackGain(sender, packet.SquadRelay));
-        lastRemoteVoiceLevel = Math.Max(lastRemoteVoiceLevel, NormalizeRemoteVoiceLevel(packet));
-        lastVoiceLevelMs = capi.World.ElapsedMilliseconds;
-        hud?.Refresh();
-    }
-
-    private void OnVoiceRelayFrameV2(VoiceRelayFrameV2Packet packet)
+    private void OnVoiceRelayFrameV3(VoiceRelayFrameV3Packet packet)
     {
         if (!lifecycle.IsStarted
             || !voiceHandshakeAccepted
@@ -1315,17 +1322,13 @@ public sealed class ClientVoiceController : IDisposable
 
         bool channelRelay = packet.RelayKind != VoiceRelayKind.Proximity;
         playback?.Enqueue(packet, packet.Codec, GetPlaybackGain(sender, channelRelay));
-        VoiceFramePacket levelPacket = new()
-        {
-            SenderEntityId = packet.SenderEntityId,
-            Mode = packet.Mode,
-            Rms = packet.Level / 255f,
-            X = packet.X,
-            Y = packet.Y,
-            Z = packet.Z,
-            SquadRelay = channelRelay
-        };
-        lastRemoteVoiceLevel = Math.Max(lastRemoteVoiceLevel, NormalizeRemoteVoiceLevel(levelPacket));
+        lastRemoteVoiceLevel = Math.Max(lastRemoteVoiceLevel, NormalizeRemoteVoiceLevel(
+            packet.Level / 255f,
+            packet.Mode,
+            channelRelay,
+            packet.X,
+            packet.Y,
+            packet.Z));
         lastVoiceLevelMs = capi.World.ElapsedMilliseconds;
         hud?.Refresh();
     }
@@ -1656,7 +1659,7 @@ public sealed class ClientVoiceController : IDisposable
             return;
         }
 
-        voiceChannel?.SendPacket(new VoiceFrameV2Packet
+        voiceChannel?.SendPacket(new VoiceFrameV3Packet
         {
             ConnectionEpoch = connectionEpoch,
             SessionId = sessionId,
@@ -1699,11 +1702,8 @@ public sealed class ClientVoiceController : IDisposable
     private VoiceHudSnapshot BuildHudSnapshot()
     {
         bool captureAvailable = capture?.IsAvailable == true;
-        bool microphoneEnabled = !localMuted
-            && !globalMuted
-            && serverConfig.Enabled
-            && voiceHandshakeAccepted
-            && captureAvailable;
+        VoiceHudIconState iconState = GetHudIconState(captureAvailable);
+        bool microphoneEnabled = iconState is VoiceHudIconState.Whispering or VoiceHudIconState.Talking;
         bool udpResponsive = voiceProbeTracker.IsResponsive(capi.World.ElapsedMilliseconds, VoiceProbeTimeoutMilliseconds);
         string detail = udpResponsive ? SVCLang.Get("hud-detail-udp-ok") : SVCLang.Get("hud-detail-udp-wait");
         if (!captureAvailable)
@@ -1719,12 +1719,42 @@ public sealed class ClientVoiceController : IDisposable
 
         return new VoiceHudSnapshot(
             microphoneEnabled,
+            iconState,
             voiceLevel > 0f,
             voiceLevel,
             BuildHudStatus(captureAvailable),
             $"{FormatMode(mode)} | {BuildTransmitTargetLabel()}",
             detail,
-            squadHudMembers);
+            channelHudMembers);
+    }
+
+    private VoiceHudIconState GetHudIconState(bool captureAvailable)
+    {
+        if (!serverConfig.Enabled || globalMuted || !voiceHandshakeAccepted)
+        {
+            return VoiceHudIconState.VoiceDisabled;
+        }
+
+        long now = capi.World.ElapsedMilliseconds;
+        if (transmitBlockedUntilMs > 0 && transmitBlockedUntilMs <= now)
+        {
+            transmitBlockedUntilMs = 0;
+        }
+
+        bool sendsToChannel = config.TransmitTarget is VoiceTransmitTarget.SelectedChannel or VoiceTransmitTarget.ProximityAndChannel
+            && !string.IsNullOrEmpty(config.SelectedChannelId);
+        if (localMuted
+            || !captureAvailable
+            || serverTransmitBlocked
+            || transmitBlockedUntilMs > now
+            || (sendsToChannel && channelTransmitBlocked))
+        {
+            return VoiceHudIconState.Muted;
+        }
+
+        return mode == VoiceMode.Whisper
+            ? VoiceHudIconState.Whispering
+            : VoiceHudIconState.Talking;
     }
 
     private float NormalizeVoiceLevel(float rms, VoiceMode voiceMode)
@@ -1734,18 +1764,18 @@ public sealed class ClientVoiceController : IDisposable
         return Math.Clamp(raw * ModeLevelMultiplier(voiceMode), 0f, 1f);
     }
 
-    private float NormalizeRemoteVoiceLevel(VoiceFramePacket packet)
+    private float NormalizeRemoteVoiceLevel(float rms, VoiceMode mode, bool channelRelay, float x, float y, float z)
     {
-        if (packet.SquadRelay)
+        if (channelRelay)
         {
-            return Math.Clamp(NormalizeVoiceLevel(packet.Rms, packet.Mode) * 0.82f, 0f, 1f);
+            return Math.Clamp(NormalizeVoiceLevel(rms, mode) * 0.82f, 0f, 1f);
         }
 
         Vec3d listener = capi.World.Player.Entity.Pos.XYZ;
-        double distance = listener.DistanceTo(packet.X, packet.Y, packet.Z);
-        float range = Math.Min(serverConfig.GetRange(packet.Mode), serverConfig.MaxRange);
+        double distance = listener.DistanceTo(x, y, z);
+        float range = Math.Min(serverConfig.GetRange(mode), serverConfig.MaxRange);
         float distanceGain = EstimateOpenAlDistanceGain(distance, range);
-        return Math.Clamp(NormalizeVoiceLevel(packet.Rms, packet.Mode) * distanceGain, 0f, 1f);
+        return Math.Clamp(NormalizeVoiceLevel(rms, mode) * distanceGain, 0f, 1f);
     }
 
     private static float EstimateOpenAlDistanceGain(double distance, float range)
@@ -1847,20 +1877,6 @@ public sealed class ClientVoiceController : IDisposable
         };
     }
 
-    private static string FormatChannelKind(VoiceChannelKind kind)
-    {
-        return kind switch
-        {
-            VoiceChannelKind.Civilization => SVCLang.Get("channel-kind-civilization"),
-            VoiceChannelKind.Command => SVCLang.Get("channel-kind-command"),
-            VoiceChannelKind.Diplomacy => SVCLang.Get("channel-kind-diplomacy"),
-            VoiceChannelKind.Staff => SVCLang.Get("channel-kind-staff"),
-            VoiceChannelKind.Broadcast => SVCLang.Get("channel-kind-broadcast"),
-            VoiceChannelKind.Radio => SVCLang.Get("channel-kind-radio"),
-            _ => SVCLang.Get("channel-kind-squad")
-        };
-    }
-
     private string FormatHotkey(string hotkeyCode, string fallback)
     {
         string value = capi.Input.GetHotKeyByCode(hotkeyCode)?.CurrentMapping?.ToString() ?? fallback;
@@ -1947,7 +1963,7 @@ public sealed class ClientVoiceController : IDisposable
         channelInfos = Array.Empty<ChannelInfoPacket>();
         memberPagesByChannel.Clear();
         activeChannelTalkerHashesByChannel.Clear();
-        squadHudMembers = Array.Empty<VoiceHudSquadMember>();
+        channelHudMembers = Array.Empty<VoiceHudChannelMember>();
     }
 
 }

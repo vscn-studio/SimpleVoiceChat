@@ -8,8 +8,8 @@ public sealed class ProtocolTests
     [Fact]
     public void FrameShapeValidatorAcceptsNegotiatedBoundaryPackets()
     {
-        VoiceFrameV2Packet opus = ValidPacket(new byte[200]);
-        VoiceFrameV2Packet adpcm = ValidPacket(new byte[VoiceProtocol.ImaAdpcmPayloadBytes]);
+        VoiceFrameV3Packet opus = ValidPacket(new byte[200]);
+        VoiceFrameV3Packet adpcm = ValidPacket(new byte[VoiceProtocol.ImaAdpcmPayloadBytes]);
 
         Assert.True(VoiceProtocolValidation.IsValidFrameShape(opus, VoiceProtocol.CodecOpus, 42, 476));
         Assert.True(VoiceProtocolValidation.IsValidFrameShape(adpcm, VoiceProtocol.CodecImaAdpcm, 42, 476));
@@ -18,7 +18,7 @@ public sealed class ProtocolTests
     [Fact]
     public void FrameShapeValidatorRejectsIdentityEnumStringAndPayloadViolations()
     {
-        VoiceFrameV2Packet packet = ValidPacket(new byte[20]);
+        VoiceFrameV3Packet packet = ValidPacket(new byte[20]);
         packet.ConnectionEpoch = 41;
         Assert.False(VoiceProtocolValidation.IsValidFrameShape(packet, VoiceProtocol.CodecOpus, 42, 476));
 
@@ -45,7 +45,7 @@ public sealed class ProtocolTests
         for (int i = 0; i < 10_000; i++)
         {
             int payloadLength = random.Next(0, 700);
-            VoiceFrameV2Packet packet = new()
+            VoiceFrameV3Packet packet = new()
             {
                 ConnectionEpoch = random.Next(40, 45),
                 SessionId = random.Next(-2, 10),
@@ -66,9 +66,9 @@ public sealed class ProtocolTests
         }
     }
 
-    private static VoiceFrameV2Packet ValidPacket(byte[] payload)
+    private static VoiceFrameV3Packet ValidPacket(byte[] payload)
     {
-        return new VoiceFrameV2Packet
+        return new VoiceFrameV3Packet
         {
             ConnectionEpoch = 42,
             SessionId = 1,

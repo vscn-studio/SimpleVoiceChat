@@ -2,12 +2,11 @@ namespace SimpleVoiceChat.Config;
 
 public sealed class SimpleVoiceChatServerConfig
 {
-    private const int CurrentConfigVersion = 3;
+    private const int CurrentConfigVersion = 4;
 
     public int ConfigVersion { get; set; } = 1;
     public string ServerInstanceId { get; set; } = string.Empty;
     public bool Enabled { get; set; } = true;
-    public bool AllowLegacyProtocol { get; set; } = false;
     public bool AllowAdpcmFallback { get; set; } = false;
     public bool AllowWhisper { get; set; } = true;
     public bool AllowShout { get; set; } = true;
@@ -28,24 +27,20 @@ public sealed class SimpleVoiceChatServerConfig
     public int MaxStreamsPerListener { get; set; } = 8;
     public int MaxProximityStreams { get; set; } = 6;
     public int MaxChannelTalkers { get; set; } = 3;
-    public int MaxSquadMembers { get; set; } = 12;
-    public int MaxSquadTalkers { get; set; } = 3;
+    public int MaxChannelMembers { get; set; } = 100;
     public int MaxChannelsPerPlayer { get; set; } = 8;
     public int MaxChannels { get; set; } = 256;
     public int ChannelMemberPageSize { get; set; } = 20;
     public int AuditRetention { get; set; } = 500;
     public bool AllowContinuousTalk { get; set; } = true;
-    public bool EnableChannelVoice { get; set; } = true;
-    public bool EnableSquadChannels { get; set; } = true;
-    public bool EnableBroadcastChannels { get; set; } = true;
-    public bool EnableRadioChannels { get; set; } = true;
-    public float SquadBindRange { get; set; } = 4f;
+    public bool EnableChannels { get; set; } = true;
     public List<string> GloballyMutedPlayerUids { get; set; } = new();
     public List<string> ForceBlockedPlayerUids { get; set; } = new();
     public List<PersistentVoiceChannelConfig> PersistentChannels { get; set; } = new();
 
     public void Normalize()
     {
+        bool migrateLegacyChannelIds = ConfigVersion < 4;
         if (ConfigVersion < 2)
         {
             ConfigVersion = 2;
@@ -53,6 +48,10 @@ public sealed class SimpleVoiceChatServerConfig
         if (ConfigVersion < 3)
         {
             ConfigVersion = 3;
+        }
+        if (ConfigVersion < 4)
+        {
+            ConfigVersion = 4;
         }
         ConfigVersion = Math.Max(CurrentConfigVersion, ConfigVersion);
         if (!Guid.TryParse(ServerInstanceId, out Guid serverInstanceId) || serverInstanceId == Guid.Empty)
@@ -73,13 +72,11 @@ public sealed class SimpleVoiceChatServerConfig
         MaxStreamsPerListener = Math.Clamp(MaxStreamsPerListener, 1, 12);
         MaxProximityStreams = Math.Clamp(MaxProximityStreams, 1, MaxStreamsPerListener);
         MaxChannelTalkers = Math.Clamp(MaxChannelTalkers, 1, MaxStreamsPerListener);
-        MaxSquadMembers = Math.Clamp(MaxSquadMembers, 2, 32);
-        MaxSquadTalkers = Math.Clamp(MaxSquadTalkers, 1, MaxStreamsPerListener);
+        MaxChannelMembers = Math.Clamp(MaxChannelMembers, 2, 100);
         MaxChannelsPerPlayer = Math.Clamp(MaxChannelsPerPlayer, 1, 8);
         MaxChannels = Math.Clamp(MaxChannels, 16, 512);
         ChannelMemberPageSize = Math.Clamp(ChannelMemberPageSize, 8, 50);
         AuditRetention = Math.Clamp(AuditRetention, 50, 2_000);
-        SquadBindRange = Math.Clamp(SquadBindRange, 1f, 12f);
         GloballyMutedPlayerUids ??= new List<string>();
         ForceBlockedPlayerUids ??= new List<string>();
         PersistentChannels ??= new List<PersistentVoiceChannelConfig>();
@@ -101,11 +98,18 @@ public sealed class SimpleVoiceChatServerConfig
             .Where(channel => !string.IsNullOrWhiteSpace(channel.Id)
                 && !string.IsNullOrWhiteSpace(channel.Name)
                 && !string.IsNullOrWhiteSpace(channel.OwnerUid)
-                && channel.Kind is >= Networking.VoiceChannelKind.Civilization and <= Networking.VoiceChannelKind.Radio)
+                && channel.MaxMembers >= 2)
             .GroupBy(channel => channel.Id, StringComparer.Ordinal)
             .Select(group => group.First())
             .Take(MaxChannels)
             .ToList();
+        if (migrateLegacyChannelIds)
+        {
+            foreach (PersistentVoiceChannelConfig channel in PersistentChannels)
+            {
+                channel.Id = "channel-" + Guid.NewGuid().ToString("N");
+            }
+        }
     }
 
     public float GetRange(VoiceMode mode)
@@ -123,7 +127,6 @@ public sealed class PersistentVoiceChannelConfig
 {
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
-    public Networking.VoiceChannelKind Kind { get; set; }
     public string OwnerUid { get; set; } = string.Empty;
     public int MaxMembers { get; set; } = 100;
     public int MaxActiveTalkers { get; set; } = 3;
@@ -151,7 +154,7 @@ public sealed class PersistentVoiceChannelConfig
             .Take(MaxMembers - 1)
             .ToDictionary(
                 member => member.Key,
-                member => member.Value == Networking.VoiceChannelRole.Owner ? Networking.VoiceChannelRole.Officer : member.Value,
+                member => member.Value == Networking.VoiceChannelRole.Owner ? Networking.VoiceChannelRole.Moderator : member.Value,
                 StringComparer.Ordinal);
         Members[OwnerUid] = Networking.VoiceChannelRole.Owner;
         MutedPlayerUids ??= new List<string>();

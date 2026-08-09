@@ -107,28 +107,27 @@ internal static class DirectorGuiComposerDropdownMouseUpCapturePatch
 internal static class DirectorGuiTheme
 {
     public const double CornerRadius = 4d;
-    // Blue surface: #123B5C.
-    public const double SurfaceR = 18d / 255d;
-    public const double SurfaceG = 59d / 255d;
-    public const double SurfaceB = 92d / 255d;
-    public const double RaisedR = 0.065d;
-    public const double RaisedG = 0.15d;
-    public const double RaisedB = 0.19d;
-    public const double BorderR = 0.16d;
-    public const double BorderG = 0.34d;
-    public const double BorderB = 0.44d;
-    public const double AccentR = 54d / 255d;
-    public const double AccentG = 117d / 255d;
-    public const double AccentB = 150d / 255d;
-    public const double DangerR = 0.62d;
-    public const double DangerG = 0.14d;
-    public const double DangerB = 0.1d;
-    public const double DangerBorderR = 0.86d;
-    public const double DangerBorderG = 0.3d;
-    public const double DangerBorderB = 0.2d;
-    public const double TextR = 0.9d;
-    public const double TextG = 0.94d;
-    public const double TextB = 0.96d;
+    public const double SurfaceR = 29d / 255d;
+    public const double SurfaceG = 32d / 255d;
+    public const double SurfaceB = 36d / 255d;
+    public const double RaisedR = 39d / 255d;
+    public const double RaisedG = 44d / 255d;
+    public const double RaisedB = 49d / 255d;
+    public const double BorderR = 89d / 255d;
+    public const double BorderG = 99d / 255d;
+    public const double BorderB = 109d / 255d;
+    public const double AccentR = 106d / 255d;
+    public const double AccentG = 199d / 255d;
+    public const double AccentB = 209d / 255d;
+    public const double DangerR = 217d / 255d;
+    public const double DangerG = 109d / 255d;
+    public const double DangerB = 109d / 255d;
+    public const double DangerBorderR = 239d / 255d;
+    public const double DangerBorderG = 145d / 255d;
+    public const double DangerBorderB = 145d / 255d;
+    public const double TextR = 241d / 255d;
+    public const double TextG = 243d / 255d;
+    public const double TextB = 245d / 255d;
 
     public static double ScaledCornerRadius => GuiElement.scaled(CornerRadius);
 

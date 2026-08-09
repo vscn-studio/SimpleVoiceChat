@@ -37,11 +37,11 @@ public static class VoiceEnvironment
         SimpleVoiceChatClientConfig clientConfig,
         ServerVoiceConfigPacket serverConfig,
         VoiceMode mode,
-        bool squadRelay)
+        bool channelRelay)
     {
-        if (squadRelay)
+        if (channelRelay)
         {
-            return EvaluateSquadRelay(capi, listener, speaker, speakerEntity);
+            return EvaluateChannelRelay(capi, listener, speaker, speakerEntity);
         }
 
         float volume = 1f;
@@ -102,7 +102,7 @@ public static class VoiceEnvironment
             Math.Clamp(lowPass, 0f, 0.92f));
     }
 
-    private static VoiceEnvironmentSnapshot EvaluateSquadRelay(
+    private static VoiceEnvironmentSnapshot EvaluateChannelRelay(
         ICoreClientAPI capi,
         Vec3d listener,
         Vec3f speaker,

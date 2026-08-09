@@ -2,14 +2,14 @@ using SimpleVoiceChat.Networking;
 
 namespace SimpleVoiceChat.Integration;
 
-public interface IVoiceGroupProvider
+public interface IVoiceChannelProvider
 {
     string ProviderId { get; }
 
-    bool TryGetGroups(out IReadOnlyList<VoiceGroupSnapshot> groups, out string error);
+    bool TryGetChannels(out IReadOnlyList<VoiceChannelSnapshot> channels, out string error);
 }
 
-public static class VoiceGroupProviderId
+public static class VoiceChannelProviderId
 {
     public const int MaximumLength = 64;
 
@@ -24,11 +24,10 @@ public static class VoiceGroupProviderId
     }
 }
 
-public sealed class VoiceGroupSnapshot
+public sealed class VoiceChannelSnapshot
 {
-    public string GroupId { get; init; } = string.Empty;
+    public string ChannelId { get; init; } = string.Empty;
     public string DisplayName { get; init; } = string.Empty;
-    public VoiceChannelKind Kind { get; init; } = VoiceChannelKind.Civilization;
     public string OwnerUid { get; init; } = string.Empty;
     public int MaxMembers { get; init; } = 100;
     public int MaxActiveTalkers { get; init; } = 3;

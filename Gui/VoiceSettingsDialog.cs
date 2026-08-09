@@ -11,14 +11,14 @@ internal static class VoiceSettingsActionPolicy
     public static bool RequiresTarget(string action)
     {
         return action is "invite" or "add" or "mute" or "unmute" or "remove" or "ban" or "unban"
-            or "listenonly" or "member" or "officer" or "role"
+            or "listenonly" or "member" or "moderator" or "role"
             or "tempmute" or "deafen" or "adminmute" or "adminunmute" or "forceblock" or "unforceblock";
     }
 
     public static bool RequiresChannel(string action)
     {
         return action is "add" or "mute" or "unmute" or "remove" or "ban" or "unban"
-            or "listenonly" or "member" or "officer" or "role"
+            or "listenonly" or "member" or "moderator" or "role"
             or "lock" or "unlock" or "leave" or "disband" or "rename";
     }
 }
@@ -72,7 +72,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private string selectedChannelAction = "invite";
     private string selectedAdminChannelId = string.Empty;
     private string selectedAdminAction = "mute";
-    private string selectedCreateKind = "civilization";
     private string renameText = string.Empty;
     private string createName = string.Empty;
 
@@ -287,7 +286,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         NormalizePlayer(players);
         string[] channelValues = new[] { string.Empty }.Concat(channels.Select(channel => channel.Id)).ToArray();
         string[] channelNames = new[] { SVCLang.Get("channel-none") }
-            .Concat(channels.Select(channel => $"{FormatChannelKind(channel.Kind)}: {channel.Name}"))
+            .Concat(channels.Select(channel => channel.Name))
             .ToArray();
         string[] playerValues = players.Length == 0 ? new[] { string.Empty } : players.Select(player => player.Id).ToArray();
         string[] playerNames = players.Length == 0 ? new[] { SVCLang.Get("player-none") } : players.Select(player => player.Name).ToArray();
@@ -479,11 +478,9 @@ public sealed class VoiceSettingsDialog : GuiDialog
             new DirectorTableRow("/svc volumeplayer <player> <0-200>", SVCLang.Get("command-table-volumeplayer")),
             new DirectorTableRow("/svc mute <player>", SVCLang.Get("command-table-mute")),
             new DirectorTableRow("/svc unmute <player>", SVCLang.Get("command-table-unmute")),
-            new DirectorTableRow("/svc bind", SVCLang.Get("command-table-bind")),
-            new DirectorTableRow("/svc unbind", SVCLang.Get("command-table-unbind")),
-            new DirectorTableRow("/svc squad", SVCLang.Get("command-table-squad")),
-            new DirectorTableRow("/svc accept", SVCLang.Get("command-table-accept")),
-            new DirectorTableRow("/svc decline", SVCLang.Get("command-table-decline")),
+            new DirectorTableRow("/svc channelinvite <player>", SVCLang.Get("command-table-channelinvite")),
+            new DirectorTableRow("/svc channelleave [channel-id]", SVCLang.Get("command-table-channelleave")),
+            new DirectorTableRow("/svc channel", SVCLang.Get("command-table-channel")),
             new DirectorTableRow("/svc diag", SVCLang.Get("command-table-diag")),
             new DirectorTableRow("/svc adminmute|adminunmute|forceblock|unforceblock <player|UID>", SVCLang.Get("command-table-admin-control")),
             new DirectorTableRow("/svc adminmutes", SVCLang.Get("command-table-admin-list"))
@@ -511,7 +508,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
         string[] channelValues = channels.Length == 0 ? new[] { string.Empty } : channels.Select(channel => channel.Id).ToArray();
         string[] channelNames = channels.Length == 0 ? new[] { SVCLang.Get("channel-none") } : channels.Select(channel => channel.Name).ToArray();
         string[] adminActions = BuildAdminChannelActions(channels);
-        string[] createKinds = { "civilization", "command", "diplomacy", "staff", "broadcast", "radio" };
 
         composer
             .AddStaticText(SVCLang.Get("ui-section-admin-target"), section, ElementBounds.Fixed(leftX, leftY, columnWidth, 28))
@@ -546,8 +542,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             .AddDirectorButton(SVCLang.Get("button-rename-channel"), RenameAdminChannel, ElementBounds.Fixed(rightX + 232, rightY, 106, 30), EnumButtonStyle.Normal, "adminRename")
             .AddStaticText(SVCLang.Get("ui-section-create-channel"), section, ElementBounds.Fixed(rightX, rightY += 52, columnWidth, 28))
             .AddTextInput(ElementBounds.Fixed(rightX, rightY += 34, columnWidth, 30), OnCreateNameChanged, input, "createName")
-            .AddDropDown(createKinds, createKinds.Select(kind => SVCLang.Get("channel-kind-" + kind)).ToArray(), Math.Max(0, Array.IndexOf(createKinds, selectedCreateKind)), OnCreateKindChanged, ElementBounds.Fixed(rightX, rightY += 42, 220, 30), "createKind")
-            .AddDirectorButton(SVCLang.Get("channel-action-create"), CreateChannel, ElementBounds.Fixed(rightX + 232, rightY, 106, 30), EnumButtonStyle.Normal, "createChannel");
+            .AddDirectorButton(SVCLang.Get("channel-action-create"), CreateChannel, ElementBounds.Fixed(rightX, rightY += 42, columnWidth, 30), EnumButtonStyle.Normal, "createChannel");
 
         composer.GetTextInput("adminRenameInput").SetValue(renameText);
         composer.GetTextInput("adminRenameInput").SetMaxLength(VoiceProtocol.MaxControlStringLength);
@@ -591,19 +586,18 @@ public sealed class VoiceSettingsDialog : GuiDialog
         VoiceChannelRole role = selected?.LocalRole ?? VoiceChannelRole.Banned;
         bool external = selected?.ExternallyManaged ?? false;
         bool canInvite = controller.HasServerControl
-            || !channels.Any(channel => channel.Kind == VoiceChannelKind.Squad)
-            || channels.Any(channel => channel.Kind == VoiceChannelKind.Squad && channel.LocalRole >= VoiceChannelRole.Officer);
+            || selected is { LocalRole: >= VoiceChannelRole.Moderator };
         List<string> actions = new();
         if (canInvite && hasPlayer) actions.Add("invite");
         if (hasChannel && !external) actions.Add("leave");
-        if (hasChannel && role >= VoiceChannelRole.Officer && hasPlayer)
+        if (hasChannel && role >= VoiceChannelRole.Moderator && hasPlayer)
         {
             actions.AddRange(new[] { "mute", "unmute", "ban", "unban" });
             if (!external) actions.Add("remove");
         }
         if (hasChannel && role == VoiceChannelRole.Owner)
         {
-            if (hasPlayer && !external) actions.AddRange(new[] { "listenonly", "member", "officer" });
+            if (hasPlayer && !external) actions.AddRange(new[] { "listenonly", "member", "moderator" });
             actions.AddRange(new[] { "lock", "unlock" });
             if (!external) actions.Add("disband");
         }
@@ -617,7 +611,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         List<string> actions = new() { "mute", "unmute", "ban", "unban", "lock", "unlock" };
         if (selected is { ExternallyManaged: false })
         {
-            actions.AddRange(new[] { "add", "remove", "listenonly", "member", "officer", "disband" });
+            actions.AddRange(new[] { "add", "remove", "listenonly", "member", "moderator", "disband" });
         }
         if (!actions.Contains(selectedAdminAction, StringComparer.Ordinal))
         {
@@ -693,10 +687,10 @@ public sealed class VoiceSettingsDialog : GuiDialog
         VoiceChannelRole role = selectedChannelAction switch
         {
             "listenonly" => VoiceChannelRole.ListenOnly,
-            "officer" => VoiceChannelRole.Officer,
+            "moderator" => VoiceChannelRole.Moderator,
             _ => VoiceChannelRole.Member
         };
-        string action = selectedChannelAction is "listenonly" or "member" or "officer" ? "role" : selectedChannelAction;
+        string action = selectedChannelAction is "listenonly" or "member" or "moderator" ? "role" : selectedChannelAction;
         controller.ManageSelectedChannel(action, config.SelectedChannelId, selectedPlayerUid, string.Empty, role);
         return true;
     }
@@ -738,10 +732,10 @@ public sealed class VoiceSettingsDialog : GuiDialog
         VoiceChannelRole role = selectedAdminAction switch
         {
             "listenonly" => VoiceChannelRole.ListenOnly,
-            "officer" => VoiceChannelRole.Officer,
+            "moderator" => VoiceChannelRole.Moderator,
             _ => VoiceChannelRole.Member
         };
-        string action = selectedAdminAction is "listenonly" or "member" or "officer" ? "role" : selectedAdminAction;
+        string action = selectedAdminAction is "listenonly" or "member" or "moderator" ? "role" : selectedAdminAction;
         controller.ManageSelectedChannel(action, selectedAdminChannelId, selectedPlayerUid, string.Empty, role);
         return true;
     }
@@ -765,15 +759,10 @@ public sealed class VoiceSettingsDialog : GuiDialog
         SetButtonEnabled("createChannel", controller.HasServerControl && !string.IsNullOrWhiteSpace(value));
     }
 
-    private void OnCreateKindChanged(string value, bool selected)
-    {
-        if (selected) selectedCreateKind = value;
-    }
-
     private bool CreateChannel()
     {
         if (!controller.HasServerControl || string.IsNullOrWhiteSpace(createName)) return false;
-        controller.ManageSelectedChannel("create-" + selectedCreateKind, string.Empty, name: createName);
+        controller.ManageSelectedChannel("create-channel", string.Empty, name: createName);
         createName = string.Empty;
         SingleComposer?.GetTextInput("createName")?.SetValue(string.Empty);
         SetButtonEnabled("createChannel", false);
@@ -886,20 +875,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
             VoiceTransmitTarget.SelectedChannel => "channel",
             VoiceTransmitTarget.ProximityAndChannel => "both",
             _ => "proximity"
-        };
-    }
-
-    private static string FormatChannelKind(VoiceChannelKind kind)
-    {
-        return kind switch
-        {
-            VoiceChannelKind.Civilization => SVCLang.Get("channel-kind-civilization"),
-            VoiceChannelKind.Command => SVCLang.Get("channel-kind-command"),
-            VoiceChannelKind.Diplomacy => SVCLang.Get("channel-kind-diplomacy"),
-            VoiceChannelKind.Staff => SVCLang.Get("channel-kind-staff"),
-            VoiceChannelKind.Broadcast => SVCLang.Get("channel-kind-broadcast"),
-            VoiceChannelKind.Radio => SVCLang.Get("channel-kind-radio"),
-            _ => SVCLang.Get("channel-kind-squad")
         };
     }
 

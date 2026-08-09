@@ -17,22 +17,22 @@ ScenarioResult normal = MeasureScenario("gathering-25-talkers", clustered, talke
 ScenarioResult malicious = MeasureScenario("malicious-100-talkers", clustered, talkerCount: 100, radius: 40);
 
 ChannelService channels = new();
-VoiceChannel civilization = channels.Create(VoiceChannelKind.Civilization, "capacity", playerUids[0], playerCount, 3);
+VoiceChannel channel = channels.Create("capacity", playerUids[0], playerCount, 3);
 for (int i = 1; i < playerCount; i++)
 {
-    channels.AddMember(civilization.Id, playerUids[i], VoiceChannelRole.Member);
+    channels.AddMember(channel.Id, playerUids[i], VoiceChannelRole.Member);
 }
-int channelTalkers = playerUids.Count(uid => civilization.TryAdmitTalker(uid, 0));
+int channelTalkers = playerUids.Count(uid => channel.TryAdmitTalker(uid, 0));
 
 Print(dispersedResult);
 Print(normal);
 Print(malicious);
-Console.WriteLine($"channel_members={civilization.Members.Count} channel_admitted_talkers={channelTalkers} channel_limit={civilization.MaxActiveTalkers}");
+Console.WriteLine($"channel_members={channel.Members.Count} channel_admitted_talkers={channelTalkers} channel_limit={channel.MaxActiveTalkers}");
 
 bool bounded = dispersedResult.MaximumListenerSlots <= playerCount * 8
     && normal.MaximumListenerSlots <= playerCount * 8
     && malicious.MaximumListenerSlots <= playerCount * 8
-    && civilization.Members.Count == playerCount
+    && channel.Members.Count == playerCount
     && channelTalkers == 3
     && normal.BatchP95Milliseconds <= normalBatchP95LimitMilliseconds;
 Console.WriteLine($"capacity_result={(bounded ? "PASS" : "FAIL")}");

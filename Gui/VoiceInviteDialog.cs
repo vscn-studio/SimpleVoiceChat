@@ -7,7 +7,7 @@ namespace SimpleVoiceChat.Gui;
 
 internal static class VoiceInvitePolicy
 {
-    public const long ResponseTimeoutMilliseconds = VoiceConstants.SquadInviteTimeoutMilliseconds;
+    public const long ResponseTimeoutMilliseconds = VoiceConstants.ChannelInviteTimeoutMilliseconds;
 
     public static bool HasExpired(long nowMilliseconds, long deadlineMilliseconds)
     {

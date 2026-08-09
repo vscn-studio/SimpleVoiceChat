@@ -14,15 +14,14 @@ public sealed class ChannelService
     public IEnumerable<VoiceChannel> Channels => channelsById.Values;
 
     public VoiceChannel Create(
-        VoiceChannelKind kind,
         string name,
         string ownerUid,
         int maxMembers,
         int maxActiveTalkers,
         bool persistent = false)
     {
-        string id = $"{kind.ToString().ToLowerInvariant()}-{Guid.NewGuid():N}";
-        VoiceChannel channel = new(id, kind, name, ownerUid, maxMembers, maxActiveTalkers, persistent);
+        string id = $"channel-{Guid.NewGuid():N}";
+        VoiceChannel channel = new(id, name, ownerUid, maxMembers, maxActiveTalkers, persistent);
         channelsById[id] = channel;
         AddMemberIndex(ownerUid, id);
         return channel;
@@ -30,7 +29,6 @@ public sealed class ChannelService
 
     public VoiceChannel SynchronizeExternal(
         string id,
-        VoiceChannelKind kind,
         string name,
         string ownerUid,
         int maxMembers,
@@ -44,7 +42,6 @@ public sealed class ChannelService
 
         if (channelsById.TryGetValue(id, out VoiceChannel? existing)
             && (!existing.ExternallyManaged
-                || existing.Kind != kind
                 || existing.OwnerUid != ownerUid
                 || existing.MaxMembers != boundedMaxMembers
                 || existing.MaxActiveTalkers != boundedMaxActiveTalkers))
@@ -55,7 +52,7 @@ public sealed class ChannelService
 
         if (existing == null)
         {
-            existing = new VoiceChannel(id, kind, name, ownerUid, boundedMaxMembers, boundedMaxActiveTalkers, persistent: false, externallyManaged: true);
+            existing = new VoiceChannel(id, name, ownerUid, boundedMaxMembers, boundedMaxActiveTalkers, persistent: false, externallyManaged: true);
             channelsById[id] = existing;
             AddMemberIndex(ownerUid, id);
         }
@@ -125,7 +122,6 @@ public sealed class ChannelService
 
     public VoiceChannel? Restore(
         string id,
-        VoiceChannelKind kind,
         string name,
         string ownerUid,
         int maxMembers,
@@ -139,7 +135,6 @@ public sealed class ChannelService
         if (string.IsNullOrWhiteSpace(id)
             || string.IsNullOrWhiteSpace(ownerUid)
             || channelsById.ContainsKey(id)
-            || kind == VoiceChannelKind.Squad
             || !CanJoinChannel(ownerUid, id, maxChannelsPerPlayer))
         {
             return null;
@@ -147,7 +142,7 @@ public sealed class ChannelService
 
         int boundedMaxMembers = Math.Clamp(maxMembers, 2, 100);
         Dictionary<string, VoiceChannelRole> boundedMembers = BuildBoundedMembers(ownerUid, boundedMaxMembers, members);
-        VoiceChannel channel = new(id, kind, name, ownerUid, boundedMaxMembers, maxActiveTalkers, persistent: true);
+        VoiceChannel channel = new(id, name, ownerUid, boundedMaxMembers, maxActiveTalkers, persistent: true);
         foreach (KeyValuePair<string, VoiceChannelRole> member in boundedMembers)
         {
             if (member.Key == ownerUid)
@@ -177,7 +172,7 @@ public sealed class ChannelService
     {
         if (!channelsById.TryGetValue(channelId, out VoiceChannel? channel)
             || channel.ExternallyManaged
-            || role is < VoiceChannelRole.ListenOnly or > VoiceChannelRole.Officer
+            || role is < VoiceChannelRole.ListenOnly or > VoiceChannelRole.Moderator
             || channel.OwnerUid == playerUid
             || channel.BannedPlayerUids.Contains(playerUid)
             || (channel.Locked && !bypassLock)
@@ -200,7 +195,7 @@ public sealed class ChannelService
             || !channel.Members.ContainsKey(targetUid)
             || (!administrator && channel.OwnerUid != requesterUid)
             || targetUid == channel.OwnerUid
-            || role is < VoiceChannelRole.ListenOnly or > VoiceChannelRole.Officer)
+            || role is < VoiceChannelRole.ListenOnly or > VoiceChannelRole.Moderator)
         {
             return false;
         }
@@ -295,19 +290,13 @@ public sealed class ChannelService
         return ids.Select(id => channelsById[id]);
     }
 
-    public VoiceChannel? GetFirstForPlayer(string playerUid, VoiceChannelKind kind)
-    {
-        return GetForPlayer(playerUid).FirstOrDefault(channel => channel.Kind == kind);
-    }
-
     public ChannelInviteResult Invite(
+        string channelId,
         string inviterUid,
         string inviterName,
         string targetUid,
         string targetName,
         long nowMilliseconds,
-        int squadMaxMembers,
-        int squadMaxTalkers,
         int maxChannelsPerPlayer = 8,
         bool administrator = false)
     {
@@ -320,72 +309,49 @@ public sealed class ChannelService
             return ChannelInviteResult.Error("invite-limit");
         }
 
-        VoiceChannel? inviterSquad = GetFirstForPlayer(inviterUid, VoiceChannelKind.Squad);
-        VoiceChannel? targetSquad = GetFirstForPlayer(targetUid, VoiceChannelKind.Squad);
-        if (!administrator
-            && inviterSquad != null
-            && (!inviterSquad.Members.TryGetValue(inviterUid, out VoiceChannelRole inviterRole)
-                || inviterRole < VoiceChannelRole.Officer))
+        if (!channelsById.TryGetValue(channelId, out VoiceChannel? channel)
+            || channel.ExternallyManaged
+            || !channel.Members.ContainsKey(inviterUid)
+            || (!administrator && !channel.CanModerate(inviterUid)))
         {
-            return ChannelInviteResult.Error("invite-not-authorized");
+            return ChannelInviteResult.Error("channel-manage-denied");
         }
-        if (targetSquad != null
-            && (!targetSquad.Members.TryGetValue(targetUid, out VoiceChannelRole targetRole)
-                || targetRole < VoiceChannelRole.Officer))
+        if (channel.Members.ContainsKey(targetUid))
         {
-            return ChannelInviteResult.Error("merge-not-authorized");
+            return ChannelInviteResult.Error("target-already-in-channel");
         }
-        if (inviterSquad == null && targetSquad != null)
-        {
-            return ChannelInviteResult.Error("target-already-in-squad");
-        }
-        if (inviterSquad != null && targetSquad?.Id == inviterSquad.Id)
-        {
-            return ChannelInviteResult.Error("target-already-in-squad");
-        }
-        if (targetSquad == null
-            && !CanJoinChannel(targetUid, inviterSquad?.Id ?? string.Empty, maxChannelsPerPlayer)
-            || inviterSquad == null && !CanJoinChannel(inviterUid, string.Empty, maxChannelsPerPlayer))
-        {
-            return ChannelInviteResult.Error("player-channel-limit");
-        }
-        if (inviterSquad != null
-            && inviterSquad.Members.Count + (targetSquad?.Members.Count ?? 1) > inviterSquad.MaxMembers)
-        {
-            return ChannelInviteResult.Error("channel-full");
-        }
-        if (inviterSquad?.Locked == true || targetSquad?.Locked == true)
+        if (channel.Locked)
         {
             return ChannelInviteResult.Error("channel-locked");
         }
-        IEnumerable<string> invitedMembers = targetSquad != null
-            ? targetSquad.Members.Keys
-            : new[] { targetUid };
-        if (inviterSquad != null
-            && invitedMembers.Any(inviterSquad.BannedPlayerUids.Contains))
+
+        if (channel.BannedPlayerUids.Contains(targetUid))
         {
             return ChannelInviteResult.Error("channel-banned");
         }
+        if (!CanJoinChannel(targetUid, channel.Id, maxChannelsPerPlayer))
+        {
+            return ChannelInviteResult.Error("player-channel-limit");
+        }
+        if (channel.Members.Count >= channel.MaxMembers)
+        {
+            return ChannelInviteResult.Error("channel-full");
+        }
 
-        string channelId = inviterSquad?.Id ?? string.Empty;
         inviteByTargetUid[targetUid] = new PendingChannelInvite(
             channelId,
             inviterUid,
             inviterName,
             targetUid,
             targetName,
-            nowMilliseconds + VoiceConstants.SquadInviteTimeoutMilliseconds,
-            squadMaxMembers,
-            squadMaxTalkers,
-            targetSquad?.Id ?? string.Empty);
+            nowMilliseconds + VoiceConstants.ChannelInviteTimeoutMilliseconds);
         return ChannelInviteResult.Success(channelId);
     }
 
     public ChannelInviteResult Accept(
         string targetUid,
         long nowMilliseconds,
-        int maxChannelsPerPlayer = 8,
-        int maximumChannels = 256)
+        int maxChannelsPerPlayer = 8)
     {
         if (!inviteByTargetUid.Remove(targetUid, out PendingChannelInvite invite)
             || invite.ExpiresAtMilliseconds <= nowMilliseconds)
@@ -393,35 +359,24 @@ public sealed class ChannelService
             return ChannelInviteResult.Error("invite-missing");
         }
 
-        VoiceChannel channel;
-        if (string.IsNullOrEmpty(invite.ChannelId))
-        {
-            if (channelsById.Count >= Math.Max(1, maximumChannels)
-                || !CanJoinChannel(invite.InviterUid, string.Empty, maxChannelsPerPlayer)
-                || !CanJoinChannel(targetUid, string.Empty, maxChannelsPerPlayer))
-            {
-                return ChannelInviteResult.Error("channel-limit");
-            }
-            channel = Create(
-                VoiceChannelKind.Squad,
-                $"{invite.InviterName} / {invite.TargetName}",
-                invite.InviterUid,
-                invite.MaxMembers,
-                invite.MaxActiveTalkers);
-        }
-        else if (!channelsById.TryGetValue(invite.ChannelId, out channel!))
+        if (!channelsById.TryGetValue(invite.ChannelId, out VoiceChannel? channel))
         {
             return ChannelInviteResult.Error("channel-missing");
         }
 
-        if (!string.IsNullOrEmpty(invite.TargetChannelId))
+        if (channel.ExternallyManaged)
         {
-            return MergeSquads(invite, channel, maxChannelsPerPlayer);
+            return ChannelInviteResult.Error("channel-manage-denied");
         }
 
         if (channel.Locked)
         {
             return ChannelInviteResult.Error("channel-locked");
+        }
+
+        if (channel.BannedPlayerUids.Contains(targetUid))
+        {
+            return ChannelInviteResult.Error("channel-banned");
         }
 
         if (!CanJoinChannel(targetUid, channel.Id, maxChannelsPerPlayer))
@@ -435,53 +390,6 @@ public sealed class ChannelService
         }
         AddMemberIndex(targetUid, channel.Id);
         return ChannelInviteResult.Success(channel.Id);
-    }
-
-    private ChannelInviteResult MergeSquads(PendingChannelInvite invite, VoiceChannel destination, int maxChannelsPerPlayer)
-    {
-        if (!channelsById.TryGetValue(invite.TargetChannelId, out VoiceChannel? source)
-            || source.Id == destination.Id
-            || source.Kind != VoiceChannelKind.Squad
-            || destination.Kind != VoiceChannelKind.Squad
-            || !destination.Members.TryGetValue(invite.InviterUid, out VoiceChannelRole inviterRole)
-            || inviterRole < VoiceChannelRole.Officer
-            || !source.Members.TryGetValue(invite.TargetUid, out VoiceChannelRole targetRole)
-            || targetRole < VoiceChannelRole.Officer)
-        {
-            return ChannelInviteResult.Error("merge-not-authorized");
-        }
-        if (destination.Locked || source.Locked)
-        {
-            return ChannelInviteResult.Error("channel-locked");
-        }
-        if (destination.Members.Count + source.Members.Count > destination.MaxMembers)
-        {
-            return ChannelInviteResult.Error("channel-full");
-        }
-        foreach (string uid in source.Members.Keys)
-        {
-            if (destination.BannedPlayerUids.Contains(uid)
-                || !CanReplaceChannel(uid, source.Id, destination.Id, maxChannelsPerPlayer))
-            {
-                return ChannelInviteResult.Error(destination.BannedPlayerUids.Contains(uid)
-                    ? "channel-banned"
-                    : "player-channel-limit");
-            }
-        }
-
-        foreach (KeyValuePair<string, VoiceChannelRole> member in source.Members)
-        {
-            VoiceChannelRole role = member.Value == VoiceChannelRole.Owner
-                ? VoiceChannelRole.Officer
-                : member.Value;
-            if (!destination.TryAddMember(member.Key, role))
-            {
-                return ChannelInviteResult.Error("channel-full");
-            }
-            AddMemberIndex(member.Key, destination.Id);
-        }
-        RemoveChannel(source);
-        return ChannelInviteResult.Success(destination.Id);
     }
 
     public bool Decline(string targetUid)
@@ -635,18 +543,6 @@ public sealed class ChannelService
             || ids.Count < Math.Max(1, maxChannelsPerPlayer);
     }
 
-    private bool CanReplaceChannel(string playerUid, string removedChannelId, string addedChannelId, int maxChannelsPerPlayer)
-    {
-        if (!channelIdsByPlayer.TryGetValue(playerUid, out HashSet<string>? ids)
-            || ids.Contains(addedChannelId))
-        {
-            return true;
-        }
-
-        int retainedCount = ids.Count - (ids.Contains(removedChannelId) ? 1 : 0);
-        return retainedCount < Math.Max(1, maxChannelsPerPlayer);
-    }
-
     private static bool CanModerateTarget(VoiceChannel channel, string requesterUid, string targetUid, bool administrator)
     {
         if (administrator)
@@ -655,7 +551,7 @@ public sealed class ChannelService
         }
         return channel.Members.TryGetValue(requesterUid, out VoiceChannelRole requesterRole)
             && channel.Members.TryGetValue(targetUid, out VoiceChannelRole targetRole)
-            && requesterRole >= VoiceChannelRole.Officer
+            && requesterRole >= VoiceChannelRole.Moderator
             && requesterRole > targetRole;
     }
 
@@ -683,7 +579,7 @@ public sealed class ChannelService
             }
 
             VoiceChannelRole role = member.Value == VoiceChannelRole.Owner
-                ? VoiceChannelRole.Officer
+                ? VoiceChannelRole.Moderator
                 : member.Value;
             bounded.TryAdd(member.Key, role);
         }
@@ -701,7 +597,6 @@ public sealed class VoiceChannel
 
     public VoiceChannel(
         string id,
-        VoiceChannelKind kind,
         string name,
         string ownerUid,
         int maxMembers,
@@ -710,8 +605,7 @@ public sealed class VoiceChannel
         bool externallyManaged = false)
     {
         Id = id;
-        Kind = kind;
-        Name = NormalizeName(name, kind.ToString());
+        Name = NormalizeName(name, "channel");
         OwnerUid = ownerUid;
         MaxMembers = Math.Clamp(maxMembers, 2, 100);
         MaxActiveTalkers = Math.Clamp(maxActiveTalkers, 1, 12);
@@ -722,7 +616,6 @@ public sealed class VoiceChannel
     }
 
     public string Id { get; }
-    public VoiceChannelKind Kind { get; }
     public string Name { get; private set; }
     public string OwnerUid { get; private set; }
     public int MaxMembers { get; }
@@ -739,7 +632,7 @@ public sealed class VoiceChannel
 
     public bool TryAddMember(string uid, VoiceChannelRole role)
     {
-        if (role is < VoiceChannelRole.ListenOnly or > VoiceChannelRole.Officer
+        if (role is < VoiceChannelRole.ListenOnly or > VoiceChannelRole.Moderator
             || BannedPlayerUids.Contains(uid)
             || (!Members.ContainsKey(uid) && Members.Count >= MaxMembers))
         {
@@ -793,7 +686,7 @@ public sealed class VoiceChannel
         }
         if (Members.ContainsKey(OwnerUid))
         {
-            Members[OwnerUid] = VoiceChannelRole.Officer;
+            Members[OwnerUid] = VoiceChannelRole.Moderator;
         }
         OwnerUid = uid;
         Members[uid] = VoiceChannelRole.Owner;
@@ -802,7 +695,7 @@ public sealed class VoiceChannel
 
     public bool CanModerate(string uid)
     {
-        return Members.TryGetValue(uid, out VoiceChannelRole role) && role >= VoiceChannelRole.Officer;
+        return Members.TryGetValue(uid, out VoiceChannelRole role) && role >= VoiceChannelRole.Moderator;
     }
 
     public bool CanTransmit(string uid)
@@ -813,9 +706,7 @@ public sealed class VoiceChannel
             return false;
         }
 
-        return Kind is VoiceChannelKind.Command or VoiceChannelKind.Broadcast
-            ? role >= VoiceChannelRole.Officer
-            : role >= VoiceChannelRole.Member;
+        return role >= VoiceChannelRole.Member;
     }
 
     public bool TryAdmitTalker(string uid, long nowMilliseconds)
@@ -961,10 +852,7 @@ public readonly record struct PendingChannelInvite(
     string InviterName,
     string TargetUid,
     string TargetName,
-    long ExpiresAtMilliseconds,
-    int MaxMembers,
-    int MaxActiveTalkers,
-    string TargetChannelId);
+    long ExpiresAtMilliseconds);
 
 public readonly record struct ChannelInviteResult(bool Succeeded, string ChannelId, string ErrorCode)
 {

@@ -12,10 +12,10 @@ public sealed class SimpleVoiceChatModSystem : ModSystem
     private ClientVoiceController? clientController;
     private ServerVoiceController? serverController;
     private Harmony? clientHarmony;
-    private readonly List<IVoiceGroupProvider> groupProviders = new();
-    private readonly HashSet<string> groupProviderIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<IVoiceChannelProvider> channelProviders = new();
+    private readonly HashSet<string> channelProviderIds = new(StringComparer.OrdinalIgnoreCase);
 
-    public bool RegisterVoiceGroupProvider(IVoiceGroupProvider provider)
+    public bool RegisterVoiceChannelProvider(IVoiceChannelProvider provider)
     {
         if (provider is null)
         {
@@ -32,15 +32,15 @@ public sealed class SimpleVoiceChatModSystem : ModSystem
             return false;
         }
 
-        if (!VoiceGroupProviderId.IsValid(providerId)
-            || groupProviders.Count >= 32
-            || !groupProviderIds.Add(providerId))
+        if (!VoiceChannelProviderId.IsValid(providerId)
+            || channelProviders.Count >= 32
+            || !channelProviderIds.Add(providerId))
         {
             return false;
         }
 
-        groupProviders.Add(provider);
-        serverController?.SetGroupProviders(groupProviders);
+        channelProviders.Add(provider);
+        serverController?.SetChannelProviders(channelProviders);
         return true;
     }
 
@@ -56,7 +56,7 @@ public sealed class SimpleVoiceChatModSystem : ModSystem
     public override void StartServerSide(ICoreServerAPI api)
     {
         SimpleVoiceChatServerConfig config = ServerVoiceController.LoadConfig(api);
-        serverController = new ServerVoiceController(api, config, groupProviders);
+        serverController = new ServerVoiceController(api, config, channelProviders);
         serverController.Start();
     }
 

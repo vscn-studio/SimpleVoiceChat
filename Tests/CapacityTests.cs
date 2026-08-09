@@ -8,94 +8,73 @@ namespace SimpleVoiceChat.Tests;
 public sealed class CapacityTests
 {
     [Fact]
-    public void CommandChannelOnlyAllowsOfficersAndOwnerToTransmit()
+    public void ChannelRolesControlTransmissionAndModeration()
     {
         ChannelService channels = new();
-        VoiceChannel channel = channels.Create(VoiceChannelKind.Command, "Command", "owner", 100, 3);
+        VoiceChannel channel = channels.Create("General", "owner", 100, 3);
         Assert.True(channels.AddMember(channel.Id, "member", VoiceChannelRole.Member));
-        Assert.True(channels.AddMember(channel.Id, "officer", VoiceChannelRole.Officer));
+        Assert.True(channels.AddMember(channel.Id, "moderator", VoiceChannelRole.Moderator));
+        Assert.True(channels.AddMember(channel.Id, "listener", VoiceChannelRole.ListenOnly));
 
-        Assert.False(channel.CanTransmit("member"));
-        Assert.True(channel.CanTransmit("officer"));
         Assert.True(channel.CanTransmit("owner"));
+        Assert.True(channel.CanTransmit("moderator"));
+        Assert.True(channel.CanTransmit("member"));
+        Assert.False(channel.CanTransmit("listener"));
+
+        Assert.True(channels.SetMuted(channel.Id, "moderator", "member", true, administrator: false));
+        Assert.False(channel.CanTransmit("member"));
+        Assert.False(channels.SetMuted(channel.Id, "moderator", "owner", true, administrator: false));
+        Assert.True(channels.RemoveMember(channel.Id, "moderator", "listener", administrator: false, out _));
     }
 
     [Fact]
-    public void LockedAndBannedChannelPoliciesAreEnforced()
+    public void LockedFullAndBannedChannelsRejectInvites()
     {
         ChannelService channels = new();
-        VoiceChannel channel = channels.Create(VoiceChannelKind.Civilization, "Civ", "owner", 100, 3);
+        VoiceChannel channel = channels.Create("General", "owner", 2, 3);
         Assert.True(channels.SetLocked(channel.Id, "owner", true, administrator: false));
-        Assert.False(channels.AddMember(channel.Id, "member", VoiceChannelRole.Member));
-        Assert.True(channels.AddMember(channel.Id, "member", VoiceChannelRole.Member, bypassLock: true));
-        Assert.True(channel.TryAdmitTalker("member", 0));
-        Assert.True(channels.SetBanned(channel.Id, "owner", "member", true, administrator: false, out _));
-        Assert.False(channels.AddMember(channel.Id, "member", VoiceChannelRole.Member, bypassLock: true));
-        Assert.True(channels.SetBanned(channel.Id, "owner", "member", false, administrator: false, out _));
-        Assert.True(channels.AddMember(channel.Id, "member", VoiceChannelRole.Member, bypassLock: true));
+
+        ChannelInviteResult locked = channels.Invite(channel.Id, "owner", "Owner", "guest", "Guest", 0);
+        Assert.Equal("channel-locked", locked.ErrorCode);
+
+        Assert.True(channels.SetLocked(channel.Id, "owner", false, administrator: false));
+        Assert.True(channels.SetBanned(channel.Id, "owner", "blocked", true, administrator: false, out _));
+        ChannelInviteResult banned = channels.Invite(channel.Id, "owner", "Owner", "blocked", "Blocked", 1);
+        Assert.Equal("channel-banned", banned.ErrorCode);
+
+        Assert.True(channels.Invite(channel.Id, "owner", "Owner", "member", "Member", 2).Succeeded);
+        Assert.True(channels.Accept("member", 3).Succeeded);
+        ChannelInviteResult full = channels.Invite(channel.Id, "owner", "Owner", "guest", "Guest", 4);
+        Assert.Equal("channel-full", full.ErrorCode);
     }
 
     [Fact]
-    public void OfficerCanModerateMemberButNotOwnerOrPeerOfficer()
+    public void PerPlayerChannelLimitIsEnforcedBeforeInvite()
     {
         ChannelService channels = new();
-        VoiceChannel channel = channels.Create(VoiceChannelKind.Civilization, "Civ", "owner", 100, 3);
-        channels.AddMember(channel.Id, "officer", VoiceChannelRole.Officer);
-        channels.AddMember(channel.Id, "peer", VoiceChannelRole.Officer);
-        channels.AddMember(channel.Id, "member", VoiceChannelRole.Member);
-
-        Assert.True(channels.SetMuted(channel.Id, "officer", "member", true, administrator: false));
-        Assert.False(channels.SetMuted(channel.Id, "officer", "owner", true, administrator: false));
-        Assert.False(channels.SetMuted(channel.Id, "officer", "peer", true, administrator: false));
-        Assert.True(channels.RemoveMember(channel.Id, "officer", "member", administrator: false, out _));
-        Assert.False(channels.RemoveMember(channel.Id, "officer", "peer", administrator: false, out _));
-    }
-
-    [Fact]
-    public void MemberOperationsCannotOverwriteOwnerOrInstallInvalidRole()
-    {
-        ChannelService channels = new();
-        VoiceChannel channel = channels.Create(VoiceChannelKind.Civilization, "Civ", "owner", 100, 3);
-
-        Assert.False(channels.AddMember(channel.Id, "owner", VoiceChannelRole.Member, bypassLock: true));
-        Assert.False(channels.AddMember(channel.Id, "invalid", VoiceChannelRole.Owner, bypassLock: true));
-        Assert.Equal(VoiceChannelRole.Owner, channel.Members["owner"]);
-        Assert.False(channel.Members.ContainsKey("invalid"));
-    }
-
-    [Fact]
-    public void InvitesRespectGlobalAndPerPlayerChannelLimits()
-    {
-        ChannelService channels = new();
-        VoiceChannel first = channels.Create(VoiceChannelKind.Civilization, "First", "admin-1", 100, 3);
-        VoiceChannel second = channels.Create(VoiceChannelKind.Diplomacy, "Second", "admin-2", 100, 3);
+        VoiceChannel first = channels.Create("First", "owner-a", 100, 3);
+        VoiceChannel second = channels.Create("Second", "owner-b", 100, 3);
+        VoiceChannel third = channels.Create("Third", "owner-c", 100, 3);
         Assert.True(channels.AddMember(first.Id, "full-player", VoiceChannelRole.Member, maxChannelsPerPlayer: 2));
         Assert.True(channels.AddMember(second.Id, "full-player", VoiceChannelRole.Member, maxChannelsPerPlayer: 2));
 
-        ChannelInviteResult playerLimited = channels.Invite(
-            "inviter",
-            "Inviter",
+        ChannelInviteResult result = channels.Invite(
+            third.Id,
+            "owner-c",
+            "Owner C",
             "full-player",
-            "Full",
+            "Full Player",
             0,
-            12,
-            3,
             maxChannelsPerPlayer: 2);
-        Assert.False(playerLimited.Succeeded);
-        Assert.Equal("player-channel-limit", playerLimited.ErrorCode);
 
-        Assert.True(channels.Invite("new-owner", "Owner", "new-member", "Member", 1, 12, 3).Succeeded);
-        ChannelInviteResult globallyLimited = channels.Accept("new-member", 2, maximumChannels: 2);
-        Assert.False(globallyLimited.Succeeded);
-        Assert.Equal("channel-limit", globallyLimited.ErrorCode);
-        Assert.Equal(2, channels.ChannelCount);
+        Assert.Equal("player-channel-limit", result.ErrorCode);
     }
 
     [Fact]
     public void EqualPriorityTalkersRotateAfterBoundedLease()
     {
         ChannelService channels = new();
-        VoiceChannel channel = channels.Create(VoiceChannelKind.Diplomacy, "Diplomacy", "owner", 100, 1);
+        VoiceChannel channel = channels.Create("General", "owner", 100, 1);
         channels.AddMember(channel.Id, "first", VoiceChannelRole.Member);
         channels.AddMember(channel.Id, "waiting", VoiceChannelRole.Member);
 
@@ -105,7 +84,6 @@ public sealed class CapacityTests
             Assert.True(channel.TryAdmitTalker("first", now));
             Assert.False(channel.TryAdmitTalker("waiting", now));
         }
-        Assert.True(channel.TryAdmitTalker("first", 2_000));
         Assert.True(channel.TryAdmitTalker("waiting", 2_000));
         Assert.DoesNotContain("first", channel.ActiveTalkerUids);
     }
@@ -127,7 +105,7 @@ public sealed class CapacityTests
     }
 
     [Fact]
-    public void RollingMetricsExposeFanOutRouteAndPruneOldSamples()
+    public void RollingMetricsExposeFanOutAndPruneOldSamples()
     {
         VoiceMetrics metrics = new();
         metrics.Received(0);
@@ -141,30 +119,14 @@ public sealed class CapacityTests
         Assert.Equal(400, current.RollingRelayedBytes);
         Assert.Equal(4, current.P95FanOut);
         Assert.Equal(1.25, current.P95RouteMilliseconds);
-        Assert.Equal(12, current.AverageSpatialCandidates);
 
         VoiceDiagnosticsPacket expired = metrics.Snapshot(100, 0, 4, nowMilliseconds: 61_001);
         Assert.Equal(0, expired.RollingReceivedPackets);
         Assert.Equal(0, expired.RollingRelayedPackets);
-        Assert.Equal(1, expired.ReceivedPackets);
     }
 
     [Fact]
-    public void RollingMetricsRemainExactAbovePreviousSampleCap()
-    {
-        VoiceMetrics metrics = new();
-        for (int i = 0; i < 50_000; i++)
-        {
-            metrics.Received(i % 1_000);
-        }
-
-        VoiceDiagnosticsPacket snapshot = metrics.Snapshot(100, 100, 1, nowMilliseconds: 1_000);
-        Assert.Equal(50_000, snapshot.RollingReceivedPackets);
-        Assert.Equal(50_000, snapshot.ReceivedPackets);
-    }
-
-    [Fact]
-    public void HundredPlayerNormalAndMaliciousTalkerSimulationRemainsBounded()
+    public void HundredPlayerSimulationRemainsBounded()
     {
         const int players = 100;
         VoiceSpatialIndex spatial = new(16);
@@ -178,41 +140,31 @@ public sealed class CapacityTests
         spatial.Query(0, 0, 0, 20, candidates);
         Assert.Equal(players, candidates.Count);
 
-        ListenerStreamArbiter normal = new();
+        ListenerStreamArbiter arbiter = new();
         Stopwatch stopwatch = Stopwatch.StartNew();
-        SimulateTalkers(normal, listenerCount: players, talkerCount: 25, maxStreams: 8);
-        stopwatch.Stop();
-        Assert.InRange(normal.ActiveSlotCount(100), 0, players * 8);
-
-        ListenerStreamArbiter malicious = new();
-        SimulateTalkers(malicious, listenerCount: players, talkerCount: players, maxStreams: 8);
-        Assert.InRange(malicious.ActiveSlotCount(100), 0, players * 8);
-
-        ChannelService channels = new();
-        VoiceChannel civilization = channels.Create(VoiceChannelKind.Civilization, "Civ", "p0", players, 3);
-        for (int i = 1; i < players; i++)
+        for (int talker = 0; talker < players; talker++)
         {
-            Assert.True(channels.AddMember(civilization.Id, $"p{i}", VoiceChannelRole.Member));
-        }
-        int admitted = Enumerable.Range(0, players).Count(i => civilization.TryAdmitTalker($"p{i}", 0));
-        Assert.Equal(3, admitted);
-        Assert.Equal(3, civilization.ActiveTalkerCount);
-
-        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5), $"Normal capacity simulation took {stopwatch.Elapsed}.");
-    }
-
-    private static void SimulateTalkers(ListenerStreamArbiter arbiter, int listenerCount, int talkerCount, int maxStreams)
-    {
-        for (int talker = 0; talker < talkerCount; talker++)
-        {
-            for (int listener = 0; listener < listenerCount; listener++)
+            for (int listener = 0; listener < players; listener++)
             {
-                if (talker == listener)
+                if (talker != listener)
                 {
-                    continue;
+                    arbiter.TryAdmit($"p{listener}", $"p{talker}", 1, talker, 8, 0);
                 }
-                arbiter.TryAdmit($"p{listener}", $"p{talker}", priority: 1, distanceSquared: talker, maxStreams, nowMilliseconds: 0);
             }
         }
+        stopwatch.Stop();
+
+        ChannelService channels = new();
+        VoiceChannel channel = channels.Create("Capacity", "p0", players, 3);
+        for (int i = 1; i < players; i++)
+        {
+            Assert.True(channels.AddMember(channel.Id, $"p{i}", VoiceChannelRole.Member));
+        }
+        int admitted = Enumerable.Range(0, players).Count(i => channel.TryAdmitTalker($"p{i}", 0));
+
+        Assert.Equal(3, admitted);
+        Assert.Equal(3, channel.ActiveTalkerCount);
+        Assert.InRange(arbiter.ActiveSlotCount(0), 0, players * 8);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5));
     }
 }

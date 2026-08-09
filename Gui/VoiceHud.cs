@@ -11,16 +11,20 @@ public sealed class VoiceHud : HudElement
     private const double VolumeImageWidth = 242;
     private const double VolumeImageHeight = 28;
 
-    private static readonly AssetLocation MicEnabledIcon = new("simplevoicechat", "gui/haojiao.png");
-    private static readonly AssetLocation MicDisabledIcon = new("simplevoicechat", "gui/nohaojiao.png");
-    private static readonly AssetLocation SquadSpeakingIcon = new("simplevoicechat", "gui/phone-volume-solid.png");
+    private static readonly AssetLocation MutedIcon = new("simplevoicechat", "gui/svc_mic_muted.png");
+    private static readonly AssetLocation WhisperingIcon = new("simplevoicechat", "gui/svc_whispering.png");
+    private static readonly AssetLocation TalkingIcon = new("simplevoicechat", "gui/svc_talking.png");
+    private static readonly AssetLocation VoiceDisabledIcon = new("simplevoicechat", "gui/svc_voice_disabled.png");
+    private static readonly AssetLocation ChannelSpeakingIcon = new("simplevoicechat", "gui/phone-volume-solid.png");
 
     private readonly Func<VoiceHudSnapshot> snapshotProvider;
     private readonly Func<bool> shouldShowProvider;
     private VoiceHudSnapshot lastSnapshot;
-    private ImageSurface? micEnabledSurface;
-    private ImageSurface? micDisabledSurface;
-    private ImageSurface? squadSpeakingSurface;
+    private ImageSurface? mutedSurface;
+    private ImageSurface? whisperingSurface;
+    private ImageSurface? talkingSurface;
+    private ImageSurface? voiceDisabledSurface;
+    private ImageSurface? channelSpeakingSurface;
     private readonly ImageSurface?[] volumeSurfaces = new ImageSurface?[VolumeFrameCount + 1];
     private long lastUpdateMs;
     public override double DrawOrder => 0.09;
@@ -73,7 +77,7 @@ public sealed class VoiceHud : HudElement
             return;
         }
 
-        bool relayout = GetSquadLineCount(next) != GetSquadLineCount(lastSnapshot);
+        bool relayout = GetChannelLineCount(next) != GetChannelLineCount(lastSnapshot);
         lastSnapshot = next;
         if (relayout)
         {
@@ -109,7 +113,7 @@ public sealed class VoiceHud : HudElement
         GuiElement.RoundRectangle(ctx, 0, 0, width, height, GuiElement.scaled(8));
         ctx.Fill();
 
-        DrawIcon(ctx, snapshot.MicrophoneEnabled ? MicEnabledIcon : MicDisabledIcon, pad, GuiElement.scaled(20), iconSize);
+        DrawIcon(ctx, snapshot.IconState, pad, GuiElement.scaled(20), iconSize);
 
         double textX = pad + iconSize + GuiElement.scaled(10);
         double statusY = GuiElement.scaled(22);
@@ -122,12 +126,12 @@ public sealed class VoiceHud : HudElement
         DrawText(ctx, SVCLang.Get("hud-volume"), textX, barY + GuiElement.scaled(16), 11, new[] { 0.80, 0.84, 0.88, 0.92 }, bold: true);
         DrawVolumeImage(ctx, barX, barY - GuiElement.scaled(2), snapshot.VoiceLevel);
 
-        DrawSquadMembers(ctx, snapshot, textX, GuiElement.scaled(112), width - textX - pad);
+        DrawChannelMembers(ctx, snapshot, textX, GuiElement.scaled(112), width - textX - pad);
     }
 
-    private void DrawIcon(Context ctx, AssetLocation icon, double x, double y, double size)
+    private void DrawIcon(Context ctx, VoiceHudIconState iconState, double x, double y, double size)
     {
-        ImageSurface iconSurface = GetIconSurface(icon);
+        ImageSurface iconSurface = GetIconSurface(iconState);
         ctx.Save();
         ctx.Translate(x, y);
         ctx.Scale(size / iconSurface.Width, size / iconSurface.Height);
@@ -137,19 +141,20 @@ public sealed class VoiceHud : HudElement
         ctx.Restore();
     }
 
-    private ImageSurface GetIconSurface(AssetLocation icon)
+    private ImageSurface GetIconSurface(VoiceHudIconState iconState)
     {
-        if (icon == MicEnabledIcon)
+        return iconState switch
         {
-            return micEnabledSurface ??= GuiElement.getImageSurfaceFromAsset(capi, MicEnabledIcon);
-        }
-
-        return micDisabledSurface ??= GuiElement.getImageSurfaceFromAsset(capi, MicDisabledIcon);
+            VoiceHudIconState.Whispering => whisperingSurface ??= GuiElement.getImageSurfaceFromAsset(capi, WhisperingIcon),
+            VoiceHudIconState.Talking => talkingSurface ??= GuiElement.getImageSurfaceFromAsset(capi, TalkingIcon),
+            VoiceHudIconState.VoiceDisabled => voiceDisabledSurface ??= GuiElement.getImageSurfaceFromAsset(capi, VoiceDisabledIcon),
+            _ => mutedSurface ??= GuiElement.getImageSurfaceFromAsset(capi, MutedIcon)
+        };
     }
 
-    private ImageSurface GetSquadSpeakingSurface()
+    private ImageSurface GetChannelSpeakingSurface()
     {
-        return squadSpeakingSurface ??= GuiElement.getImageSurfaceFromAsset(capi, SquadSpeakingIcon);
+        return channelSpeakingSurface ??= GuiElement.getImageSurfaceFromAsset(capi, ChannelSpeakingIcon);
     }
 
     private ImageSurface GetVolumeSurface(int frame)
@@ -180,9 +185,9 @@ public sealed class VoiceHud : HudElement
         DrawImage(ctx, GetVolumeSurface(frame), Math.Round(x), Math.Round(y), GuiElement.scaled(VolumeImageWidth), GuiElement.scaled(VolumeImageHeight));
     }
 
-    private void DrawSquadMembers(Context ctx, VoiceHudSnapshot snapshot, double x, double y, double maxWidth)
+    private void DrawChannelMembers(Context ctx, VoiceHudSnapshot snapshot, double x, double y, double maxWidth)
     {
-        if (snapshot.SquadMembers.Length == 0)
+        if (snapshot.ChannelMembers.Length == 0)
         {
             return;
         }
@@ -192,9 +197,9 @@ public sealed class VoiceHud : HudElement
         double rowHeight = GuiElement.scaled(17);
         double gap = GuiElement.scaled(10);
         double iconSize = GuiElement.scaled(11);
-        ImageSurface icon = GetSquadSpeakingSurface();
+        ImageSurface icon = GetChannelSpeakingSurface();
 
-        foreach (VoiceHudSquadMember member in snapshot.SquadMembers)
+        foreach (VoiceHudChannelMember member in snapshot.ChannelMembers)
         {
             string name = member.Name;
             double textWidth = MeasureText(ctx, name, 11, bold: true);
@@ -252,19 +257,19 @@ public sealed class VoiceHud : HudElement
 
     private static double CalculateHudHeight(VoiceHudSnapshot snapshot)
     {
-        return 110 + GetSquadLineCount(snapshot) * 17;
+        return 110 + GetChannelLineCount(snapshot) * 17;
     }
 
-    private static int GetSquadLineCount(VoiceHudSnapshot snapshot)
+    private static int GetChannelLineCount(VoiceHudSnapshot snapshot)
     {
-        if (snapshot.SquadMembers.Length == 0)
+        if (snapshot.ChannelMembers.Length == 0)
         {
             return 0;
         }
 
         int lines = 1;
         int cursor = 0;
-        foreach (VoiceHudSquadMember member in snapshot.SquadMembers)
+        foreach (VoiceHudChannelMember member in snapshot.ChannelMembers)
         {
             int width = Math.Min(14, member.Name.Length) + 3;
             if (cursor > 0 && cursor + width > 24)
@@ -282,15 +287,16 @@ public sealed class VoiceHud : HudElement
     private static bool SnapshotEquals(VoiceHudSnapshot left, VoiceHudSnapshot right)
     {
         return left.MicrophoneEnabled == right.MicrophoneEnabled
+            && left.IconState == right.IconState
             && left.Speaking == right.Speaking
             && Math.Abs(left.VoiceLevel - right.VoiceLevel) < 0.01f
             && left.Status == right.Status
             && left.Mode == right.Mode
             && left.Detail == right.Detail
-            && SquadMembersEqual(left.SquadMembers, right.SquadMembers);
+            && ChannelMembersEqual(left.ChannelMembers, right.ChannelMembers);
     }
 
-    private static bool SquadMembersEqual(VoiceHudSquadMember[] left, VoiceHudSquadMember[] right)
+    private static bool ChannelMembersEqual(VoiceHudChannelMember[] left, VoiceHudChannelMember[] right)
     {
         if (left.Length != right.Length)
         {
@@ -310,17 +316,21 @@ public sealed class VoiceHud : HudElement
 
     public override void Dispose()
     {
-        micEnabledSurface?.Dispose();
-        micDisabledSurface?.Dispose();
-        squadSpeakingSurface?.Dispose();
+        mutedSurface?.Dispose();
+        whisperingSurface?.Dispose();
+        talkingSurface?.Dispose();
+        voiceDisabledSurface?.Dispose();
+        channelSpeakingSurface?.Dispose();
         foreach (ImageSurface? surface in volumeSurfaces)
         {
             surface?.Dispose();
         }
 
-        micEnabledSurface = null;
-        micDisabledSurface = null;
-        squadSpeakingSurface = null;
+        mutedSurface = null;
+        whisperingSurface = null;
+        talkingSurface = null;
+        voiceDisabledSurface = null;
+        channelSpeakingSurface = null;
         base.Dispose();
     }
 }

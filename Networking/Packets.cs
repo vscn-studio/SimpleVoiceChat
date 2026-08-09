@@ -3,46 +3,6 @@ using ProtoBuf;
 namespace SimpleVoiceChat.Networking;
 
 [ProtoContract]
-public sealed class VoiceFramePacket
-{
-    [ProtoMember(1)]
-    public int SenderUidHash;
-
-    [ProtoMember(2)]
-    public long SenderEntityId;
-
-    [ProtoMember(3)]
-    public int SessionId;
-
-    [ProtoMember(4)]
-    public ushort Sequence;
-
-    [ProtoMember(5)]
-    public VoiceMode Mode;
-
-    [ProtoMember(6)]
-    public float Rms;
-
-    [ProtoMember(7)]
-    public byte Flags;
-
-    [ProtoMember(8)]
-    public byte[] Payload = Array.Empty<byte>();
-
-    [ProtoMember(9)]
-    public float X;
-
-    [ProtoMember(10)]
-    public float Y;
-
-    [ProtoMember(11)]
-    public float Z;
-
-    [ProtoMember(12)]
-    public bool SquadRelay;
-}
-
-[ProtoContract]
 public sealed class ClientVoiceStatePacket
 {
     [ProtoMember(1)]
@@ -128,22 +88,6 @@ public sealed class MutePlayerPacket
 }
 
 [ProtoContract]
-public sealed class SquadBindPacket
-{
-    [ProtoMember(1)]
-    public string TargetPlayerUid = string.Empty;
-
-    [ProtoMember(2)]
-    public bool LeaveSquad;
-
-    [ProtoMember(3)]
-    public bool RequestStatus;
-
-    [ProtoMember(4)]
-    public bool DisbandSquad;
-}
-
-[ProtoContract]
 public sealed class AdminVoiceControlPacket
 {
     [ProtoMember(1)]
@@ -154,17 +98,4 @@ public sealed class AdminVoiceControlPacket
 
     [ProtoMember(3)]
     public int DurationSeconds;
-}
-
-[ProtoContract]
-public sealed class SquadHudPacket
-{
-    [ProtoMember(1)]
-    public string[] MemberUids = Array.Empty<string>();
-
-    [ProtoMember(2)]
-    public string[] MemberNames = Array.Empty<string>();
-
-    [ProtoMember(3)]
-    public bool[] Speaking = Array.Empty<bool>();
 }

@@ -3,7 +3,7 @@ namespace SimpleVoiceChat.Networking;
 public static class VoiceProtocolValidation
 {
     public static bool IsValidFrameShape(
-        VoiceFrameV2Packet? packet,
+        VoiceFrameV3Packet? packet,
         int negotiatedCodec,
         int expectedConnectionEpoch,
         int maximumPayloadBytes)
@@ -35,7 +35,7 @@ public static class VoiceProtocolValidation
         };
     }
 
-    public static bool IsValidRelayShape(VoiceRelayFrameV2Packet? packet)
+    public static bool IsValidRelayShape(VoiceRelayFrameV3Packet? packet)
     {
         if (packet == null
             || packet.SenderEntityId <= 0
@@ -47,7 +47,7 @@ public static class VoiceProtocolValidation
             || packet.Payload.Length == 0
             || packet.Payload.Length > 200
             || packet.Mode is < VoiceMode.Whisper or > VoiceMode.Shout
-            || packet.RelayKind is < VoiceRelayKind.Proximity or > VoiceRelayKind.PriorityBroadcast
+            || packet.RelayKind is < VoiceRelayKind.Proximity or > VoiceRelayKind.Channel
             || !float.IsFinite(packet.X)
             || !float.IsFinite(packet.Y)
             || !float.IsFinite(packet.Z))
