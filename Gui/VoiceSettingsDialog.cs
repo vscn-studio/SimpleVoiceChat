@@ -39,7 +39,9 @@ internal enum VoiceSettingsOverlay
     Players,
     Player,
     CreateChannel,
-    RecordingMode
+    RecordingMode,
+    OwnerLeave,
+    JoinChannel
 }
 
 internal static class VoiceSettingsNavigation
@@ -117,10 +119,16 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private string renameText = string.Empty;
     private string createName = string.Empty;
     private string createPassword = string.Empty;
+    private string channelSearch = string.Empty;
+    private string playerSearch = string.Empty;
+    private VoiceChannelVisibility createVisibility = VoiceChannelVisibility.Open;
     private string overlayChannelId = string.Empty;
     private string overlayPlayerUid = string.Empty;
     private string overlayAction = "none";
     private VoiceSettingsOverlay overlay;
+    private string ownerLeaveChannelId = string.Empty;
+    private string joinChannelId = string.Empty;
+    private string joinPassword = string.Empty;
     private float playerOverlayScroll;
     private readonly Stack<OverlaySnapshot> overlayStack = new();
 
@@ -247,6 +255,30 @@ public sealed class VoiceSettingsDialog : GuiDialog
             AddOverlay(composer);
         }
         SingleComposer = composer.EndChildElements().Compose();
+    }
+
+    internal void OpenOwnerLeaveOverlay(string channelId)
+    {
+        if (string.IsNullOrWhiteSpace(channelId)) return;
+        overlayStack.Clear();
+        ownerLeaveChannelId = channelId;
+        overlay = VoiceSettingsOverlay.OwnerLeave;
+        QueueCompose();
+    }
+
+    private void OpenJoinChannelOverlay(string channelId)
+    {
+        VoiceSettingsChannelOption channel = controller.BuildChannelOptions().FirstOrDefault(option => option.Id == channelId);
+        if (channel.Visibility == VoiceChannelVisibility.Open)
+        {
+            controller.JoinChannelFromSettings(channelId, string.Empty);
+            return;
+        }
+        PushOverlayState();
+        joinChannelId = channelId;
+        joinPassword = string.Empty;
+        overlay = VoiceSettingsOverlay.JoinChannel;
+        QueueCompose();
     }
 
     public override void OnMouseWheel(MouseWheelEventArgs args)
@@ -418,7 +450,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private double AddHomePage(GuiComposer composer)
     {
-        const double buttonWidth = 180;
+        const double buttonWidth = 150;
         const double navigationY = 54;
         const double quickY = 104;
         const double quickIconSize = 42;
@@ -450,6 +482,15 @@ public sealed class VoiceSettingsDialog : GuiDialog
             () => SelectPage(VoiceSettingsPage.Channels),
             ElementBounds.Fixed(ContentLeft + activeContentWidth - buttonWidth - 4, navigationY, buttonWidth, 42),
             "open-channels");
+        if (controller.HasServerControl)
+        {
+            AddFlatButton(
+                composer,
+                SVCLang.Get("button-admin"),
+                () => SelectPage(VoiceSettingsPage.Admin),
+                ElementBounds.Fixed((activeContentWidth - buttonWidth) / 2d, navigationY, buttonWidth, 42),
+                "open-admin");
+        }
 
         double x = ContentLeft;
         AddIconToggle(composer, MicMutedAsset, MicTalkingAsset, controller.LocalMuted,
@@ -524,7 +565,21 @@ public sealed class VoiceSettingsDialog : GuiDialog
         VoiceSettingsChannelOption[] channels = controller.BuildChannelOptions();
         double y = 0;
         composer.AddStaticText(SVCLang.Get("tab-channels"), section, ElementBounds.Fixed(x, y, width, 28));
-        y += 38;
+        composer.AddTextInput(ElementBounds.Fixed(x + 300, y - 2, 330, 34), value =>
+        {
+            channelSearch = value;
+            QueueCompose();
+        }, CairoFont.TextInput(), "channel-search");
+        composer.GetTextInput("channel-search").SetValue(channelSearch);
+        composer.GetTextInput("channel-search").SetPlaceHolderText(SVCLang.Get("channel-search-placeholder"));
+        composer.GetTextInput("channel-search").SetMaxLength(VoiceProtocol.MaxControlStringLength);
+        y += 46;
+        string normalizedSearch = channelSearch.Trim();
+        if (!string.IsNullOrEmpty(normalizedSearch))
+        {
+            channels = channels.Where(channel => channel.Name.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase)
+                || channel.Id.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase)).ToArray();
+        }
         if (channels.Length == 0)
         {
             composer.AddStaticText(SVCLang.Get("channel-none"), detail, ElementBounds.Fixed(x, y, width, 30));
@@ -541,8 +596,10 @@ public sealed class VoiceSettingsDialog : GuiDialog
                 {
                     meta += " | " + SVCLang.Get("channel-locked");
                 }
+                meta += " | " + SVCLang.Get("channel-visibility-" + channel.Visibility.ToString().ToLowerInvariant());
                 composer.AddStaticCustomDraw(ElementBounds.Fixed(x, cardY, width, cardHeight), DrawChannelCardBackground)
-                    .AddStaticText(Truncate(channel.Name, 48), label, ElementBounds.Fixed(x + 14, cardY + 7, 560, 24), "channel-name-" + index)
+                    .AddStaticText(Truncate(channel.Name, 42), label, ElementBounds.Fixed(x + 14, cardY + 7, 480, 24), "channel-name-" + index)
+                    .AddStaticText(Truncate(channel.Id, 42), detail, ElementBounds.Fixed(x + 500, cardY + 7, 240, 18), "channel-id-" + index)
                     .AddStaticText(meta, detail, ElementBounds.Fixed(x + 14, cardY + 32, 560, 18), "channel-meta-" + index);
                 VoiceSettingsIconButton settings = new(
                     composer.Api,
@@ -551,6 +608,18 @@ public sealed class VoiceSettingsDialog : GuiDialog
                     _ => OpenChannelOverlay(channel.Id),
                     darkIcon: true);
                 composer.AddInteractiveElement(settings, "channel-settings-" + index);
+                if (channel.LocalRole == VoiceChannelRole.Banned && !channel.ExternallyManaged)
+                {
+                    AddFlatButton(composer,
+                        channel.Visibility == VoiceChannelVisibility.Password ? SVCLang.Get("button-join-password") : SVCLang.Get("button-join-channel"),
+                        () =>
+                        {
+                            OpenJoinChannelOverlay(channel.Id);
+                            return true;
+                        },
+                        ElementBounds.Fixed(x + width - 210, cardY + 12, 150, 34),
+                        "channel-join-" + index);
+                }
                 y += cardHeight + cardGap;
             }
         }
@@ -564,7 +633,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         composer.AddInteractiveElement(playersButton, "open-players");
         AddFlatButton(composer, SVCLang.Get("button-create-channel"), OpenCreateChannelOverlay,
             ElementBounds.Fixed(x + 52, y, 180, 36), "open-create-channel");
-        composer.GetButton("open-create-channel").Enabled = controller.HasServerControl;
+        composer.GetButton("open-create-channel").Enabled = true;
         return y + 52;
     }
 
@@ -586,6 +655,12 @@ public sealed class VoiceSettingsDialog : GuiDialog
                 break;
             case VoiceSettingsOverlay.RecordingMode:
                 AddRecordingModeOverlay(composer);
+                break;
+            case VoiceSettingsOverlay.OwnerLeave:
+                AddOwnerLeaveOverlay(composer);
+                break;
+            case VoiceSettingsOverlay.JoinChannel:
+                AddJoinChannelOverlay(composer);
                 break;
         }
     }
@@ -609,6 +684,78 @@ public sealed class VoiceSettingsDialog : GuiDialog
             () => StartRecordingMode(VoiceRecordingMode.InputAndOutput),
             ElementBounds.Fixed(x + 36 + (width - 60) / 2d, y + 104, (width - 60) / 2d, 42),
             "recording-mode-input-output");
+    }
+
+    private void AddOwnerLeaveOverlay(GuiComposer composer)
+    {
+        const double x = 150;
+        const double y = 96;
+        const double width = 640;
+        const double height = 420;
+        AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("channel-owner-leave-title"));
+        AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "owner-leave-close");
+        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        composer.AddStaticText(SVCLang.Get("channel-owner-leave-description"), label,
+            ElementBounds.Fixed(x + 24, y + 54, width - 48, 34));
+        VoiceSettingsMemberOption[] members = controller.BuildChannelMembersForSettings(ownerLeaveChannelId);
+        string[] values = members.Length == 0 ? new[] { string.Empty } : members.Select(member => member.Id).ToArray();
+        string[] names = members.Length == 0 ? new[] { SVCLang.Get("player-none") } : members.Select(member => member.Name).ToArray();
+        composer.AddStaticText(SVCLang.Get("channel-owner-transfer-target"), label,
+            ElementBounds.Fixed(x + 24, y + 108, 200, 28));
+        composer.AddVoiceDropDown(values, names, 0, OnOwnerTransferTargetChanged,
+            ElementBounds.Fixed(x + 230, y + 104, 300, 34), "owner-leave-target");
+        AddFlatButton(composer, SVCLang.Get("channel-owner-transfer"), () =>
+        {
+            string targetUid = string.IsNullOrWhiteSpace(ownerLeaveTargetUid) && members.Length > 0
+                ? members[0].Id
+                : ownerLeaveTargetUid;
+            if (!string.IsNullOrWhiteSpace(targetUid))
+            {
+                controller.TransferChannelOwnerFromSettings(ownerLeaveChannelId, targetUid);
+            }
+            CloseOverlay();
+            return true;
+        }, ElementBounds.Fixed(x + 230, y + 158, 160, 36), "owner-leave-transfer");
+        AddFlatButton(composer, SVCLang.Get("channel-owner-delete"), () =>
+        {
+            controller.DeleteChannelFromSettings(ownerLeaveChannelId);
+            CloseOverlay();
+            return true;
+        }, ElementBounds.Fixed(x + 400, y + 158, 160, 36), "owner-leave-delete");
+        AddFlatButton(composer, SVCLang.Get("button-close"), () =>
+        {
+            CloseOverlay();
+            return true;
+        }, ElementBounds.Fixed(x + 230, y + 212, 160, 36), "owner-leave-cancel");
+    }
+
+    private string ownerLeaveTargetUid = string.Empty;
+
+    private void OnOwnerTransferTargetChanged(string value, bool selected)
+    {
+        if (selected) ownerLeaveTargetUid = value;
+    }
+
+    private void AddJoinChannelOverlay(GuiComposer composer)
+    {
+        const double x = 180;
+        const double y = 180;
+        const double width = 580;
+        const double height = 190;
+        VoiceSettingsChannelOption channel = controller.BuildChannelOptions().FirstOrDefault(option => option.Id == joinChannelId);
+        AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("channel-join-title"));
+        AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "join-channel-close");
+        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        composer.AddStaticText(Truncate(channel.Name, 46), label, ElementBounds.Fixed(x + 24, y + 54, 240, 28));
+        composer.AddTextInput(ElementBounds.Fixed(x + 270, y + 50, 260, 34), value => { joinPassword = value; }, CairoFont.TextInput(), "join-channel-password");
+        composer.GetTextInput("join-channel-password").SetValue(joinPassword);
+        composer.GetTextInput("join-channel-password").SetMaxLength(VoiceProtocol.MaxControlStringLength);
+        AddFlatButton(composer, SVCLang.Get("button-join-channel"), () =>
+        {
+            controller.JoinChannelFromSettings(joinChannelId, joinPassword);
+            CloseOverlay();
+            return true;
+        }, ElementBounds.Fixed(x + 270, y + 108, 150, 36), "join-channel-submit");
     }
 
     private bool StartRecordingMode(VoiceRecordingMode mode)
@@ -671,6 +818,19 @@ public sealed class VoiceSettingsDialog : GuiDialog
         AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("players-title"));
         AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "players-overlay-close");
         VoiceSettingsPlayerOption[] players = controller.BuildPlayerOptions();
+        composer.AddTextInput(ElementBounds.Fixed(x + 250, y + 12, 300, 32), value =>
+        {
+            playerSearch = value;
+            QueueCompose();
+        }, CairoFont.TextInput(), "players-search");
+        composer.GetTextInput("players-search").SetValue(playerSearch);
+        composer.GetTextInput("players-search").SetPlaceHolderText(SVCLang.Get("player-search-placeholder"));
+        composer.GetTextInput("players-search").SetMaxLength(VoiceProtocol.MaxControlStringLength);
+        if (!string.IsNullOrWhiteSpace(playerSearch))
+        {
+            players = players.Where(player => player.Name.Contains(playerSearch, StringComparison.OrdinalIgnoreCase)
+                || player.Id.Contains(playerSearch, StringComparison.OrdinalIgnoreCase)).ToArray();
+        }
         CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
         if (players.Length == 0)
         {
@@ -694,6 +854,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             string settingsKey = "overlay-player-settings-" + index;
             composer.AddStaticCustomDraw(ElementBounds.Fixed(0, cardY, viewport.fixedWidth, 44), DrawPlayerCardBackground)
                 .AddStaticText(Truncate(player.Name, 24), label, ElementBounds.Fixed(12, cardY + 8, 170, 28), "overlay-player-name-" + index)
+                .AddStaticText(Truncate(player.ChannelSummary, 24), CairoFont.WhiteDetailText().WithColor(new[] { 0.72, 0.76, 0.82, 1.0 }), ElementBounds.Fixed(12, cardY + 27, 170, 14), "overlay-player-channels-" + index)
                 .AddVoiceSlider(value => SetPlayerVolume(player.Id, value), ElementBounds.Fixed(192, cardY + 5, 430, 34), sliderKey);
             VoiceSettingsMuteButton muteButton = new(
                 composer.Api,
@@ -755,7 +916,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         const double x = 170;
         const double y = 142;
         const double width = 600;
-        const double height = 294;
+        const double height = 350;
         AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("create-channel-title"));
         AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "create-overlay-close");
         CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
@@ -764,13 +925,18 @@ public sealed class VoiceSettingsDialog : GuiDialog
             .AddTextInput(ElementBounds.Fixed(x + 214, y + 64, 340, 34), OnCreateNameChanged, input, "overlay-create-name")
             .AddStaticText(SVCLang.Get("label-channel-password"), label, ElementBounds.Fixed(x + 24, y + 124, 180, 28))
             .AddTextInput(ElementBounds.Fixed(x + 214, y + 120, 340, 34), OnCreatePasswordChanged, input, "overlay-create-password");
+        string[] visibilityValues = { "open", "password", "hidden" };
+        string[] visibilityNames = visibilityValues.Select(value => SVCLang.Get("channel-visibility-" + value)).ToArray();
+        composer.AddStaticText(SVCLang.Get("label-channel-visibility"), label, ElementBounds.Fixed(x + 24, y + 180, 180, 28))
+            .AddVoiceDropDown(visibilityValues, visibilityNames, Math.Max(0, Array.IndexOf(visibilityValues, createVisibility.ToString().ToLowerInvariant())),
+                OnCreateVisibilityChanged, ElementBounds.Fixed(x + 214, y + 176, 340, 34), "overlay-create-visibility");
         composer.GetTextInput("overlay-create-name").SetValue(createName);
         composer.GetTextInput("overlay-create-password").SetValue(createPassword);
         composer.GetTextInput("overlay-create-name").SetMaxLength(VoiceProtocol.MaxControlStringLength);
         composer.GetTextInput("overlay-create-password").SetMaxLength(VoiceProtocol.MaxControlStringLength);
         AddFlatButton(composer, SVCLang.Get("channel-action-create"), CreateChannelFromOverlay,
-            ElementBounds.Fixed(x + 214, y + 192, 126, 34), "overlay-create-submit");
-        composer.GetButton("overlay-create-submit").Enabled = controller.HasServerControl && !string.IsNullOrWhiteSpace(createName);
+            ElementBounds.Fixed(x + 214, y + 244, 126, 34), "overlay-create-submit");
+        composer.GetButton("overlay-create-submit").Enabled = !string.IsNullOrWhiteSpace(createName);
     }
 
     private static void AddOverlayPanel(GuiComposer composer, double x, double y, double width, double height, string title)
@@ -935,7 +1101,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             || selected is { LocalRole: >= VoiceChannelRole.Moderator });
         List<string> actions = new();
         if (canInvite && hasPlayer) actions.Add("invite");
-        if (hasChannel && !external) actions.Add("leave");
+        if (hasChannel && !external && role != VoiceChannelRole.Banned) actions.Add("leave");
         if (hasChannel && role >= VoiceChannelRole.Moderator && hasPlayer)
         {
             actions.AddRange(new[] { "mute", "unmute", "ban", "unban" });
@@ -1066,6 +1232,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
         else
         {
             overlay = VoiceSettingsOverlay.None;
+            ownerLeaveChannelId = string.Empty;
+            ownerLeaveTargetUid = string.Empty;
         }
         QueueCompose();
     }
@@ -1145,15 +1313,25 @@ public sealed class VoiceSettingsDialog : GuiDialog
         createPassword = value;
     }
 
+    private void OnCreateVisibilityChanged(string value, bool selected)
+    {
+        if (selected && Enum.TryParse(value, true, out VoiceChannelVisibility visibility))
+        {
+            createVisibility = visibility;
+            QueueCompose();
+        }
+    }
+
     private bool CreateChannelFromOverlay()
     {
-        if (!controller.HasServerControl || string.IsNullOrWhiteSpace(createName))
+        if (string.IsNullOrWhiteSpace(createName))
         {
             return false;
         }
-        controller.ManageSelectedChannel("create-channel", string.Empty, name: createName, password: createPassword);
+        controller.CreateChannelFromSettings(createName, createPassword, createVisibility);
         createName = string.Empty;
         createPassword = string.Empty;
+        createVisibility = VoiceChannelVisibility.Open;
         CloseOverlay();
         return true;
     }
@@ -1273,7 +1451,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     {
         createName = value;
         SetButtonEnabled("createChannel", controller.HasServerControl && !string.IsNullOrWhiteSpace(value));
-        SetButtonEnabled("overlay-create-submit", controller.HasServerControl && !string.IsNullOrWhiteSpace(value));
+        SetButtonEnabled("overlay-create-submit", !string.IsNullOrWhiteSpace(value));
     }
 
     private bool CreateChannel()

@@ -201,6 +201,22 @@ public sealed class ServerVoiceController : IDisposable
                 BroadcastConfig();
                 return TextCommandResult.Success(SVCLang.Get("server-disabled"));
 
+            case "channelallow":
+                if (!HasServerControl(args))
+                {
+                    return NoServerControl();
+                }
+                string channelAllowValue = args.RawArgs.PopWord("").ToLowerInvariant();
+                if (channelAllowValue is not ("on" or "off" or "true" or "false"))
+                {
+                    return TextCommandResult.Error("Usage: /svc channelallow <on|off>");
+                }
+                config.AllowPlayerChannelCreation = channelAllowValue is "on" or "true";
+                SaveConfig();
+                return TextCommandResult.Success(config.AllowPlayerChannelCreation
+                    ? "玩家现在可以创建频道。"
+                    : "已禁止普通玩家创建频道。");
+
             case "setrange":
                 {
                     if (!HasServerControl(args))
@@ -335,7 +351,7 @@ public sealed class ServerVoiceController : IDisposable
                     string channelSummary = channels.ChannelCount == 0
                         ? SVCLang.Get("server-list-none")
                         : string.Join("; ", channels.Channels.Select(channel =>
-                            $"{channel.Id} {channel.Name} members={channel.Members.Count} talkers={channel.ActiveTalkerCount}/{channel.MaxActiveTalkers} locked={channel.Locked}"));
+                            $"{channel.Id} {channel.Name} type={channel.Visibility} owner={channel.OwnerUid} members={channel.Members.Count} talkers={channel.ActiveTalkerCount}/{channel.MaxActiveTalkers} locked={channel.Locked}"));
                     return TextCommandResult.Success(channelSummary);
                 }
 
@@ -812,6 +828,33 @@ public sealed class ServerVoiceController : IDisposable
                 SendChannelSnapshot(fromPlayer);
                 return;
 
+            case "join":
+                {
+                    if (!config.EnableChannels)
+                    {
+                        SendFeedback(fromPlayer, "channel-disabled");
+                        return;
+                    }
+                    ChannelInviteResult joined = channels.Join(
+                        fromPlayer.PlayerUID,
+                        packet.ChannelId,
+                        packet.Password,
+                        config.MaxChannelsPerPlayer,
+                        fromPlayer.HasPrivilege(Privilege.controlserver));
+                    if (!joined.Succeeded)
+                    {
+                        SendFeedback(fromPlayer, joined.ErrorCode);
+                        return;
+                    }
+                    commandSession.SelectedChannelId = joined.ChannelId;
+                    if (channels.TryGet(joined.ChannelId, out VoiceChannel joinedChannel))
+                    {
+                        SendSnapshots(joinedChannel.Members.Keys);
+                    }
+                    SendFeedback(fromPlayer, "channel-joined");
+                    return;
+                }
+
             case "members":
                 SendChannelMemberPage(fromPlayer, ResolveChannelId(fromPlayer.PlayerUID, packet.ChannelId), packet.Page, packet.PageSize);
                 return;
@@ -905,6 +948,13 @@ public sealed class ServerVoiceController : IDisposable
                 {
                     string channelId = ResolveChannelId(fromPlayer.PlayerUID, packet.ChannelId);
                     bool persistent = channels.TryGet(channelId, out VoiceChannel leavingChannel) && leavingChannel.Persistent;
+                    if (leavingChannel != null
+                        && leavingChannel.OwnerUid == fromPlayer.PlayerUID
+                        && leavingChannel.Members.Count > 1)
+                    {
+                        SendFeedback(fromPlayer, "channel-owner-leave-options", channelId);
+                        return;
+                    }
                     if (!channels.Leave(fromPlayer.PlayerUID, channelId, out string[] affected))
                     {
                         SendFeedback(fromPlayer, "channel-missing");
@@ -949,6 +999,7 @@ public sealed class ServerVoiceController : IDisposable
                     {
                         SavePersistentChannels();
                     }
+                    SendSnapshots(onlinePlayersByUid.Keys);
                     SendFeedback(fromPlayer, "channel-disbanded");
                     return;
                 }
@@ -1003,21 +1054,47 @@ public sealed class ServerVoiceController : IDisposable
                         return;
                     }
                     SavePersistentChannels();
-                    foreach (string uid in channel.Members.Keys.Append(fromPlayer.PlayerUID).Distinct(StringComparer.Ordinal))
-                    {
-                        if (onlinePlayersByUid.TryGetValue(uid, out IServerPlayer? member))
-                        {
-                            SendChannelSnapshot(member);
-                        }
-                    }
+                    SendSnapshots(onlinePlayersByUid.Keys);
                     RecordAudit(fromPlayer, "channel-rename", channel.Id, previousName, channel.Name);
                     SendFeedback(fromPlayer, "channel-renamed", channel.Name);
                     return;
                 }
 
+            case "transfer-owner":
+                {
+                    string channelId = ResolveChannelId(fromPlayer.PlayerUID, packet.ChannelId);
+                    bool administrator = fromPlayer.HasPrivilege(Privilege.controlserver);
+                    bool persistent = channels.TryGet(channelId, out VoiceChannel transferChannel) && transferChannel.Persistent;
+                    if (!channels.TransferOwnership(fromPlayer.PlayerUID, channelId, packet.TargetPlayerUid, administrator, out string[] affected))
+                    {
+                        SendFeedback(fromPlayer, "channel-owner-transfer-denied");
+                        return;
+                    }
+                    SendSnapshots(affected);
+                    if (persistent) SavePersistentChannels();
+                    SendFeedback(fromPlayer, "channel-owner-transferred");
+                    return;
+                }
+
+            case "delete-owned-channel":
+                {
+                    string channelId = ResolveChannelId(fromPlayer.PlayerUID, packet.ChannelId);
+                    bool persistent = channels.TryGet(channelId, out VoiceChannel deleteChannel) && deleteChannel.Persistent;
+                    if (!channels.Disband(fromPlayer.PlayerUID, channelId, administrator: fromPlayer.HasPrivilege(Privilege.controlserver), out string[] affected))
+                    {
+                        SendFeedback(fromPlayer, "channel-disband-denied");
+                        return;
+                    }
+                    ClearUnavailableChannelSelections(channelId, affected);
+                    SendSnapshots(affected.Append(fromPlayer.PlayerUID));
+                    if (persistent) SavePersistentChannels();
+                    SendFeedback(fromPlayer, "channel-disbanded");
+                    return;
+                }
+
             case "create":
                 {
-                    if (!fromPlayer.HasPrivilege(Privilege.controlserver)
+                    if ((!config.AllowPlayerChannelCreation && !fromPlayer.HasPrivilege(Privilege.controlserver))
                         || string.IsNullOrWhiteSpace(packet.Name)
                         || !config.EnableChannels
                         || channels.ChannelCount >= config.MaxChannels
@@ -1027,16 +1104,25 @@ public sealed class ServerVoiceController : IDisposable
                         return;
                     }
 
+                    VoiceChannelVisibility visibility = packet.Visibility;
+                    if (!Enum.IsDefined(visibility)) visibility = string.IsNullOrWhiteSpace(packet.Password)
+                        ? VoiceChannelVisibility.Open : VoiceChannelVisibility.Password;
+                    if (visibility == VoiceChannelVisibility.Password && string.IsNullOrWhiteSpace(packet.Password))
+                    {
+                        SendFeedback(fromPlayer, "channel-password-required");
+                        return;
+                    }
                     VoiceChannel channel = channels.Create(
                         packet.Name.Trim(),
                         fromPlayer.PlayerUID,
                         maxMembers: config.MaxChannelMembers,
                         maxActiveTalkers: config.MaxChannelTalkers,
                         persistent: true,
-                        password: packet.Password.Trim());
+                        password: packet.Password.Trim(),
+                        visibility: visibility);
                     commandSession.SelectedChannelId = channel.Id;
                     SavePersistentChannels();
-                    SendChannelSnapshot(fromPlayer);
+                    SendSnapshots(onlinePlayersByUid.Keys);
                     RecordAudit(fromPlayer, "channel-create", channel.Id, "channel", channel.Name);
                     SendFeedback(fromPlayer, "channel-created", channel.Name, channel.Id);
                     return;
@@ -1487,21 +1573,29 @@ public sealed class ServerVoiceController : IDisposable
     private void SendChannelSnapshot(IServerPlayer player)
     {
         long now = sapi.World.ElapsedMilliseconds;
-        IEnumerable<VoiceChannel> playerChannels = channels.GetForPlayer(player.PlayerUID);
+        bool administrator = player.HasPrivilege(Privilege.controlserver);
+        IEnumerable<VoiceChannel> playerChannels = channels.GetVisibleForPlayer(player.PlayerUID, administrator)
+            .OrderBy(channel => channel.Name, StringComparer.OrdinalIgnoreCase);
         ChannelInfoPacket[] channelPackets = playerChannels.Select(channel => new ChannelInfoPacket
         {
             ChannelId = channel.Id,
             Name = channel.Name,
             Revision = channel.Revision,
-            LocalRole = channel.Members[player.PlayerUID],
+            LocalRole = channel.Members.TryGetValue(player.PlayerUID, out VoiceChannelRole localRole)
+                ? localRole
+                : VoiceChannelRole.Banned,
             MemberCount = channel.Members.Count,
             Locked = channel.Locked,
             ExternallyManaged = channel.ExternallyManaged,
-            Members = channel.Members
-                .OrderBy(member => member.Key, StringComparer.Ordinal)
-                .Take(config.ChannelMemberPageSize)
-                .Select(member => BuildChannelMemberPacket(member.Key, member.Value))
-                .ToArray()
+            Visibility = channel.Visibility,
+            OwnerUid = channel.OwnerUid,
+            Members = (administrator || channel.Members.ContainsKey(player.PlayerUID))
+                ? channel.Members
+                    .OrderBy(member => member.Key, StringComparer.Ordinal)
+                    .Take(config.ChannelMemberPageSize)
+                    .Select(member => BuildChannelMemberPacket(member.Key, member.Value))
+                    .ToArray()
+                : Array.Empty<ChannelMemberPacket>()
         }).ToArray();
         PendingChannelInvite? invite = channels.GetPendingInvite(player.PlayerUID, now);
         string selectedChannelId = sessionsByUid.TryGetValue(player.PlayerUID, out VoiceClientSession? session)
@@ -1517,14 +1611,15 @@ public sealed class ServerVoiceController : IDisposable
             PendingInviteNames = invite is { } pendingInvite
                 ? new[] { pendingInvite.InviterName }
                 : Array.Empty<string>(),
-            HasServerControl = player.HasPrivilege(Privilege.controlserver)
+            HasServerControl = administrator
         }, player);
     }
 
     private void SendChannelMemberPage(IServerPlayer player, string channelId, int requestedPage, int requestedPageSize)
     {
         if (!channels.TryGet(channelId, out VoiceChannel channel)
-            || !channel.Members.ContainsKey(player.PlayerUID))
+            || (!channel.Members.ContainsKey(player.PlayerUID)
+                && !player.HasPrivilege(Privilege.controlserver)))
         {
             SendFeedback(player, "channel-missing");
             return;
@@ -1767,7 +1862,8 @@ public sealed class ServerVoiceController : IDisposable
                 stored.MutedPlayerUids,
                 stored.BannedPlayerUids,
                 config.MaxChannelsPerPlayer,
-                stored.Password);
+                stored.Password,
+                stored.Visibility);
         }
     }
 
@@ -1784,6 +1880,7 @@ public sealed class ServerVoiceController : IDisposable
                 MaxMembers = channel.MaxMembers,
                 MaxActiveTalkers = channel.MaxActiveTalkers,
                 Password = channel.Password,
+                Visibility = channel.Visibility,
                 Members = new Dictionary<string, VoiceChannelRole>(channel.Members, StringComparer.Ordinal),
                 Locked = channel.Locked,
                 MutedPlayerUids = channel.MutedPlayerUids.OrderBy(uid => uid, StringComparer.Ordinal).ToList(),

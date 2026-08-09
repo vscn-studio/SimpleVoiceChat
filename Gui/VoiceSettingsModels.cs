@@ -8,9 +8,11 @@ public readonly record struct VoiceSettingsChannelOption(
     VoiceChannelRole LocalRole,
     bool ExternallyManaged,
     int MemberCount = 0,
-    bool Locked = false);
+    bool Locked = false,
+    VoiceChannelVisibility Visibility = VoiceChannelVisibility.Open,
+    string OwnerUid = "");
 
-public readonly record struct VoiceSettingsPlayerOption(string Id, string Name);
+public readonly record struct VoiceSettingsPlayerOption(string Id, string Name, string ChannelSummary = "");
 
 public readonly record struct VoiceSettingsMemberOption(string Id, string Name, VoiceChannelRole Role);
 

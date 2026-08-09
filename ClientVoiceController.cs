@@ -747,6 +747,11 @@ public sealed class ClientVoiceController : IDisposable
             return;
         }
         UpdateHudAccessState(packet);
+        if (string.Equals(packet.Code, "channel-owner-leave-options", StringComparison.OrdinalIgnoreCase)
+            && packet.Arguments is { Length: > 0 })
+        {
+            settingsDialog?.OpenOwnerLeaveOverlay(packet.Arguments[0]);
+        }
         string message = LocalizeFeedback(packet);
         if (!string.IsNullOrWhiteSpace(message))
         {
@@ -810,7 +815,8 @@ public sealed class ClientVoiceController : IDisposable
         string name = "",
         int page = 0,
         int pageSize = 0,
-        string password = "")
+        string password = "",
+        VoiceChannelVisibility visibility = VoiceChannelVisibility.Open)
     {
         if (controlChannel?.Connected != true)
         {
@@ -824,7 +830,8 @@ public sealed class ClientVoiceController : IDisposable
             Name = name,
             Page = page,
             PageSize = pageSize,
-            Password = password
+            Password = password,
+            Visibility = visibility
         });
     }
 
@@ -867,8 +874,35 @@ public sealed class ClientVoiceController : IDisposable
                 info.LocalRole,
                 info.ExternallyManaged,
                 info.MemberCount,
-                info.Locked))
+                info.Locked,
+                info.Visibility,
+                info.OwnerUid))
             .ToArray();
+    }
+
+    internal void JoinChannelFromSettings(string channelId, string password)
+    {
+        SendChannelCommand("join", channelId: channelId, password: password);
+    }
+
+    internal void CreateChannelFromSettings(string name, string password, VoiceChannelVisibility visibility)
+    {
+        SendChannelCommand("create", name: name, password: password, visibility: visibility);
+    }
+
+    internal void LeaveChannelFromSettings(string channelId)
+    {
+        SendChannelCommand("leave", channelId: channelId);
+    }
+
+    internal void TransferChannelOwnerFromSettings(string channelId, string targetUid)
+    {
+        SendChannelCommand("transfer-owner", channelId: channelId, targetPlayerUid: targetUid);
+    }
+
+    internal void DeleteChannelFromSettings(string channelId)
+    {
+        SendChannelCommand("delete-owned-channel", channelId: channelId);
     }
 
     internal string[] BuildPlayerActions(string channelId)
@@ -914,26 +948,26 @@ public sealed class ClientVoiceController : IDisposable
 
     internal VoiceSettingsPlayerOption[] BuildPlayerOptions()
     {
-        IEnumerable<VoiceSettingsPlayerOption> online = capi.World.AllOnlinePlayers
+        Dictionary<string, string> names = capi.World.AllOnlinePlayers
             .Where(player => player.PlayerUID != capi.World.Player.PlayerUID)
-            .Select(player => new VoiceSettingsPlayerOption(player.PlayerUID, player.PlayerName));
-        IEnumerable<VoiceSettingsPlayerOption> members = channelInfos
-            .Where(channel => channel.ChannelId == config.SelectedChannelId)
-            .SelectMany(channel => channel.Members ?? Array.Empty<ChannelMemberPacket>())
-            .Where(member => member.PlayerUid != capi.World.Player.PlayerUID)
-            .Select(member => new VoiceSettingsPlayerOption(
-                member.PlayerUid,
-                DisplayPlayerName(member.PlayerUid, member.PlayerName)));
-        IEnumerable<VoiceSettingsPlayerOption> currentPage = memberPagesByChannel.TryGetValue(config.SelectedChannelId, out ChannelMemberPagePacket? page)
-            ? page.Members
-                .Where(member => member.PlayerUid != capi.World.Player.PlayerUID)
-                .Select(member => new VoiceSettingsPlayerOption(
-                    member.PlayerUid,
-                    DisplayPlayerName(member.PlayerUid, member.PlayerName)))
-            : Array.Empty<VoiceSettingsPlayerOption>();
-        return online.Concat(members).Concat(currentPage)
-            .GroupBy(player => player.Id, StringComparer.Ordinal)
-            .Select(group => group.First())
+            .ToDictionary(player => player.PlayerUID, player => player.PlayerName, StringComparer.Ordinal);
+        foreach (ChannelInfoPacket channel in channelInfos)
+        {
+            foreach (ChannelMemberPacket member in channel.Members ?? Array.Empty<ChannelMemberPacket>())
+            {
+                if (member.PlayerUid != capi.World.Player.PlayerUID && !names.ContainsKey(member.PlayerUid))
+                {
+                    names[member.PlayerUid] = DisplayPlayerName(member.PlayerUid, member.PlayerName);
+                }
+            }
+        }
+        return names.Select(pair => new VoiceSettingsPlayerOption(
+                pair.Key,
+                DisplayPlayerName(pair.Key, pair.Value),
+                string.Join(", ", channelInfos
+                    .Where(channel => (channel.Members ?? Array.Empty<ChannelMemberPacket>()).Any(member => member.PlayerUid == pair.Key))
+                    .Select(channel => channel.Name)
+                    .Distinct(StringComparer.OrdinalIgnoreCase))))
             .OrderBy(player => player.Name, StringComparer.OrdinalIgnoreCase)
             .Take(100)
             .ToArray();
@@ -1002,6 +1036,19 @@ public sealed class ClientVoiceController : IDisposable
     internal static string[] GetInputDeviceNames(string[] values)
     {
         return values.Select(value => string.IsNullOrEmpty(value) ? SVCLang.Get("default-microphone") : value).ToArray();
+    }
+
+    internal VoiceSettingsMemberOption[] BuildChannelMembersForSettings(string channelId)
+    {
+        ChannelInfoPacket? channel = channelInfos.FirstOrDefault(info => info.ChannelId == channelId);
+        if (channel == null) return Array.Empty<VoiceSettingsMemberOption>();
+        return channel.Members
+            .Where(member => member.PlayerUid != capi.World.Player.PlayerUID)
+            .Select(member => new VoiceSettingsMemberOption(
+                member.PlayerUid,
+                DisplayPlayerName(member.PlayerUid, member.PlayerName),
+                member.Role))
+            .ToArray();
     }
 
     internal string[] GetOutputDeviceValues()
@@ -1482,7 +1529,7 @@ public sealed class ClientVoiceController : IDisposable
             return;
         }
 
-        if ((action is "leave" or "disband")
+        if (action == "disband"
             && string.Equals(config.SelectedChannelId, channelId, StringComparison.Ordinal))
         {
             config.SelectedChannelId = string.Empty;

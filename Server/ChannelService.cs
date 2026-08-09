@@ -19,10 +19,11 @@ public sealed class ChannelService
         int maxMembers,
         int maxActiveTalkers,
         bool persistent = false,
-        string password = "")
+        string password = "",
+        VoiceChannelVisibility visibility = VoiceChannelVisibility.Open)
     {
         string id = $"channel-{Guid.NewGuid():N}";
-        VoiceChannel channel = new(id, name, ownerUid, maxMembers, maxActiveTalkers, persistent, password: password);
+        VoiceChannel channel = new(id, name, ownerUid, maxMembers, maxActiveTalkers, persistent, password: password, visibility: visibility);
         channelsById[id] = channel;
         AddMemberIndex(ownerUid, id);
         return channel;
@@ -132,7 +133,8 @@ public sealed class ChannelService
         IReadOnlyCollection<string>? mutedPlayerUids = null,
         IReadOnlyCollection<string>? bannedPlayerUids = null,
         int maxChannelsPerPlayer = 8,
-        string password = "")
+        string password = "",
+        VoiceChannelVisibility visibility = VoiceChannelVisibility.Open)
     {
         if (string.IsNullOrWhiteSpace(id)
             || string.IsNullOrWhiteSpace(ownerUid)
@@ -144,7 +146,7 @@ public sealed class ChannelService
 
         int boundedMaxMembers = Math.Clamp(maxMembers, 2, 100);
         Dictionary<string, VoiceChannelRole> boundedMembers = BuildBoundedMembers(ownerUid, boundedMaxMembers, members);
-        VoiceChannel channel = new(id, name, ownerUid, boundedMaxMembers, maxActiveTalkers, persistent: true, password: password);
+        VoiceChannel channel = new(id, name, ownerUid, boundedMaxMembers, maxActiveTalkers, persistent: true, password: password, visibility: visibility);
         foreach (KeyValuePair<string, VoiceChannelRole> member in boundedMembers)
         {
             if (member.Key == ownerUid)
@@ -292,6 +294,55 @@ public sealed class ChannelService
         return ids.Select(id => channelsById[id]);
     }
 
+    public IEnumerable<VoiceChannel> GetVisibleForPlayer(string playerUid, bool administrator)
+    {
+        return channelsById.Values.Where(channel =>
+            administrator
+            || channel.Visibility != VoiceChannelVisibility.Hidden
+            || channel.Members.ContainsKey(playerUid));
+    }
+
+    public ChannelInviteResult Join(
+        string playerUid,
+        string channelId,
+        string password,
+        int maxChannelsPerPlayer = 8,
+        bool administrator = false)
+    {
+        if (!channelsById.TryGetValue(channelId, out VoiceChannel? channel)
+            || channel.ExternallyManaged)
+        {
+            return ChannelInviteResult.Error("channel-missing");
+        }
+        if (channel.Locked)
+        {
+            return ChannelInviteResult.Error("channel-locked");
+        }
+        if (channel.BannedPlayerUids.Contains(playerUid))
+        {
+            return ChannelInviteResult.Error("channel-banned");
+        }
+        if (channel.Visibility == VoiceChannelVisibility.Hidden && !administrator)
+        {
+            return ChannelInviteResult.Error("channel-hidden");
+        }
+        if (channel.Visibility == VoiceChannelVisibility.Password
+            && !string.Equals(channel.Password, password?.Trim() ?? string.Empty, StringComparison.Ordinal))
+        {
+            return ChannelInviteResult.Error("channel-password-required");
+        }
+        if (!CanJoinChannel(playerUid, channel.Id, maxChannelsPerPlayer))
+        {
+            return ChannelInviteResult.Error("player-channel-limit");
+        }
+        if (!channel.TryAddMember(playerUid, VoiceChannelRole.Member))
+        {
+            return ChannelInviteResult.Error("channel-full");
+        }
+        AddMemberIndex(playerUid, channel.Id);
+        return ChannelInviteResult.Success(channel.Id);
+    }
+
     public ChannelInviteResult Invite(
         string channelId,
         string inviterUid,
@@ -432,9 +483,27 @@ public sealed class ChannelService
         }
         else if (channel.OwnerUid == playerUid)
         {
+            // Direct service callers retain the legacy behavior; the server command
+            // path intercepts owner departures and requires an explicit choice.
             string nextOwner = channel.Members.Keys.OrderBy(uid => uid, StringComparer.Ordinal).First();
             channel.TransferOwnership(nextOwner);
         }
+        return true;
+    }
+
+    public bool TransferOwnership(string requesterUid, string channelId, string targetUid, bool administrator, out string[] affectedMembers)
+    {
+        affectedMembers = Array.Empty<string>();
+        if (!channelsById.TryGetValue(channelId, out VoiceChannel? channel)
+            || channel.ExternallyManaged
+            || (!administrator && channel.OwnerUid != requesterUid)
+            || !channel.Members.ContainsKey(targetUid)
+            || targetUid == channel.OwnerUid)
+        {
+            return false;
+        }
+        affectedMembers = channel.Members.Keys.ToArray();
+        channel.TransferOwnership(targetUid);
         return true;
     }
 
@@ -605,7 +674,8 @@ public sealed class VoiceChannel
         int maxActiveTalkers,
         bool persistent,
         bool externallyManaged = false,
-        string password = "")
+        string password = "",
+        VoiceChannelVisibility visibility = VoiceChannelVisibility.Open)
     {
         Id = id;
         Name = NormalizeName(name, "channel");
@@ -615,6 +685,13 @@ public sealed class VoiceChannel
         Persistent = persistent;
         ExternallyManaged = externallyManaged;
         Password = NormalizePassword(password);
+        Visibility = visibility == VoiceChannelVisibility.Password && string.IsNullOrEmpty(Password)
+            ? VoiceChannelVisibility.Open
+            : visibility;
+        if (Visibility != VoiceChannelVisibility.Password)
+        {
+            Password = string.Empty;
+        }
         Members[ownerUid] = VoiceChannelRole.Owner;
         Revision = 1;
     }
@@ -627,6 +704,7 @@ public sealed class VoiceChannel
     public bool Persistent { get; }
     public bool ExternallyManaged { get; }
     public string Password { get; }
+    public VoiceChannelVisibility Visibility { get; }
     public bool Locked { get; private set; }
     public int Revision { get; private set; }
     public Dictionary<string, VoiceChannelRole> Members { get; } = new(StringComparer.Ordinal);

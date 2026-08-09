@@ -35,6 +35,13 @@ public enum VoiceChannelRole
     Owner = 4
 }
 
+public enum VoiceChannelVisibility
+{
+    Open = 0,
+    Password = 1,
+    Hidden = 2
+}
+
 [Flags]
 public enum VoiceCapability
 {
@@ -230,6 +237,9 @@ public sealed class ChannelCommandPacket
 
     [ProtoMember(7)]
     public string Password = string.Empty;
+
+    [ProtoMember(8)]
+    public VoiceChannelVisibility Visibility;
 }
 
 [ProtoContract]
@@ -271,6 +281,12 @@ public sealed class ChannelInfoPacket
 
     [ProtoMember(8)]
     public bool ExternallyManaged;
+
+    [ProtoMember(9)]
+    public VoiceChannelVisibility Visibility;
+
+    [ProtoMember(10)]
+    public string OwnerUid = string.Empty;
 }
 
 [ProtoContract]

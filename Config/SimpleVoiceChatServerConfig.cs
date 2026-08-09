@@ -34,6 +34,7 @@ public sealed class SimpleVoiceChatServerConfig
     public int AuditRetention { get; set; } = 500;
     public bool AllowContinuousTalk { get; set; } = true;
     public bool EnableChannels { get; set; } = true;
+    public bool AllowPlayerChannelCreation { get; set; } = true;
     public List<string> GloballyMutedPlayerUids { get; set; } = new();
     public List<string> ForceBlockedPlayerUids { get; set; } = new();
     public List<PersistentVoiceChannelConfig> PersistentChannels { get; set; } = new();
@@ -131,6 +132,7 @@ public sealed class PersistentVoiceChannelConfig
     public int MaxMembers { get; set; } = 100;
     public int MaxActiveTalkers { get; set; } = 3;
     public string Password { get; set; } = string.Empty;
+    public Networking.VoiceChannelVisibility Visibility { get; set; } = Networking.VoiceChannelVisibility.Open;
     public Dictionary<string, Networking.VoiceChannelRole> Members { get; set; } = new(StringComparer.Ordinal);
     public bool Locked { get; set; }
     public List<string> MutedPlayerUids { get; set; } = new();
@@ -142,6 +144,20 @@ public sealed class PersistentVoiceChannelConfig
         Name = (Name ?? string.Empty).Trim();
         OwnerUid = (OwnerUid ?? string.Empty).Trim();
         Password = (Password ?? string.Empty).Trim();
+        if (!Enum.IsDefined(Visibility))
+        {
+            Visibility = string.IsNullOrEmpty(Password)
+                ? Networking.VoiceChannelVisibility.Open
+                : Networking.VoiceChannelVisibility.Password;
+        }
+        if (Visibility == Networking.VoiceChannelVisibility.Password && string.IsNullOrEmpty(Password))
+        {
+            Visibility = Networking.VoiceChannelVisibility.Open;
+        }
+        if (Visibility != Networking.VoiceChannelVisibility.Password)
+        {
+            Password = string.Empty;
+        }
         Id = Limit(Id);
         Name = Limit(Name);
         OwnerUid = Limit(OwnerUid);
