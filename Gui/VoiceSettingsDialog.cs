@@ -572,9 +572,13 @@ public sealed class VoiceSettingsDialog : GuiDialog
             channelSearch = value;
             QueueCompose();
         }, CairoFont.TextInput(), "channel-search");
-        composer.GetTextInput("channel-search").SetValue(channelSearch);
-        composer.GetTextInput("channel-search").SetPlaceHolderText(SVCLang.Get("channel-search-placeholder"));
-        composer.GetTextInput("channel-search").SetMaxLength(VoiceProtocol.MaxControlStringLength);
+        GuiElementTextInput channelSearchInput = composer.GetTextInput("channel-search");
+        if (string.Join(string.Empty, channelSearchInput.GetLines()) != channelSearch)
+        {
+            channelSearchInput.SetValue(channelSearch);
+        }
+        channelSearchInput.SetPlaceHolderText(SVCLang.Get("channel-search-placeholder"));
+        channelSearchInput.SetMaxLength(VoiceProtocol.MaxControlStringLength);
         y += 46;
         string normalizedSearch = channelSearch.Trim();
         if (!string.IsNullOrEmpty(normalizedSearch))
@@ -850,9 +854,13 @@ public sealed class VoiceSettingsDialog : GuiDialog
             playerSearch = value;
             QueueCompose();
         }, CairoFont.TextInput(), "players-search");
-        composer.GetTextInput("players-search").SetValue(playerSearch);
-        composer.GetTextInput("players-search").SetPlaceHolderText(SVCLang.Get("player-search-placeholder"));
-        composer.GetTextInput("players-search").SetMaxLength(VoiceProtocol.MaxControlStringLength);
+        GuiElementTextInput playerSearchInput = composer.GetTextInput("players-search");
+        if (string.Join(string.Empty, playerSearchInput.GetLines()) != playerSearch)
+        {
+            playerSearchInput.SetValue(playerSearch);
+        }
+        playerSearchInput.SetPlaceHolderText(SVCLang.Get("player-search-placeholder"));
+        playerSearchInput.SetMaxLength(VoiceProtocol.MaxControlStringLength);
         if (!string.IsNullOrWhiteSpace(playerSearch))
         {
             players = players.Where(player => player.Name.Contains(playerSearch, StringComparison.OrdinalIgnoreCase)
