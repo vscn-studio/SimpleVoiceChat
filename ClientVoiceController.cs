@@ -28,6 +28,7 @@ public sealed class ClientVoiceController : IDisposable
     private OpenAlPlaybackService? playback;
     private VoiceHud? hud;
     private VoiceSettingsDialog? settingsDialog;
+    private VoiceSetupWizardDialog? setupWizard;
     private VoiceInviteDialog? inviteDialog;
     private readonly short[] captureBuffer = new short[VoiceConstants.SamplesPerFrame];
     private readonly VoiceCapturePreprocessor capturePreprocessor = new();
@@ -42,7 +43,8 @@ public sealed class ClientVoiceController : IDisposable
         TalkRange = 18,
         ShoutRange = 35,
         EnableOcclusion = true,
-        EnableHudIndicators = true
+        EnableHudIndicators = true,
+        AllowContinuousTalk = true
     };
 
     private VoiceMode mode = VoiceMode.Talk;
@@ -112,6 +114,7 @@ public sealed class ClientVoiceController : IDisposable
         }
         config.EnableNoiseSuppression &= VoiceProcessingCapabilities.NoiseSuppressionAvailable;
         config.EnableEchoCancellation &= VoiceProcessingCapabilities.EchoCancellationAvailable;
+        toggleTalkEnabled = config.PreferContinuousTalk;
         SaveConfig();
         RegisterChannels();
         RegisterHotkeys();
@@ -126,6 +129,7 @@ public sealed class ClientVoiceController : IDisposable
         hud = new VoiceHud(capi, BuildHudSnapshot, ShouldShowHud);
         capi.Gui.RegisterDialog(hud);
         settingsDialog = new VoiceSettingsDialog(capi, this);
+        setupWizard = new VoiceSetupWizardDialog(capi, this);
         inviteDialog = new VoiceInviteDialog(
             capi,
             () => capi.World.ElapsedMilliseconds,
@@ -133,6 +137,7 @@ public sealed class ClientVoiceController : IDisposable
             DeclinePendingInvite,
             () => hud?.ReservedHeight ?? 0);
         hud.Refresh();
+        ShowInitialSetupPrompt();
 
         capi.Event.KeyUp += OnKeyUp;
         fastTickListenerId = capi.Event.RegisterGameTickListener(OnFastTick, VoiceConstants.FrameMilliseconds);
@@ -179,9 +184,9 @@ public sealed class ClientVoiceController : IDisposable
 
     private void RegisterHotkeys()
     {
-        capi.Input.RegisterHotKey(VoiceConstants.PushToTalkHotKey, SVCLang.Get("hotkey-push-to-talk"), GlKeys.N, HotkeyType.CharacterControls);
+        capi.Input.RegisterHotKey(VoiceConstants.PushToTalkHotKey, SVCLang.Get("hotkey-push-to-talk"), GetConfiguredKey(config.PushToTalkKey, GlKeys.N), HotkeyType.CharacterControls);
         capi.Input.RegisterHotKey(VoiceConstants.ToggleTalkHotKey, SVCLang.Get("hotkey-toggle-talk"), GlKeys.N, HotkeyType.GUIOrOtherControls, altPressed: true);
-        capi.Input.RegisterHotKey(VoiceConstants.ModeCycleHotKey, SVCLang.Get("hotkey-cycle-mode"), GlKeys.LBracket, HotkeyType.CharacterControls);
+        capi.Input.RegisterHotKey(VoiceConstants.ModeCycleHotKey, SVCLang.Get("hotkey-cycle-mode"), GetConfiguredKey(config.ModeCycleKey, GlKeys.LBracket), HotkeyType.CharacterControls);
         capi.Input.RegisterHotKey(VoiceConstants.ModeCycleAltHotKey, SVCLang.Get("hotkey-cycle-mode-alt"), GlKeys.RBracket, HotkeyType.CharacterControls);
         capi.Input.RegisterHotKey(VoiceConstants.LocalMuteHotKey, SVCLang.Get("hotkey-local-mute"), GlKeys.Minus, HotkeyType.GUIOrOtherControls, ctrlPressed: true);
         capi.Input.RegisterHotKey(VoiceConstants.GlobalMuteHotKey, SVCLang.Get("hotkey-global-mute"), GlKeys.Semicolon, HotkeyType.CharacterControls);
@@ -253,7 +258,14 @@ public sealed class ClientVoiceController : IDisposable
             if (!settingsPressed)
             {
                 settingsPressed = true;
-                settingsDialog?.Toggle();
+                if (config.InitialSetupCompleted)
+                {
+                    settingsDialog?.Toggle();
+                }
+                else
+                {
+                    setupWizard?.Toggle();
+                }
             }
             return true;
         });
@@ -522,6 +534,10 @@ public sealed class ClientVoiceController : IDisposable
         if (!serverConfig.AllowContinuousTalk)
         {
             toggleTalkEnabled = false;
+        }
+        else if (config.PreferContinuousTalk)
+        {
+            toggleTalkEnabled = true;
         }
         SaveConfig();
         hud?.Refresh();
@@ -932,6 +948,38 @@ public sealed class ClientVoiceController : IDisposable
         return values.Select(value => string.IsNullOrEmpty(value) ? SVCLang.Get("default-microphone") : value).ToArray();
     }
 
+    internal string[] GetOutputDeviceValues()
+    {
+        List<string> values = new() { string.Empty };
+        try
+        {
+            IEnumerable<string> devices = ALC.GetString(AlcGetStringList.AllDevicesSpecifier);
+            foreach (string device in devices)
+            {
+                if (!string.IsNullOrWhiteSpace(device) && !values.Contains(device, StringComparer.Ordinal))
+                {
+                    values.Add(device);
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            capi.Logger.Warning("SimpleVoiceChat: failed enumerating playback devices: {0}", exception.Message);
+        }
+
+        if (!string.IsNullOrWhiteSpace(config.OutputDeviceName)
+            && !values.Contains(config.OutputDeviceName, StringComparer.Ordinal))
+        {
+            values.Add(config.OutputDeviceName);
+        }
+        return values.ToArray();
+    }
+
+    internal static string[] GetOutputDeviceNames(string[] values)
+    {
+        return values.Select(value => string.IsNullOrEmpty(value) ? SVCLang.Get("default-speaker") : value).ToArray();
+    }
+
     internal bool IsPlayerMuted(string playerUid)
     {
         return config.MutedPlayerUids.Contains(playerUid, StringComparer.Ordinal);
@@ -947,6 +995,58 @@ public sealed class ClientVoiceController : IDisposable
         config.InputDeviceName = next;
         SaveConfig();
         ReinitializeCapture();
+    }
+
+    internal void SetOutputDeviceFromSettings(string value)
+    {
+        string next = value ?? string.Empty;
+        if (config.OutputDeviceName == next)
+        {
+            return;
+        }
+
+        config.OutputDeviceName = next;
+        SaveConfig();
+        ReinitializePlayback();
+    }
+
+    internal void SetVoiceActivationFromSetup(bool continuous)
+    {
+        config.PreferContinuousTalk = continuous;
+        toggleTalkEnabled = continuous && serverConfig.AllowContinuousTalk;
+        SaveConfig();
+        SendState(force: true);
+        hud?.Refresh();
+    }
+
+    internal void SetPushToTalkKeyFromSetup(string value)
+    {
+        GlKeys key = GetConfiguredKey(value, GlKeys.N);
+        config.PushToTalkKey = key.ToString();
+        HotKey? hotkey = capi.Input.GetHotKeyByCode(VoiceConstants.PushToTalkHotKey);
+        if (hotkey?.CurrentMapping != null)
+        {
+            hotkey.CurrentMapping.KeyCode = (int)key;
+            hotkey.CurrentMapping.SecondKeyCode = null;
+            hotkey.CurrentMapping.Alt = false;
+            hotkey.CurrentMapping.Ctrl = false;
+            hotkey.CurrentMapping.Shift = false;
+        }
+        SaveConfig();
+    }
+
+    internal void CompleteInitialSetup()
+    {
+        config.InitialSetupCompleted = true;
+        config.InitialSetupPromptShown = true;
+        SaveConfig();
+    }
+
+    internal void SkipInitialSetupToSettings()
+    {
+        CompleteInitialSetup();
+        setupWizard?.TryClose();
+        settingsDialog?.TryOpen();
     }
 
     internal void SetOutputVolumeFromSettings(int value)
@@ -1053,6 +1153,25 @@ public sealed class ClientVoiceController : IDisposable
                 member.PlayerUid,
                 DisplayPlayerName(member.PlayerUid, member.PlayerName),
                 member.Role)).ToArray());
+    }
+
+    private static GlKeys GetConfiguredKey(string? value, GlKeys fallback)
+    {
+        return Enum.TryParse(value, ignoreCase: true, out GlKeys key) && key != GlKeys.Unknown
+            ? key
+            : fallback;
+    }
+
+    private void ShowInitialSetupPrompt()
+    {
+        if (config.InitialSetupCompleted || config.InitialSetupPromptShown)
+        {
+            return;
+        }
+
+        capi.ShowChatMessage(SVCLang.Get("chat-initial-setup"));
+        config.InitialSetupPromptShown = true;
+        SaveConfig();
     }
 
     private void UpdateHudAccessState(VoiceFeedbackPacket packet)
@@ -1600,6 +1719,14 @@ public sealed class ClientVoiceController : IDisposable
         capi.ShowChatMessage(SVCLang.Get("chat-device-switched", string.IsNullOrWhiteSpace(config.InputDeviceName) ? SVCLang.Get("default-microphone") : config.InputDeviceName));
     }
 
+    private void ReinitializePlayback()
+    {
+        playback?.Dispose();
+        playback = new OpenAlPlaybackService(capi, config);
+        playback.Initialize();
+        capi.ShowChatMessage(SVCLang.Get("chat-output-device-switched", string.IsNullOrWhiteSpace(config.OutputDeviceName) ? SVCLang.Get("default-speaker") : config.OutputDeviceName));
+    }
+
     private void DrainCapturedFrames()
     {
         int processedFrames = 0;
@@ -1950,6 +2077,9 @@ public sealed class ClientVoiceController : IDisposable
         settingsDialog?.TryClose();
         settingsDialog?.Dispose();
         settingsDialog = null;
+        setupWizard?.TryClose();
+        setupWizard?.Dispose();
+        setupWizard = null;
         inviteDialog?.Dismiss();
         inviteDialog?.Dispose();
         inviteDialog = null;

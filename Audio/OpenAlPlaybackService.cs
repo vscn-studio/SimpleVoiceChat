@@ -27,6 +27,7 @@ public sealed class OpenAlPlaybackService : IDisposable
     private ALDevice device;
     private ALContext context;
     private bool hasContext;
+    private bool ownsContext;
     private bool hasEffectsExtension;
     private bool contextWarningShown;
     private bool disposed;
@@ -40,7 +41,7 @@ public sealed class OpenAlPlaybackService : IDisposable
     public bool Initialize()
     {
         decodeWorker ??= Task.Run(() => DecodeWorkerLoop(decodeCancellation.Token));
-        return TryUseCurrentContext(logIfMissing: true);
+        return TryInitializeContext(logIfMissing: true);
     }
 
     private bool EnsureContext()
@@ -50,7 +51,60 @@ public sealed class OpenAlPlaybackService : IDisposable
             return true;
         }
 
-        return TryUseCurrentContext(logIfMissing: false);
+        return TryInitializeContext(logIfMissing: false);
+    }
+
+    private bool TryInitializeContext(bool logIfMissing)
+    {
+        if (!string.IsNullOrWhiteSpace(clientConfig.OutputDeviceName)
+            && TryCreateConfiguredContext(logIfMissing))
+        {
+            return true;
+        }
+
+        return TryUseCurrentContext(logIfMissing);
+    }
+
+    private bool TryCreateConfiguredContext(bool logIfMissing)
+    {
+        try
+        {
+            ALDevice selectedDevice = ALC.OpenDevice(clientConfig.OutputDeviceName);
+            if (selectedDevice.Handle == IntPtr.Zero)
+            {
+                throw new InvalidOperationException("The selected OpenAL output device could not be opened.");
+            }
+
+            ALContext selectedContext = ALC.CreateContext(selectedDevice, new[] { 0 });
+            if (selectedContext.Handle == IntPtr.Zero)
+            {
+                ALC.CloseDevice(selectedDevice);
+                throw new InvalidOperationException("The selected OpenAL output context could not be created.");
+            }
+
+            ALContext previousContext = ALC.GetCurrentContext();
+            ALC.MakeContextCurrent(selectedContext);
+            device = selectedDevice;
+            context = selectedContext;
+            hasContext = true;
+            ownsContext = true;
+            hasEffectsExtension = ALC.EFX.IsExtensionPresent(device);
+            if (previousContext != selectedContext)
+            {
+                ALC.MakeContextCurrent(previousContext);
+            }
+            capi.Logger.Notification("SimpleVoiceChat: voice playback using configured OpenAL output device {0}, effects={1}.", clientConfig.OutputDeviceName, hasEffectsExtension);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            if (logIfMissing || !contextWarningShown)
+            {
+                contextWarningShown = true;
+                capi.Logger.Warning("SimpleVoiceChat: configured playback device {0} is unavailable: {1}. Falling back to the game audio device.", clientConfig.OutputDeviceName, ex.Message);
+            }
+            return false;
+        }
     }
 
     private bool TryUseCurrentContext(bool logIfMissing)
@@ -70,6 +124,7 @@ public sealed class OpenAlPlaybackService : IDisposable
 
             device = ALC.GetContextsDevice(context);
             hasContext = true;
+            ownsContext = false;
             hasEffectsExtension = device.Handle != IntPtr.Zero && ALC.EFX.IsExtensionPresent(device);
             capi.Logger.Notification("SimpleVoiceChat: voice playback using game OpenAL context, effects={0}.", hasEffectsExtension);
             return true;
@@ -120,32 +175,43 @@ public sealed class OpenAlPlaybackService : IDisposable
 
         try
         {
+            ALContext previousContext = ALC.GetCurrentContext();
             ALC.MakeContextCurrent(context);
 
-            lock (gate)
+            try
             {
-                DrainPendingEncodedFrames();
-                long now = capi.World.ElapsedMilliseconds;
-                List<long>? remove = null;
-                foreach (KeyValuePair<long, RemoteVoiceStream> pair in streams)
+                lock (gate)
                 {
-                    if (now - pair.Value.LastPacketMilliseconds > 3000)
+                    DrainPendingEncodedFrames();
+                    long now = capi.World.ElapsedMilliseconds;
+                    List<long>? remove = null;
+                    foreach (KeyValuePair<long, RemoteVoiceStream> pair in streams)
                     {
-                        remove ??= new List<long>();
-                        remove.Add(pair.Key);
-                        continue;
+                        if (now - pair.Value.LastPacketMilliseconds > 3000)
+                        {
+                            remove ??= new List<long>();
+                            remove.Add(pair.Key);
+                            continue;
+                        }
+
+                        UpdateStream(pair.Value, serverConfig);
                     }
 
-                    UpdateStream(pair.Value, serverConfig);
+                    if (remove != null)
+                    {
+                        foreach (long entityId in remove)
+                        {
+                            streams[entityId].Dispose();
+                            streams.Remove(entityId);
+                        }
+                    }
                 }
-
-                if (remove != null)
+            }
+            finally
+            {
+                if (ownsContext && previousContext != context)
                 {
-                    foreach (long entityId in remove)
-                    {
-                        streams[entityId].Dispose();
-                        streams.Remove(entityId);
-                    }
+                    ALC.MakeContextCurrent(previousContext);
                 }
             }
         }
@@ -417,7 +483,8 @@ public sealed class OpenAlPlaybackService : IDisposable
         catch (OperationCanceledException)
         {
         }
-        if (hasContext && ALC.GetCurrentContext() != context)
+        ALContext previousContext = ALC.GetCurrentContext();
+        if (hasContext && previousContext != context)
         {
             ALC.MakeContextCurrent(context);
         }
@@ -432,7 +499,18 @@ public sealed class OpenAlPlaybackService : IDisposable
         decodeSignal.Dispose();
         decodeCancellation.Dispose();
 
+        if (ownsContext && context.Handle != IntPtr.Zero)
+        {
+            ALC.MakeContextCurrent(previousContext == context ? ALContext.Null : previousContext);
+            ALC.DestroyContext(context);
+            if (device.Handle != IntPtr.Zero)
+            {
+                ALC.CloseDevice(device);
+            }
+        }
+
         hasContext = false;
+        ownsContext = false;
         context = ALContext.Null;
         device = ALDevice.Null;
     }

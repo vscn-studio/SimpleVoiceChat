@@ -107,15 +107,16 @@ public sealed class VoiceHud : HudElement
         double width = bounds.OuterWidth;
         double height = bounds.OuterHeight;
         double pad = GuiElement.scaled(8);
-        double iconSize = GuiElement.scaled(54);
+        double iconHeight = GuiElement.scaled(54);
+        double iconSlotWidth = GuiElement.scaled(64);
 
         ctx.SetSourceRGBA(0.02, 0.02, 0.02, 0.34);
         GuiElement.RoundRectangle(ctx, 0, 0, width, height, GuiElement.scaled(8));
         ctx.Fill();
 
-        DrawIcon(ctx, snapshot.IconState, pad, GuiElement.scaled(20), iconSize);
+        DrawIcon(ctx, snapshot.IconState, pad, GuiElement.scaled(20), iconHeight, iconSlotWidth);
 
-        double textX = pad + iconSize + GuiElement.scaled(10);
+        double textX = pad + iconSlotWidth + GuiElement.scaled(10);
         double statusY = GuiElement.scaled(22);
         DrawText(ctx, snapshot.Status, textX, statusY, 16, snapshot.MicrophoneEnabled ? new[] { 0.72, 1.0, 0.78, 1.0 } : new[] { 1.0, 0.62, 0.58, 1.0 }, bold: true);
         DrawText(ctx, snapshot.Mode, textX, statusY + GuiElement.scaled(18), 13, new[] { 0.98, 0.94, 0.82, 0.96 }, bold: true);
@@ -129,12 +130,14 @@ public sealed class VoiceHud : HudElement
         DrawChannelMembers(ctx, snapshot, textX, GuiElement.scaled(112), width - textX - pad);
     }
 
-    private void DrawIcon(Context ctx, VoiceHudIconState iconState, double x, double y, double size)
+    private void DrawIcon(Context ctx, VoiceHudIconState iconState, double x, double y, double height, double slotWidth)
     {
         ImageSurface iconSurface = GetIconSurface(iconState);
+        double scale = height / iconSurface.Height;
+        double width = iconSurface.Width * scale;
         ctx.Save();
-        ctx.Translate(x, y);
-        ctx.Scale(size / iconSurface.Width, size / iconSurface.Height);
+        ctx.Translate(x + Math.Max(0, (slotWidth - width) * 0.5), y);
+        ctx.Scale(scale, scale);
         ctx.SetSourceSurface(iconSurface, 0, 0);
         ctx.Rectangle(0, 0, iconSurface.Width, iconSurface.Height);
         ctx.Fill();

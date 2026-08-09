@@ -142,6 +142,29 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void ClientConfigurationMigratesExistingPlayersPastInitialSetup()
+    {
+        SimpleVoiceChatClientConfig existing = new()
+        {
+            ConfigVersion = 3,
+            InitialSetupCompleted = false,
+            InitialSetupPromptShown = false
+        };
+
+        existing.Normalize();
+
+        Assert.Equal(4, existing.ConfigVersion);
+        Assert.True(existing.InitialSetupCompleted);
+        Assert.True(existing.InitialSetupPromptShown);
+
+        SimpleVoiceChatClientConfig firstInstall = new();
+        firstInstall.Normalize();
+        Assert.Equal(4, firstInstall.ConfigVersion);
+        Assert.False(firstInstall.InitialSetupCompleted);
+        Assert.False(firstInstall.InitialSetupPromptShown);
+    }
+
+    [Fact]
     public void VoiceFrameValidationAcceptsOnlyCurrentRelayKinds()
     {
         VoiceFrameV3Packet frame = new()

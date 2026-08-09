@@ -2,16 +2,20 @@ namespace SimpleVoiceChat.Config;
 
 public sealed class SimpleVoiceChatClientConfig
 {
-    private const int CurrentConfigVersion = 3;
+    private const int CurrentConfigVersion = 4;
     private const int MaxServerProfiles = 128;
 
-    public int ConfigVersion { get; set; } = 1;
+    public int ConfigVersion { get; set; } = CurrentConfigVersion;
     public string InputDeviceName { get; set; } = string.Empty;
+    public string OutputDeviceName { get; set; } = string.Empty;
     public float OutputVolume { get; set; } = 1f;
     public float MicGain { get; set; } = 1f;
     public float NoiseGate { get; set; } = 0.015f;
     public string PushToTalkKey { get; set; } = "N";
     public string ModeCycleKey { get; set; } = "LBracket";
+    public bool PreferContinuousTalk { get; set; }
+    public bool InitialSetupCompleted { get; set; }
+    public bool InitialSetupPromptShown { get; set; }
     public bool ShowHudIndicator { get; set; } = true;
     public bool ShowMicrophoneHud { get; set; } = true;
     public bool EnableOcclusionEffects { get; set; } = true;
@@ -35,6 +39,9 @@ public sealed class SimpleVoiceChatClientConfig
     {
         Migrate();
         InputDeviceName = Limit(InputDeviceName, 256);
+        OutputDeviceName = Limit(OutputDeviceName, 256);
+        PushToTalkKey = Limit(PushToTalkKey, 64);
+        ModeCycleKey = Limit(ModeCycleKey, 64);
         SelectedChannelId = Limit(SelectedChannelId, Networking.VoiceProtocol.MaxControlStringLength);
         if (TransmitTarget is < Networking.VoiceTransmitTarget.Proximity or > Networking.VoiceTransmitTarget.ProximityAndChannel)
         {
@@ -81,6 +88,15 @@ public sealed class SimpleVoiceChatClientConfig
         {
             NeedsServerProfileMigration = true;
             ConfigVersion = 3;
+        }
+
+        // Existing installations predate the setup wizard. Keep their current
+        // audio choices and avoid showing a first-run prompt after upgrading.
+        if (ConfigVersion < 4)
+        {
+            InitialSetupCompleted = true;
+            InitialSetupPromptShown = true;
+            ConfigVersion = 4;
         }
 
         ConfigVersion = Math.Max(CurrentConfigVersion, ConfigVersion);

@@ -1,3 +1,4 @@
+using Cairo;
 using SimpleVoiceChat.Audio;
 using SimpleVoiceChat.Config;
 using SimpleVoiceChat.Networking;
@@ -49,10 +50,17 @@ internal static class VoiceSettingsNavigation
 
 public sealed class VoiceSettingsDialog : GuiDialog
 {
+    private const double WindowWidth = 940;
+    private const double WindowHeight = 650;
     private const double ContentLeft = 14;
-    private const double ContentTop = 82;
+    private const double ContentTop = 56;
     private const double ContentWidth = 900;
-    private const double ViewportHeight = 548;
+    private const double ViewportHeight = 580;
+    private const string FontAwesomeCheckIcon = "svc-fa-check";
+    private const string FontAwesomeCloseIcon = "svc-fa-xmark";
+
+    private static readonly AssetLocation FontAwesomeCheckAsset = new("simplevoicechat", "icons/fontawesome/check.svg");
+    private static readonly AssetLocation FontAwesomeCloseAsset = new("simplevoicechat", "icons/fontawesome/xmark.svg");
 
     private readonly ClientVoiceController controller;
     private readonly SimpleVoiceChatClientConfig config;
@@ -61,7 +69,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private ElementBounds? contentBounds;
     private float scrollPosition;
     private double contentHeight = ViewportHeight;
-    private bool suppressScrollCallback;
     private bool composeQueued;
 
     private string selectedPlayerUid = string.Empty;
@@ -115,6 +122,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private void Compose()
     {
+        RegisterFontAwesomeIcons();
         VoiceSettingsPage[] pages = VoiceSettingsNavigation.BuildPages(controller.HasServerControl);
         if (!pages.Contains(selectedPage))
         {
@@ -123,38 +131,37 @@ public sealed class VoiceSettingsDialog : GuiDialog
         }
 
         SingleComposer?.Dispose();
-        ElementBounds root = ElementStdBounds.AutosizedMainDialog;
-        ElementBounds background = ElementStdBounds.DialogBackground();
+        ElementBounds root = ElementBounds.Fixed(EnumDialogArea.CenterMiddle, 0, 0, WindowWidth, WindowHeight);
+        ElementBounds background = ElementBounds.Fixed(0, 0, WindowWidth, WindowHeight);
         ElementBounds viewport = ElementBounds.Fixed(ContentLeft, ContentTop, ContentWidth, ViewportHeight);
         contentBounds = ElementBounds.Fixed(0, 0, ContentWidth, ViewportHeight);
 
-        CairoFont titleFont = CairoFont.WhiteSmallText();
-
         GuiComposer composer = capi.Gui.CreateCompo("simplevoicechat-settings", root)
-            .AddShadedDialogBG(background)
-            .AddDialogTitleBar(SVCLang.Get("title"), OnClose, titleFont)
+            .AddStaticCustomDraw(background, DrawWindowBackground)
             .BeginChildElements(background);
 
-        double navX = 14;
+        composer.AddInteractiveElement(
+            new VoiceSettingsIconButton(
+                capi,
+                ElementBounds.Fixed(WindowWidth - 42, 10, 28, 28),
+                FontAwesomeCloseIcon,
+                _ => OnClose()),
+            "close");
+
+        double navX = ContentLeft;
         foreach (VoiceSettingsPage page in pages)
         {
             VoiceSettingsPage captured = page;
             string key = "nav-" + page.ToString().ToLowerInvariant();
-            double width = page == VoiceSettingsPage.Channels ? 148 : 94;
-            composer.AddToggleButton(
+            double width = page == VoiceSettingsPage.Channels ? 178 : 118;
+            AddFlatButton(
+                composer,
                 GetPageName(page),
-                CairoFont.ButtonText(),
-                active =>
-                {
-                    if (active)
-                    {
-                        SelectPage(captured);
-                    }
-                },
-                ElementBounds.Fixed(navX, 40, width, 36),
-                key);
-            composer.GetToggleButton(key).SetValue(page == selectedPage);
-            navX += width + 6;
+                () => SelectPage(captured),
+                ElementBounds.Fixed(navX, 10, width, 32),
+                key,
+                page == selectedPage);
+            navX += width + 3;
         }
 
         composer
@@ -174,63 +181,122 @@ public sealed class VoiceSettingsDialog : GuiDialog
             (float)Math.Max(0d, contentHeight - ViewportHeight));
         contentBounds.fixedY = -scrollPosition;
 
-        composer
-            .EndChildElements()
-            .EndClip()
-            .AddVerticalScrollbar(
-                OnScroll,
-                ElementBounds.Fixed(ContentLeft + ContentWidth + 6, ContentTop, 16, ViewportHeight),
-                "pageScrollbar");
+        SingleComposer = composer.EndChildElements().EndClip().EndChildElements().Compose();
+    }
 
-        SingleComposer = composer.EndChildElements().Compose();
-        GuiElementScrollbar? scrollbar = SingleComposer.GetScrollbar("pageScrollbar");
-        if (scrollbar != null)
+    public override void OnMouseWheel(MouseWheelEventArgs args)
+    {
+        base.OnMouseWheel(args);
+        if (args.IsHandled)
         {
-            float totalHeight = (float)contentHeight;
-            suppressScrollCallback = true;
-            try
-            {
-                scrollbar.SetHeights((float)ViewportHeight, totalHeight);
-                scrollbar.CurrentYPosition = scrollPosition;
-                scrollbar.TriggerChanged();
-            }
-            finally
-            {
-                suppressScrollCallback = false;
-            }
+            return;
         }
+
+        if (!IsOpened() || SingleComposer == null
+            || !SingleComposer.Bounds.PointInside(capi.Input.MouseX, capi.Input.MouseY))
+        {
+            return;
+        }
+
+        float next = Math.Clamp(
+            scrollPosition - (float)(args.delta * GuiElement.scaled(36)),
+            0f,
+            (float)Math.Max(0d, contentHeight - ViewportHeight));
+        if (Math.Abs(next - scrollPosition) > 0.01f)
+        {
+            OnScroll(next);
+            args.SetHandled();
+        }
+    }
+
+    private void RegisterFontAwesomeIcons()
+    {
+        capi.Gui.Icons.CustomIcons[FontAwesomeCheckIcon] = capi.Gui.Icons.SvgIconSource(FontAwesomeCheckAsset);
+        capi.Gui.Icons.CustomIcons[FontAwesomeCloseIcon] = capi.Gui.Icons.SvgIconSource(FontAwesomeCloseAsset);
+    }
+
+    private static void DrawWindowBackground(Context ctx, ImageSurface surface, ElementBounds bounds)
+    {
+        bounds.CalcWorldBounds();
+        GuiElement.RoundRectangle(ctx, bounds.bgDrawX, bounds.bgDrawY, bounds.OuterWidth, bounds.OuterHeight, GuiElement.scaled(4));
+        ctx.SetSourceRGBA(0.015, 0.02, 0.028, 0.84);
+        ctx.FillPreserve();
+        ctx.SetSourceRGBA(0.78, 0.82, 0.9, 0.22);
+        ctx.LineWidth = GuiElement.scaled(1);
+        ctx.Stroke();
+    }
+
+    private static void DrawFlatButtonBackground(Context ctx, ImageSurface surface, ElementBounds bounds, bool active)
+    {
+        bounds.CalcWorldBounds();
+        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
+        ctx.SetSourceRGBA(0.62, 0.66, 0.72, active ? 0.36 : 0.22);
+        ctx.FillPreserve();
+        ctx.SetSourceRGBA(0.92, 0.95, 1.0, active ? 0.95 : 0.88);
+        ctx.LineWidth = GuiElement.scaled(1);
+        ctx.Stroke();
+    }
+
+    private static void AddFlatButton(GuiComposer composer, string text, ActionConsumable action, ElementBounds bounds, string key, bool active = false)
+    {
+        composer.AddStaticCustomDraw(bounds, (ctx, surface, elementBounds) => DrawFlatButtonBackground(ctx, surface, elementBounds, active))
+            .AddButton(
+                text,
+                action,
+                bounds,
+                CairoFont.WhiteSmallText().WithFontSize(14).WithOrientation(EnumTextOrientation.Center).WithColor(new[] { 0.96, 0.97, 1.0, 1.0 }),
+                EnumButtonStyle.None,
+                key);
+    }
+
+    private static VoiceSettingsCheckBox AddCheckBox(GuiComposer composer, Action<bool> changed, ElementBounds bounds, string key, bool value)
+    {
+        VoiceSettingsCheckBox checkBox = new(composer.Api, bounds, changed);
+        composer.AddInteractiveElement(checkBox, key);
+        checkBox.SetValue(value);
+        return checkBox;
+    }
+
+    private static VoiceSettingsCheckBox GetCheckBox(GuiComposer composer, string key)
+    {
+        return (VoiceSettingsCheckBox)composer.GetElement(key);
     }
 
     private double AddAudioPage(GuiComposer composer)
     {
         const double labelX = 18;
         const double controlX = 235;
-        const double controlWidth = 220;
+        const double controlWidth = 250;
         double y = 0;
-        CairoFont section = CairoFont.WhiteSmallishText();
-        CairoFont label = CairoFont.WhiteSmallishText();
+        CairoFont section = CairoFont.WhiteSmallishText().WithColor(new[] { 0.96, 0.97, 1.0, 1.0 });
+        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
 
         string[] inputValues = controller.GetInputDeviceValues();
         string[] inputNames = ClientVoiceController.GetInputDeviceNames(inputValues);
         string selectedInput = config.InputDeviceName ?? string.Empty;
+        string[] outputValues = controller.GetOutputDeviceValues();
+        string[] outputNames = ClientVoiceController.GetOutputDeviceNames(outputValues);
+        string selectedOutput = config.OutputDeviceName ?? string.Empty;
 
         composer
-            .AddStaticText(SVCLang.Get("label-input-device"), label, ElementBounds.Fixed(labelX, y, 210, 26))
-            .AddDropDown(inputValues, inputNames, Math.Max(0, Array.IndexOf(inputValues, selectedInput)), OnInputDeviceChanged, ElementBounds.Fixed(controlX, y, controlWidth, 26), "inputDevice")
-            .AddStaticText(SVCLang.Get("label-output-volume"), label, ElementBounds.Fixed(labelX, y += 44, 210, 26))
-            .AddSlider(value => { controller.SetOutputVolumeFromSettings(value); return true; }, ElementBounds.Fixed(controlX, y, controlWidth, 20), "outputVolume")
-            .AddStaticText(SVCLang.Get("label-mic-gain"), label, ElementBounds.Fixed(labelX, y += 44, 210, 26))
-            .AddSlider(value => { controller.SetMicGainFromSettings(value); return true; }, ElementBounds.Fixed(controlX, y, controlWidth, 20), "micGain")
-            .AddStaticText(SVCLang.Get("label-noise-gate"), label, ElementBounds.Fixed(labelX, y += 44, 210, 26))
-            .AddSlider(value => { controller.SetNoiseGateFromSettings(value); return true; }, ElementBounds.Fixed(controlX, y, controlWidth, 20), "noiseGate");
+            .AddStaticText(SVCLang.Get("label-input-device"), label, ElementBounds.Fixed(labelX, y + 3, 210, 30))
+            .AddVoiceDropDown(inputValues, inputNames, Math.Max(0, Array.IndexOf(inputValues, selectedInput)), OnInputDeviceChanged, ElementBounds.Fixed(controlX, y, controlWidth, 32), "inputDevice")
+            .AddStaticText(SVCLang.Get("label-output-device"), label, ElementBounds.Fixed(labelX, y += 48, 210, 30))
+            .AddVoiceDropDown(outputValues, outputNames, Math.Max(0, Array.IndexOf(outputValues, selectedOutput)), OnOutputDeviceChanged, ElementBounds.Fixed(controlX, y, controlWidth, 32), "outputDevice")
+            .AddStaticText(SVCLang.Get("label-output-volume"), label, ElementBounds.Fixed(labelX, y += 48, 210, 30))
+            .AddVoiceSlider(value => { controller.SetOutputVolumeFromSettings(value); return true; }, ElementBounds.Fixed(controlX, y, controlWidth, 24), "outputVolume")
+            .AddStaticText(SVCLang.Get("label-mic-gain"), label, ElementBounds.Fixed(labelX, y += 48, 210, 30))
+            .AddVoiceSlider(value => { controller.SetMicGainFromSettings(value); return true; }, ElementBounds.Fixed(controlX, y, controlWidth, 24), "micGain")
+            .AddStaticText(SVCLang.Get("label-noise-gate"), label, ElementBounds.Fixed(labelX, y += 48, 210, 30))
+            .AddVoiceSlider(value => { controller.SetNoiseGateFromSettings(value); return true; }, ElementBounds.Fixed(controlX, y, controlWidth, 24), "noiseGate");
 
         ConfigureSlider(composer, "outputVolume", (int)Math.Round(config.OutputVolume * 100), 0, 200, "%");
         ConfigureSlider(composer, "micGain", (int)Math.Round(config.MicGain * 100), 10, 400, "%");
         ConfigureSlider(composer, "noiseGate", (int)Math.Round(config.NoiseGate * 1000), 0, 200);
 
-        y += 54;
-        composer.AddStaticText(SVCLang.Get("ui-section-behavior"), section, ElementBounds.Fixed(labelX, y += 42, 868, 24));
-        y += 30;
+        y += 58;
+        composer.AddStaticText(SVCLang.Get("ui-section-behavior"), section, ElementBounds.Fixed(labelX, y, 868, 26));
+        y += 36;
         double leftY = y;
         double rightY = y;
         AddSwitchRow(composer, labelX, ref leftY, SVCLang.Get("label-mic-muted"), "localMute", controller.LocalMuted, controller.SetLocalMutedFromSettings);
@@ -245,11 +311,11 @@ public sealed class VoiceSettingsDialog : GuiDialog
         AddSwitchRow(composer, rightX, ref rightY, SVCLang.Get("label-occlusion"), "occlusion", config.EnableOcclusionEffects, controller.SetOcclusionFromSettings);
         AddSwitchRow(composer, rightX, ref rightY, SVCLang.Get("label-performance-mode"), "performance", config.PerformanceMode, controller.SetPerformanceModeFromSettings);
 
-        composer.GetSwitch("continuous").Enabled = controller.ContinuousTalkAllowed;
-        composer.GetSwitch("noiseSuppression").Enabled = VoiceProcessingCapabilities.NoiseSuppressionAvailable;
-        composer.GetSwitch("echoCancellation").Enabled = VoiceProcessingCapabilities.EchoCancellationAvailable;
-        composer.GetSwitch("occlusion").Enabled = !controller.OcclusionForced;
-        return Math.Max(leftY, rightY) + 18;
+        GetCheckBox(composer, "continuous").Enabled = controller.ContinuousTalkAllowed;
+        GetCheckBox(composer, "noiseSuppression").Enabled = VoiceProcessingCapabilities.NoiseSuppressionAvailable;
+        GetCheckBox(composer, "echoCancellation").Enabled = VoiceProcessingCapabilities.EchoCancellationAvailable;
+        GetCheckBox(composer, "occlusion").Enabled = !controller.OcclusionForced;
+        return Math.Max(leftY, rightY) + 24;
     }
 
     private double AddChannelsPage(GuiComposer composer)
@@ -257,7 +323,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
         const double x = 18;
         const double rightX = 466;
         const double fieldWidth = 210;
-        const double controlWidth = 203;
+        const double controlWidth = 190;
+        const double channelActionWidth = 240;
         double y = 0;
         CairoFont section = CairoFont.WhiteSmallishText();
         CairoFont label = CairoFont.WhiteSmallishText();
@@ -276,37 +343,38 @@ public sealed class VoiceSettingsDialog : GuiDialog
         string[] transmitNames = transmitValues.Select(value => SVCLang.Get("transmit-" + value)).ToArray();
 
         composer
-            .AddStaticText(SVCLang.Get("label-channel-select"), label, ElementBounds.Fixed(x, y, fieldWidth, 26))
-            .AddStaticText(SVCLang.Get("label-transmit-target"), label, ElementBounds.Fixed(rightX, y, fieldWidth, 26))
-            .AddDropDown(channelValues, channelNames, Math.Max(0, Array.IndexOf(channelValues, config.SelectedChannelId)), OnChannelChanged, ElementBounds.Fixed(x + 217, y, controlWidth, 26), "channel")
-            .AddDropDown(transmitValues, transmitNames, Math.Max(0, Array.IndexOf(transmitValues, TransmitCode(config.TransmitTarget))), OnTransmitChanged, ElementBounds.Fixed(rightX + 217, y, controlWidth, 26), "transmit")
-            .AddStaticText(SVCLang.Get("label-channel-volume"), label, ElementBounds.Fixed(x, y += 44, fieldWidth, 26))
-            .AddSlider(value => { controller.SetChannelVolumeFromSettings(value); return true; }, ElementBounds.Fixed(x + 217, y, controlWidth, 20), "channelVolume")
-            .AddStaticText(SVCLang.Get("ui-section-player"), section, ElementBounds.Fixed(x, y += 42, 868, 24))
-            .AddStaticText(SVCLang.Get("ui-target-player"), label, ElementBounds.Fixed(x, y += 34, fieldWidth, 26))
-            .AddDropDown(playerValues, playerNames, Math.Max(0, Array.IndexOf(playerValues, selectedPlayerUid)), OnPlayerChanged, ElementBounds.Fixed(x + 217, y, controlWidth, 26), "selectedPlayer")
-            .AddStaticText(SVCLang.Get("label-player-volume"), label, ElementBounds.Fixed(x, y += 40, fieldWidth, 26))
-            .AddSlider(OnSelectedPlayerVolumeChanged, ElementBounds.Fixed(x + 217, y, 164, 20), "selectedPlayerVolume")
-            .AddSwitch(OnSelectedPlayerMuteChanged, ElementBounds.Fixed(x + 397, y, 28, 28), "selectedPlayerMute");
+            .AddStaticText(SVCLang.Get("label-channel-select"), label, ElementBounds.Fixed(x, y + 3, fieldWidth, 30))
+            .AddStaticText(SVCLang.Get("label-transmit-target"), label, ElementBounds.Fixed(rightX, y + 3, fieldWidth, 30))
+            .AddVoiceDropDown(channelValues, channelNames, Math.Max(0, Array.IndexOf(channelValues, config.SelectedChannelId)), OnChannelChanged, ElementBounds.Fixed(x + 217, y, controlWidth, 32), "channel")
+            .AddVoiceDropDown(transmitValues, transmitNames, Math.Max(0, Array.IndexOf(transmitValues, TransmitCode(config.TransmitTarget))), OnTransmitChanged, ElementBounds.Fixed(rightX + 217, y, controlWidth, 32), "transmit")
+            .AddStaticText(SVCLang.Get("label-channel-volume"), label, ElementBounds.Fixed(x, y += 48, fieldWidth, 30))
+            .AddVoiceSlider(value => { controller.SetChannelVolumeFromSettings(value); return true; }, ElementBounds.Fixed(x + 217, y, controlWidth, 24), "channelVolume")
+            .AddStaticText(SVCLang.Get("ui-section-player"), section, ElementBounds.Fixed(x, y += 48, 868, 26))
+            .AddStaticText(SVCLang.Get("ui-target-player"), label, ElementBounds.Fixed(x, y += 38, fieldWidth, 30))
+            .AddVoiceDropDown(playerValues, playerNames, Math.Max(0, Array.IndexOf(playerValues, selectedPlayerUid)), OnPlayerChanged, ElementBounds.Fixed(x + 217, y, controlWidth, 32), "selectedPlayer")
+            .AddStaticText(SVCLang.Get("label-player-volume"), label, ElementBounds.Fixed(x, y += 48, fieldWidth, 30))
+            .AddVoiceSlider(OnSelectedPlayerVolumeChanged, ElementBounds.Fixed(x + 217, y, 132, 24), "selectedPlayerVolume")
+            ;
+        AddCheckBox(composer, OnSelectedPlayerMuteChanged, ElementBounds.Fixed(x + 397, y - 2, 28, 28), "selectedPlayerMute", false);
 
-        composer.GetDropDown("channel").Enabled = true;
+        ((GuiElementControl)composer.GetElement("channel")).Enabled = true;
         ConfigureSlider(composer, "channelVolume", (int)Math.Round(config.ChannelOutputVolume * 100), 0, 200, "%");
         bool hasPlayer = !string.IsNullOrWhiteSpace(selectedPlayerUid);
         ConfigureSlider(composer, "selectedPlayerVolume", hasPlayer ? controller.GetPlayerVolumePercent(selectedPlayerUid) : 100, 0, 200, "%");
         composer.GetSlider("selectedPlayerVolume")!.Enabled = hasPlayer;
-        composer.GetSwitch("selectedPlayerMute").SetValue(hasPlayer && controller.IsPlayerMuted(selectedPlayerUid));
-        composer.GetSwitch("selectedPlayerMute").Enabled = hasPlayer;
+        GetCheckBox(composer, "selectedPlayerMute").SetValue(hasPlayer && controller.IsPlayerMuted(selectedPlayerUid));
+        GetCheckBox(composer, "selectedPlayerMute").Enabled = hasPlayer;
 
         List<string> actions = BuildChannelActions(channels);
         if (!actions.Contains(selectedChannelAction, StringComparer.Ordinal))
         {
             selectedChannelAction = actions[0];
         }
-        y += 52;
+        y += 58;
         composer
-            .AddStaticText(SVCLang.Get("label-channel-manage"), section, ElementBounds.Fixed(x, y, 868, 24))
-            .AddDropDown(actions.ToArray(), actions.Select(action => SVCLang.Get("channel-action-" + action)).ToArray(), Math.Max(0, actions.IndexOf(selectedChannelAction)), OnChannelActionChanged, ElementBounds.Fixed(x, y += 34, 720, 26), "channelAction")
-            .AddSmallButton(SVCLang.Get("button-apply"), ExecuteChannelAction, ElementBounds.Fixed(750, y, 136, 26), EnumButtonStyle.Small, "applyChannelAction");
+            .AddStaticText(SVCLang.Get("label-channel-manage"), section, ElementBounds.Fixed(x, y, 868, 26))
+            .AddVoiceDropDown(actions.ToArray(), actions.Select(action => SVCLang.Get("channel-action-" + action)).ToArray(), Math.Max(0, actions.IndexOf(selectedChannelAction)), OnChannelActionChanged, ElementBounds.Fixed(x, y += 38, channelActionWidth, 32), "channelAction");
+        AddFlatButton(composer, SVCLang.Get("button-apply"), ExecuteChannelAction, ElementBounds.Fixed(x + channelActionWidth + 12, y, 136, 32), "applyChannelAction");
         composer.GetButton("applyChannelAction").Enabled = selectedChannelAction != "none";
 
         VoiceSettingsChannelOption? selectedChannel = channels.Cast<VoiceSettingsChannelOption?>().FirstOrDefault(channel => channel?.Id == config.SelectedChannelId);
@@ -318,20 +386,17 @@ public sealed class VoiceSettingsDialog : GuiDialog
                 renameText = selectedChannel?.Name ?? string.Empty;
             }
             composer
-                .AddStaticText(SVCLang.Get("label-channel-name"), label, ElementBounds.Fixed(x, y += 42, fieldWidth, 26))
-                .AddTextInput(ElementBounds.Fixed(x + 217, y, 320, 26), OnRenameTextChanged, CairoFont.TextInput(), "channelRename")
-                .AddSmallButton(SVCLang.Get("button-rename-channel"), RenameSelectedChannel, ElementBounds.Fixed(x + 550, y, 86, 26), EnumButtonStyle.Small, "renameChannel");
+                .AddStaticText(SVCLang.Get("label-channel-name"), label, ElementBounds.Fixed(x, y += 48, fieldWidth, 30))
+                .AddTextInput(ElementBounds.Fixed(x + 217, y, 320, 32), OnRenameTextChanged, CairoFont.TextInput(), "channelRename");
+            AddFlatButton(composer, SVCLang.Get("button-rename-channel"), RenameSelectedChannel, ElementBounds.Fixed(x + 550, y, 86, 32), "renameChannel");
             composer.GetTextInput("channelRename").SetValue(renameText);
             composer.GetTextInput("channelRename").SetMaxLength(VoiceProtocol.MaxControlStringLength);
         }
 
-        y += 56;
+        y += 64;
         composer
-            .AddStaticText(SVCLang.Get("setting-voice-players"), section, ElementBounds.Fixed(x, y, 868, 24))
-            .AddStaticText(SVCLang.Get("setting-voice-player-column"), detail, ElementBounds.Fixed(x, y += 30, 250, 22))
-            .AddStaticText(SVCLang.Get("setting-voice-volume-column"), detail, ElementBounds.Fixed(290, y, 540, 22))
-            .AddStaticText(SVCLang.Get("setting-voice-mute-column"), detail, ElementBounds.Fixed(856, y, 30, 22));
-        y += 26;
+                .AddStaticText(SVCLang.Get("setting-voice-players"), section, ElementBounds.Fixed(x, y, 868, 26));
+        y += 38;
 
         if (players.Length == 0)
         {
@@ -344,13 +409,18 @@ public sealed class VoiceSettingsDialog : GuiDialog
             VoiceSettingsPlayerOption player = players[index];
             string sliderKey = "playerVolume" + index;
             string muteKey = "playerMute" + index;
-            composer
-                .AddStaticText(Truncate(player.Name, 36), label, ElementBounds.Fixed(x, y, 250, 26), "playerName" + index)
-                .AddSlider(value => SetPlayerVolume(player.Id, value), ElementBounds.Fixed(290, y, 540, 20), sliderKey)
-                .AddSwitch(value => controller.SetPlayerMutedFromSettings(player.Id, value), ElementBounds.Fixed(856, y, 28, 28), muteKey);
+            double cardY = y;
+            composer.AddStaticCustomDraw(ElementBounds.Fixed(x, cardY, 868, 44), DrawPlayerCardBackground)
+                .AddStaticText(Truncate(player.Name, 30), label, ElementBounds.Fixed(x + 12, cardY + 8, 206, 28), "playerName" + index)
+                .AddVoiceSlider(value => SetPlayerVolume(player.Id, value), ElementBounds.Fixed(x + 225, cardY + 10, 540, 24), sliderKey);
+            VoiceSettingsMuteButton muteButton = new(
+                composer.Api,
+                ElementBounds.Fixed(x + 820, cardY + 8, 28, 28),
+                value => controller.SetPlayerMutedFromSettings(player.Id, value));
+            composer.AddInteractiveElement(muteButton, muteKey);
             ConfigureSlider(composer, sliderKey, controller.GetPlayerVolumePercent(player.Id), 0, 200, "%");
-            composer.GetSwitch(muteKey).SetValue(controller.IsPlayerMuted(player.Id));
-            y += 40;
+            muteButton.SetValue(controller.IsPlayerMuted(player.Id));
+            y += 50;
         }
         return y + 18;
     }
@@ -361,7 +431,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         const double rightX = 466;
         const double columnWidth = 420;
         const double fieldWidth = 210;
-        const double controlWidth = 203;
+        const double controlWidth = 190;
         double leftY = 0;
         double rightY = 0;
         CairoFont section = CairoFont.WhiteSmallishText();
@@ -380,18 +450,23 @@ public sealed class VoiceSettingsDialog : GuiDialog
         string[] adminActions = BuildAdminChannelActions(channels);
 
         composer
-            .AddStaticText(SVCLang.Get("ui-section-admin-target"), section, ElementBounds.Fixed(leftX, leftY, columnWidth, 24))
-            .AddStaticText(SVCLang.Get("ui-target-player"), label, ElementBounds.Fixed(leftX, leftY += 32, fieldWidth, 26))
-            .AddDropDown(playerValues, playerNames, Math.Max(0, Array.IndexOf(playerValues, selectedPlayerUid)), OnPlayerChanged, ElementBounds.Fixed(leftX + 217, leftY, controlWidth, 26), "adminPlayer")
-            .AddStaticText(SVCLang.Get("ui-section-temporary-actions"), section, ElementBounds.Fixed(leftX, leftY += 42, columnWidth, 24))
-            .AddSmallButton(SVCLang.Get("channel-action-tempmute"), () => ExecuteModeration("tempmute"), ElementBounds.Fixed(leftX, leftY += 30, 196, 26), EnumButtonStyle.Small, "tempmute")
-            .AddSmallButton(SVCLang.Get("channel-action-deafen"), () => ExecuteModeration("deafen"), ElementBounds.Fixed(leftX + 210, leftY, 196, 26), EnumButtonStyle.Small, "deafen")
-            .AddStaticText(SVCLang.Get("ui-section-persistent-actions"), section, ElementBounds.Fixed(leftX, leftY += 40, columnWidth, 24))
-            .AddSmallButton(SVCLang.Get("channel-action-adminmute"), () => ExecuteModeration("adminmute"), ElementBounds.Fixed(leftX, leftY += 30, 196, 26), EnumButtonStyle.Small, "adminmute")
-            .AddSmallButton(SVCLang.Get("channel-action-adminunmute"), () => ExecuteModeration("adminunmute"), ElementBounds.Fixed(leftX + 210, leftY, 196, 26), EnumButtonStyle.Small, "adminunmute")
-            .AddSmallButton(SVCLang.Get("channel-action-forceblock"), () => ExecuteModeration("forceblock"), ElementBounds.Fixed(leftX, leftY += 36, 196, 26), EnumButtonStyle.Small, "forceblock")
-            .AddSmallButton(SVCLang.Get("channel-action-unforceblock"), () => ExecuteModeration("unforceblock"), ElementBounds.Fixed(leftX + 210, leftY, 196, 26), EnumButtonStyle.Small, "unforceblock")
-            .AddStaticText(SVCLang.Get("ui-admin-warning"), detail, ElementBounds.Fixed(leftX, leftY += 38, columnWidth, 44));
+            .AddStaticText(SVCLang.Get("ui-section-admin-target"), section, ElementBounds.Fixed(leftX, leftY, columnWidth, 26))
+            .AddStaticText(SVCLang.Get("ui-target-player"), label, ElementBounds.Fixed(leftX, leftY += 38, fieldWidth, 30))
+            .AddVoiceDropDown(playerValues, playerNames, Math.Max(0, Array.IndexOf(playerValues, selectedPlayerUid)), OnPlayerChanged, ElementBounds.Fixed(leftX + 217, leftY, controlWidth, 32), "adminPlayer")
+            .AddStaticText(SVCLang.Get("ui-section-temporary-actions"), section, ElementBounds.Fixed(leftX, leftY += 48, columnWidth, 26));
+        leftY += 38;
+        AddFlatButton(composer, SVCLang.Get("channel-action-tempmute"), () => ExecuteModeration("tempmute"), ElementBounds.Fixed(leftX, leftY, 196, 32), "tempmute");
+        AddFlatButton(composer, SVCLang.Get("channel-action-deafen"), () => ExecuteModeration("deafen"), ElementBounds.Fixed(leftX + 210, leftY, 196, 32), "deafen");
+        leftY += 48;
+        composer.AddStaticText(SVCLang.Get("ui-section-persistent-actions"), section, ElementBounds.Fixed(leftX, leftY, columnWidth, 26));
+        leftY += 38;
+        AddFlatButton(composer, SVCLang.Get("channel-action-adminmute"), () => ExecuteModeration("adminmute"), ElementBounds.Fixed(leftX, leftY, 196, 32), "adminmute");
+        AddFlatButton(composer, SVCLang.Get("channel-action-adminunmute"), () => ExecuteModeration("adminunmute"), ElementBounds.Fixed(leftX + 210, leftY, 196, 32), "adminunmute");
+        leftY += 44;
+        AddFlatButton(composer, SVCLang.Get("channel-action-forceblock"), () => ExecuteModeration("forceblock"), ElementBounds.Fixed(leftX, leftY, 196, 32), "forceblock");
+        AddFlatButton(composer, SVCLang.Get("channel-action-unforceblock"), () => ExecuteModeration("unforceblock"), ElementBounds.Fixed(leftX + 210, leftY, 196, 32), "unforceblock");
+        leftY += 44;
+        composer.AddStaticText(SVCLang.Get("ui-admin-warning"), detail, ElementBounds.Fixed(leftX, leftY, columnWidth, 44));
 
         bool hasTarget = !string.IsNullOrWhiteSpace(selectedPlayerUid);
         foreach (string key in new[] { "tempmute", "deafen", "adminmute", "adminunmute", "forceblock", "unforceblock" })
@@ -400,18 +475,21 @@ public sealed class VoiceSettingsDialog : GuiDialog
         }
 
         composer
-            .AddStaticText(SVCLang.Get("label-channel-manage"), section, ElementBounds.Fixed(rightX, rightY, columnWidth, 24))
-            .AddStaticText(SVCLang.Get("label-current-channel"), label, ElementBounds.Fixed(rightX, rightY += 32, fieldWidth, 26))
-            .AddDropDown(channelValues, channelNames, Math.Max(0, Array.IndexOf(channelValues, selectedAdminChannelId)), OnAdminChannelChanged, ElementBounds.Fixed(rightX + 217, rightY, controlWidth, 26), "adminChannel")
-            .AddStaticText(SVCLang.Get("ui-action-select"), label, ElementBounds.Fixed(rightX, rightY += 42, fieldWidth, 26))
-            .AddDropDown(adminActions, adminActions.Select(action => SVCLang.Get("channel-action-" + action)).ToArray(), Math.Max(0, Array.IndexOf(adminActions, selectedAdminAction)), OnAdminActionChanged, ElementBounds.Fixed(rightX + 217, rightY, 120, 26), "adminAction")
-            .AddSmallButton(SVCLang.Get("button-apply"), ExecuteAdminChannelAction, ElementBounds.Fixed(rightX + 347, rightY, 76, 26), EnumButtonStyle.Small, "adminApply")
-            .AddStaticText(SVCLang.Get("label-channel-name"), section, ElementBounds.Fixed(rightX, rightY += 46, columnWidth, 24))
-            .AddTextInput(ElementBounds.Fixed(rightX + 217, rightY += 30, 120, 26), OnRenameTextChanged, input, "adminRenameInput")
-            .AddSmallButton(SVCLang.Get("button-rename-channel"), RenameAdminChannel, ElementBounds.Fixed(rightX + 347, rightY, 76, 26), EnumButtonStyle.Small, "adminRename")
-            .AddStaticText(SVCLang.Get("ui-section-create-channel"), section, ElementBounds.Fixed(rightX, rightY += 40, columnWidth, 24))
-            .AddTextInput(ElementBounds.Fixed(rightX + 217, rightY += 30, controlWidth, 26), OnCreateNameChanged, input, "createName")
-            .AddSmallButton(SVCLang.Get("channel-action-create"), CreateChannel, ElementBounds.Fixed(rightX + 217, rightY += 34, 120, 26), EnumButtonStyle.Small, "createChannel");
+            .AddStaticText(SVCLang.Get("label-channel-manage"), section, ElementBounds.Fixed(rightX, rightY, columnWidth, 26))
+            .AddStaticText(SVCLang.Get("label-current-channel"), label, ElementBounds.Fixed(rightX, rightY += 38, fieldWidth, 30))
+            .AddVoiceDropDown(channelValues, channelNames, Math.Max(0, Array.IndexOf(channelValues, selectedAdminChannelId)), OnAdminChannelChanged, ElementBounds.Fixed(rightX + 217, rightY, controlWidth, 32), "adminChannel")
+            .AddStaticText(SVCLang.Get("ui-action-select"), label, ElementBounds.Fixed(rightX, rightY += 48, fieldWidth, 30))
+            .AddVoiceDropDown(adminActions, adminActions.Select(action => SVCLang.Get("channel-action-" + action)).ToArray(), Math.Max(0, Array.IndexOf(adminActions, selectedAdminAction)), OnAdminActionChanged, ElementBounds.Fixed(rightX + 217, rightY, 120, 32), "adminAction");
+        AddFlatButton(composer, SVCLang.Get("button-apply"), ExecuteAdminChannelAction, ElementBounds.Fixed(rightX + 345, rightY, 76, 32), "adminApply");
+        composer
+            .AddStaticText(SVCLang.Get("label-channel-name"), section, ElementBounds.Fixed(rightX, rightY += 52, columnWidth, 26))
+            .AddTextInput(ElementBounds.Fixed(rightX + 217, rightY += 38, 120, 32), OnRenameTextChanged, input, "adminRenameInput");
+        AddFlatButton(composer, SVCLang.Get("button-rename-channel"), RenameAdminChannel, ElementBounds.Fixed(rightX + 345, rightY, 76, 32), "adminRename");
+        composer
+            .AddStaticText(SVCLang.Get("ui-section-create-channel"), section, ElementBounds.Fixed(rightX, rightY += 48, columnWidth, 26))
+            .AddTextInput(ElementBounds.Fixed(rightX + 217, rightY += 38, controlWidth, 32), OnCreateNameChanged, input, "createName");
+        rightY += 44;
+        AddFlatButton(composer, SVCLang.Get("channel-action-create"), CreateChannel, ElementBounds.Fixed(rightX + 217, rightY, 120, 32), "createChannel");
 
         composer.GetTextInput("adminRenameInput").SetValue(renameText);
         composer.GetTextInput("adminRenameInput").SetMaxLength(VoiceProtocol.MaxControlStringLength);
@@ -426,11 +504,20 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private static void AddSwitchRow(GuiComposer composer, double x, ref double y, string text, string key, bool value, Action<bool> changed)
     {
-        composer
-            .AddStaticText(text, CairoFont.WhiteSmallishText(), ElementBounds.Fixed(x, y, 210, 26))
-            .AddSwitch(changed, ElementBounds.Fixed(x + 217, y, 28, 28), key);
-        composer.GetSwitch(key).SetValue(value);
-        y += 36;
+        composer.AddStaticText(text, CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 }), ElementBounds.Fixed(x, y + 2, 210, 30));
+        AddCheckBox(composer, changed, ElementBounds.Fixed(x + 217, y, 28, 28), key, value);
+        y += 40;
+    }
+
+    private static void DrawPlayerCardBackground(Context ctx, ImageSurface surface, ElementBounds bounds)
+    {
+        bounds.CalcWorldBounds();
+        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
+        ctx.SetSourceRGBA(0.08, 0.1, 0.13, 0.94);
+        ctx.FillPreserve();
+        ctx.SetSourceRGBA(0.86, 0.9, 0.96, 0.5);
+        ctx.LineWidth = GuiElement.scaled(1);
+        ctx.Stroke();
     }
 
     private static void ConfigureSlider(
@@ -443,7 +530,14 @@ public sealed class VoiceSettingsDialog : GuiDialog
     {
         GuiElementSlider slider = composer.GetSlider(key)
             ?? throw new InvalidOperationException($"Settings slider '{key}' was not found.");
-        slider.SetValues(value, minimum, maximum, 1, suffix);
+        if (slider is VoiceSettingsSlider styledSlider)
+        {
+            styledSlider.Configure(value, minimum, maximum, 1, suffix);
+        }
+        else
+        {
+            slider.SetValues(value, minimum, maximum, 1, suffix);
+        }
     }
 
     private List<string> BuildChannelActions(VoiceSettingsChannelOption[] channels)
@@ -503,6 +597,11 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private void OnInputDeviceChanged(string value, bool selected)
     {
         if (selected) controller.SetInputDeviceFromSettings(value);
+    }
+
+    private void OnOutputDeviceChanged(string value, bool selected)
+    {
+        if (selected) controller.SetOutputDeviceFromSettings(value);
     }
 
     private void OnChannelChanged(string value, bool selected)
@@ -685,10 +784,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         if (contentBounds == null) return;
         contentBounds.fixedY = -scrollPosition;
         contentBounds.CalcWorldBounds();
-        if (!suppressScrollCallback)
-        {
-            SingleComposer?.ReCompose();
-        }
+        SingleComposer?.ReCompose();
     }
 
     private void QueueCompose()
