@@ -697,13 +697,13 @@ public sealed class VoiceSettingsDialog : GuiDialog
                 .AddVoiceSlider(value => SetPlayerVolume(player.Id, value), ElementBounds.Fixed(192, cardY + 5, 430, 34), sliderKey);
             VoiceSettingsMuteButton muteButton = new(
                 composer.Api,
-                ElementBounds.Fixed(634, cardY + 6, 32, 32),
+                ElementBounds.Fixed(634, cardY + 5, 34, 34),
                 value => controller.SetPlayerMutedFromSettings(player.Id, value));
             composer.AddInteractiveElement(muteButton, muteKey);
             muteButton.SetValue(controller.IsPlayerMuted(player.Id));
             VoiceSettingsIconButton settingsButton = new(
                 composer.Api,
-                ElementBounds.Fixed(676, cardY + 6, 32, 32),
+                ElementBounds.Fixed(676, cardY + 5, 34, 34),
                 FontAwesomeGearIcon,
                 _ => OpenPlayerOverlay(player.Id),
                 darkIcon: true);
@@ -740,13 +740,14 @@ public sealed class VoiceSettingsDialog : GuiDialog
         composer.AddVoiceDropDown(channelValues, channelNames, Math.Max(0, Array.IndexOf(channelValues, selectedChannel)), OnOverlayChannelChanged,
             ElementBounds.Fixed(x + 214, y + 88, 260, 34), "overlay-player-channel");
 
-        string[] actions = { "invite", "add", "remove", "mute", "unmute", "listenonly", "member", "moderator", "ban", "unban" };
+        string[] actions = controller.BuildPlayerActions(selectedChannel);
         if (!actions.Contains(overlayAction, StringComparer.Ordinal)) overlayAction = actions[0];
         composer.AddStaticText(SVCLang.Get("ui-action-select"), label, ElementBounds.Fixed(x + 24, y + 144, 180, 28));
         composer.AddVoiceDropDown(actions, actions.Select(action => SVCLang.Get("channel-action-" + action)).ToArray(), Math.Max(0, Array.IndexOf(actions, overlayAction)), OnOverlayActionChanged,
             ElementBounds.Fixed(x + 214, y + 140, 260, 34), "overlay-player-action");
         AddFlatButton(composer, SVCLang.Get("button-apply"), ApplyPlayerOverlay,
             ElementBounds.Fixed(x + 214, y + 202, 126, 34), "overlay-player-apply");
+        composer.GetButton("overlay-player-apply").Enabled = overlayAction != "none";
     }
 
     private void AddCreateChannelOverlay(GuiComposer composer)
@@ -930,8 +931,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
         bool hasChannel = selected.HasValue;
         VoiceChannelRole role = selected?.LocalRole ?? VoiceChannelRole.Banned;
         bool external = selected?.ExternallyManaged ?? false;
-        bool canInvite = controller.HasServerControl
-            || selected is { LocalRole: >= VoiceChannelRole.Moderator };
+        bool canInvite = !external && (controller.HasServerControl
+            || selected is { LocalRole: >= VoiceChannelRole.Moderator });
         List<string> actions = new();
         if (canInvite && hasPlayer) actions.Add("invite");
         if (hasChannel && !external) actions.Add("leave");
@@ -1088,6 +1089,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
         if (selected)
         {
             overlayChannelId = value;
+            overlayAction = "none";
+            QueueCompose();
         }
     }
 
@@ -1098,7 +1101,9 @@ public sealed class VoiceSettingsDialog : GuiDialog
             return;
         }
         overlayAction = value;
-        SetButtonEnabled("overlay-channel-apply", value != "none");
+        SetButtonEnabled(
+            overlay == VoiceSettingsOverlay.Player ? "overlay-player-apply" : "overlay-channel-apply",
+            value != "none");
     }
 
     private bool ApplyChannelOverlay()

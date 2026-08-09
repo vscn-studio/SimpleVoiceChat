@@ -871,6 +871,47 @@ public sealed class ClientVoiceController : IDisposable
             .ToArray();
     }
 
+    internal string[] BuildPlayerActions(string channelId)
+    {
+        VoiceSettingsChannelOption? selected = BuildChannelOptions()
+            .Cast<VoiceSettingsChannelOption?>()
+            .FirstOrDefault(channel => channel?.Id == channelId);
+        if (!selected.HasValue)
+        {
+            return new[] { "none" };
+        }
+
+        VoiceSettingsChannelOption channel = selected.Value;
+        List<string> actions = new();
+        if (hasServerControl)
+        {
+            if (!channel.ExternallyManaged)
+            {
+                actions.AddRange(new[] { "invite", "add", "remove", "listenonly", "member", "moderator" });
+            }
+            actions.AddRange(new[] { "mute", "unmute", "ban", "unban" });
+        }
+        else if (channel.LocalRole == VoiceChannelRole.Owner)
+        {
+            if (!channel.ExternallyManaged)
+            {
+                actions.AddRange(new[] { "invite", "remove", "listenonly", "member", "moderator" });
+            }
+            actions.AddRange(new[] { "mute", "unmute", "ban", "unban" });
+        }
+        else if (channel.LocalRole == VoiceChannelRole.Moderator)
+        {
+            actions.Add("invite");
+            actions.AddRange(new[] { "mute", "unmute", "ban", "unban" });
+            if (!channel.ExternallyManaged)
+            {
+                actions.Add("remove");
+            }
+        }
+
+        return actions.Count == 0 ? new[] { "none" } : actions.ToArray();
+    }
+
     internal VoiceSettingsPlayerOption[] BuildPlayerOptions()
     {
         IEnumerable<VoiceSettingsPlayerOption> online = capi.World.AllOnlinePlayers

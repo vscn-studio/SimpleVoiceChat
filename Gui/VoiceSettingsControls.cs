@@ -852,8 +852,6 @@ internal sealed class VoiceSettingsMuteButton : GuiElementControl
         : base(capi, bounds)
     {
         this.changed = changed;
-        Bounds.fixedWidth = 28;
-        Bounds.fixedHeight = 28;
         mutedSurface = GuiElement.getImageSurfaceFromAsset(capi, MutedIcon);
         unmutedSurface = GuiElement.getImageSurfaceFromAsset(capi, UnmutedIcon);
     }
