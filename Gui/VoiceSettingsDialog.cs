@@ -111,7 +111,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private double activeViewportHeight = ViewportHeight;
     private double activeContentWidth = ContentWidth;
     private bool composeQueued;
-    private bool syncingSearchInput;
 
     private string selectedPlayerUid = string.Empty;
     private string selectedChannelAction = "invite";
@@ -121,7 +120,9 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private string createName = string.Empty;
     private string createPassword = string.Empty;
     private string channelSearch = string.Empty;
+    private string channelSearchDraft = string.Empty;
     private string playerSearch = string.Empty;
+    private string playerSearchDraft = string.Empty;
     private VoiceChannelVisibility createVisibility = VoiceChannelVisibility.Open;
     private string overlayChannelId = string.Empty;
     private string overlayPlayerUid = string.Empty;
@@ -570,27 +571,17 @@ public sealed class VoiceSettingsDialog : GuiDialog
         composer.AddStaticText(SVCLang.Get("tab-channels"), section, ElementBounds.Fixed(x, y, width, 28));
         composer.AddTextInput(ElementBounds.Fixed(x + 300, y - 2, 330, 34), value =>
         {
-            channelSearch = value;
-            if (!syncingSearchInput)
-            {
-                QueueCompose();
-            }
+            channelSearchDraft = value;
         }, CairoFont.TextInput(), "channel-search");
         GuiElementTextInput channelSearchInput = composer.GetTextInput("channel-search");
-        if (string.Join(string.Empty, channelSearchInput.GetLines()) != channelSearch)
+        if (string.Join(string.Empty, channelSearchInput.GetLines()) != channelSearchDraft)
         {
-            syncingSearchInput = true;
-            try
-            {
-                channelSearchInput.SetValue(channelSearch);
-            }
-            finally
-            {
-                syncingSearchInput = false;
-            }
+            channelSearchInput.SetValue(channelSearchDraft);
         }
         channelSearchInput.SetPlaceHolderText(SVCLang.Get("channel-search-placeholder"));
         channelSearchInput.SetMaxLength(VoiceProtocol.MaxControlStringLength);
+        AddFlatButton(composer, SVCLang.Get("button-search"), ApplyChannelSearch,
+            ElementBounds.Fixed(x + 646, y - 2, 100, 34), "channel-search-submit");
         y += 46;
         string normalizedSearch = channelSearch.Trim();
         if (!string.IsNullOrEmpty(normalizedSearch))
@@ -863,27 +854,17 @@ public sealed class VoiceSettingsDialog : GuiDialog
         VoiceSettingsPlayerOption[] players = controller.BuildPlayerOptions();
         composer.AddTextInput(ElementBounds.Fixed(x + 250, y + 12, 300, 32), value =>
         {
-            playerSearch = value;
-            if (!syncingSearchInput)
-            {
-                QueueCompose();
-            }
+            playerSearchDraft = value;
         }, CairoFont.TextInput(), "players-search");
         GuiElementTextInput playerSearchInput = composer.GetTextInput("players-search");
-        if (string.Join(string.Empty, playerSearchInput.GetLines()) != playerSearch)
+        if (string.Join(string.Empty, playerSearchInput.GetLines()) != playerSearchDraft)
         {
-            syncingSearchInput = true;
-            try
-            {
-                playerSearchInput.SetValue(playerSearch);
-            }
-            finally
-            {
-                syncingSearchInput = false;
-            }
+            playerSearchInput.SetValue(playerSearchDraft);
         }
         playerSearchInput.SetPlaceHolderText(SVCLang.Get("player-search-placeholder"));
         playerSearchInput.SetMaxLength(VoiceProtocol.MaxControlStringLength);
+        AddFlatButton(composer, SVCLang.Get("button-search"), ApplyPlayerSearch,
+            ElementBounds.Fixed(x + 560, y + 12, 100, 32), "players-search-submit");
         if (!string.IsNullOrWhiteSpace(playerSearch))
         {
             players = players.Where(player => player.Name.Contains(playerSearch, StringComparison.OrdinalIgnoreCase)
@@ -1213,6 +1194,20 @@ public sealed class VoiceSettingsDialog : GuiDialog
         selectedChannelAction = "invite";
         controller.SelectChannelFromSettings(value);
         QueueCompose();
+    }
+
+    private bool ApplyChannelSearch()
+    {
+        channelSearch = channelSearchDraft;
+        QueueCompose();
+        return true;
+    }
+
+    private bool ApplyPlayerSearch()
+    {
+        playerSearch = playerSearchDraft;
+        QueueCompose();
+        return true;
     }
 
     private void OnQuickChannelChanged(string value, bool selected)

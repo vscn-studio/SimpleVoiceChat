@@ -8,6 +8,7 @@
   "simplevoicechat:button-play-recording-stop": "停止播放",
   "simplevoicechat:button-recording-start": "开始录音",
   "simplevoicechat:button-recording-stop": "停止录音",
+  "simplevoicechat:button-search": "搜索",
   "simplevoicechat:button-record-3s": "录制3秒",
   "simplevoicechat:button-rename-channel": "保存名称",
   "simplevoicechat:capture-open-failed": "无法打开 OpenAL 录音设备。",
