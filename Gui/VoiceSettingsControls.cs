@@ -71,9 +71,9 @@ internal sealed class VoiceSettingsSlider : GuiElementSlider
         using (Context handleContext = new(handleSurface))
         {
             handleContext.Rectangle(0, 0, handleWidth, handleHeight);
-            handleContext.SetSourceRGBA(0.24, 0.12, 0.06, Enabled ? 0.98 : 0.45);
+            handleContext.SetSourceRGBA(0.96, 0.97, 0.99, Enabled ? 0.98 : 0.45);
             handleContext.FillPreserve();
-            handleContext.SetSourceRGBA(0.46, 0.28, 0.16, Enabled ? 1 : 0.45);
+            handleContext.SetSourceRGBA(0.48, 0.53, 0.60, Enabled ? 1 : 0.45);
             handleContext.LineWidth = GuiElement.scaled(1);
             handleContext.Stroke();
             GuiElement.GenerateTexture(api, handleSurface, ref handleTexture.TextureId);
@@ -508,7 +508,24 @@ internal sealed class VoiceSettingsIconButton : GuiElementControl
         ctx.LineWidth = GuiElement.scaled(1);
         ctx.Stroke();
         double[] iconColor = darkIcon ? new[] { 0.02, 0.025, 0.032, 1.0 } : new[] { 1.0, 1.0, 1.0, 1.0 };
-        api.Gui.Icons.DrawIcon(ctx, iconName, GuiElement.scaled(5), GuiElement.scaled(5), Bounds.OuterWidth - GuiElement.scaled(10), Bounds.OuterHeight - GuiElement.scaled(10), iconColor);
+        double iconAreaWidth = Bounds.OuterWidth - GuiElement.scaled(10);
+        double iconAreaHeight = Bounds.OuterHeight - GuiElement.scaled(10);
+        double aspect = iconName == "svc-fa-users" ? 640d / 512d : iconName == "svc-fa-xmark" ? 384d / 512d : 1d;
+        double iconWidth = iconAreaWidth;
+        double iconHeight = iconWidth / aspect;
+        if (iconHeight > iconAreaHeight)
+        {
+            iconHeight = iconAreaHeight;
+            iconWidth = iconHeight * aspect;
+        }
+        api.Gui.Icons.DrawIcon(
+            ctx,
+            iconName,
+            (Bounds.OuterWidth - iconWidth) / 2d,
+            (Bounds.OuterHeight - iconHeight) / 2d,
+            iconWidth,
+            iconHeight,
+            iconColor);
         if (iconName == "svc-fa-xmark")
         {
             // Fallback for SVG loaders that do not resolve the custom asset.

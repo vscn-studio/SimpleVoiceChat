@@ -61,6 +61,13 @@ internal static class VoiceSettingsNavigation
 
 public sealed class VoiceSettingsDialog : GuiDialog
 {
+    private readonly record struct OverlaySnapshot(
+        VoiceSettingsOverlay Overlay,
+        string ChannelId,
+        string PlayerUid,
+        string Action,
+        float PlayerScroll);
+
     private const double WindowWidth = 940;
     // The home page is sized to its quick-control row rather than the wider
     // settings pages: three icon buttons, two selectors, four gaps, and margins.
@@ -111,6 +118,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private string overlayAction = "none";
     private VoiceSettingsOverlay overlay;
     private float playerOverlayScroll;
+    private readonly Stack<OverlaySnapshot> overlayStack = new();
 
     public VoiceSettingsDialog(ICoreClientAPI capi, ClientVoiceController controller)
         : base(capi)
@@ -131,6 +139,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
         controller.RequestSettingsRefresh();
         selectedPage = VoiceSettingsPage.Home;
         scrollPosition = 0;
+        overlay = VoiceSettingsOverlay.None;
+        overlayStack.Clear();
         Compose();
         return base.TryOpen();
     }
@@ -347,7 +357,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
         ConfigureSlider(composer, "micGain", (int)Math.Round(config.MicGain * 100), 10, 400, "%");
         ConfigureSlider(composer, "noiseGate", (int)Math.Round(config.NoiseGate * 1000), 0, 200);
 
-        y += 24;
+        // Keep the first behavior row clear of the final audio slider.
+        y += 54;
         double behaviorY = y;
         AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-mic-muted"), "localMute", controller.LocalMuted, controller.SetLocalMutedFromSettings);
         AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-deafened"), "globalMute", controller.GlobalMuted, controller.SetGlobalMutedFromSettings);
@@ -919,6 +930,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private void OpenChannelOverlay(string channelId)
     {
+        PushOverlayState();
         overlayChannelId = channelId;
         overlayAction = "none";
         overlay = VoiceSettingsOverlay.Channel;
@@ -927,6 +939,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private void OpenPlayersOverlay()
     {
+        PushOverlayState();
         playerOverlayScroll = 0;
         overlay = VoiceSettingsOverlay.Players;
         QueueCompose();
@@ -934,6 +947,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private bool OpenCreateChannelOverlay()
     {
+        PushOverlayState();
         createName = string.Empty;
         createPassword = string.Empty;
         overlay = VoiceSettingsOverlay.CreateChannel;
@@ -943,6 +957,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private void OpenPlayerOverlay(string playerUid)
     {
+        PushOverlayState();
         overlayPlayerUid = playerUid;
         overlayChannelId = config.SelectedChannelId;
         overlayAction = "invite";
@@ -952,8 +967,34 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private void CloseOverlay()
     {
-        overlay = VoiceSettingsOverlay.None;
+        if (overlayStack.Count > 0)
+        {
+            OverlaySnapshot previous = overlayStack.Pop();
+            overlay = previous.Overlay;
+            overlayChannelId = previous.ChannelId;
+            overlayPlayerUid = previous.PlayerUid;
+            overlayAction = previous.Action;
+            playerOverlayScroll = previous.PlayerScroll;
+        }
+        else
+        {
+            overlay = VoiceSettingsOverlay.None;
+        }
         QueueCompose();
+    }
+
+    private void PushOverlayState()
+    {
+        if (overlay == VoiceSettingsOverlay.None)
+        {
+            return;
+        }
+        overlayStack.Push(new OverlaySnapshot(
+            overlay,
+            overlayChannelId,
+            overlayPlayerUid,
+            overlayAction,
+            playerOverlayScroll));
     }
 
     private void OnOverlayChannelChanged(string value, bool selected)
@@ -1220,8 +1261,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     {
         if (overlay != VoiceSettingsOverlay.None)
         {
-            overlay = VoiceSettingsOverlay.None;
-            QueueCompose();
+            CloseOverlay();
             return;
         }
         if (selectedPage != VoiceSettingsPage.Home)
