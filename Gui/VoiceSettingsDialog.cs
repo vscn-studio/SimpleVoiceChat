@@ -32,6 +32,15 @@ internal enum VoiceSettingsPage
     Admin
 }
 
+internal enum VoiceSettingsOverlay
+{
+    None,
+    Channel,
+    Players,
+    Player,
+    CreateChannel
+}
+
 internal static class VoiceSettingsNavigation
 {
     public static VoiceSettingsPage[] BuildPages(bool hasServerControl)
@@ -58,16 +67,20 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private const double HomeWindowWidth = 640;
     private const double WindowHeight = 650;
     private const double ContentLeft = 14;
-    private const double ContentTop = 98;
+    private const double ContentTop = 58;
     private const double ContentWidth = 900;
-    private const double ViewportHeight = 540;
+    private const double ViewportHeight = 580;
     private const double HomeWindowHeight = 190;
     private const double HomeViewportHeight = HomeWindowHeight;
     private const string FontAwesomeCheckIcon = "svc-fa-check";
     private const string FontAwesomeCloseIcon = "svc-fa-xmark";
+    private const string FontAwesomeGearIcon = "svc-fa-gear";
+    private const string FontAwesomeUsersIcon = "svc-fa-users";
 
     private static readonly AssetLocation FontAwesomeCheckAsset = new("simplevoicechat", "icons/fontawesome/check.svg");
     private static readonly AssetLocation FontAwesomeCloseAsset = new("simplevoicechat", "icons/fontawesome/xmark.svg");
+    private static readonly AssetLocation FontAwesomeGearAsset = new("simplevoicechat", "icons/fontawesome/gear.svg");
+    private static readonly AssetLocation FontAwesomeUsersAsset = new("simplevoicechat", "icons/fontawesome/users.svg");
     private static readonly AssetLocation MicMutedAsset = new("simplevoicechat", "gui/svc_mic_muted.png");
     private static readonly AssetLocation MicTalkingAsset = new("simplevoicechat", "gui/svc_talking.png");
     private static readonly AssetLocation SpeakerAsset = new("simplevoicechat", "gui/svc_speaker.png");
@@ -92,6 +105,12 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private string selectedAdminAction = "mute";
     private string renameText = string.Empty;
     private string createName = string.Empty;
+    private string createPassword = string.Empty;
+    private string overlayChannelId = string.Empty;
+    private string overlayPlayerUid = string.Empty;
+    private string overlayAction = "none";
+    private VoiceSettingsOverlay overlay;
+    private float playerOverlayScroll;
 
     public VoiceSettingsDialog(ICoreClientAPI capi, ClientVoiceController controller)
         : base(capi)
@@ -179,31 +198,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
         if (!home)
         {
-            AddFlatButton(
-                composer,
-                SVCLang.Get("button-home"),
-                () => SelectPage(VoiceSettingsPage.Home),
-                ElementBounds.Fixed(ContentLeft, 54, 128, 32),
-                "nav-home");
-            if (controller.HasServerControl)
-            {
-                bool showingAdmin = selectedPage == VoiceSettingsPage.Admin;
-                AddFlatButton(
-                    composer,
-                    showingAdmin ? SVCLang.Get("button-channels") : SVCLang.Get("button-admin"),
-                    () => SelectPage(showingAdmin ? VoiceSettingsPage.Channels : VoiceSettingsPage.Admin),
-                    ElementBounds.Fixed(ContentLeft + ContentWidth - 128, 54, 128, 32),
-                    "nav-admin");
-            }
-            composer.AddStaticText(
-                GetPageName(selectedPage),
-                CairoFont.WhiteSmallishText().WithFontSize(16).WithColor(new[] { 0.96, 0.97, 1.0, 1.0 }),
-                ElementBounds.Fixed(ContentLeft + 144, 58, ContentWidth - (controller.HasServerControl ? 330 : 180), 24),
-                "page-title");
-        }
-
-        if (!home)
-        {
             composer.BeginClip(viewport);
         }
         composer.BeginChildElements(contentBounds);
@@ -227,11 +221,22 @@ public sealed class VoiceSettingsDialog : GuiDialog
         {
             completedComposer = completedComposer.EndClip();
         }
+        if (overlay != VoiceSettingsOverlay.None)
+        {
+            AddOverlay(completedComposer);
+        }
         SingleComposer = completedComposer.EndChildElements().Compose();
     }
 
     public override void OnMouseWheel(MouseWheelEventArgs args)
     {
+        if (overlay == VoiceSettingsOverlay.Players && IsOpened())
+        {
+            playerOverlayScroll = Math.Max(0f, playerOverlayScroll - (float)(args.delta * GuiElement.scaled(42)));
+            QueueCompose();
+            args.SetHandled();
+            return;
+        }
         base.OnMouseWheel(args);
         if (args.IsHandled)
         {
@@ -259,6 +264,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
     {
         capi.Gui.Icons.CustomIcons[FontAwesomeCheckIcon] = capi.Gui.Icons.SvgIconSource(FontAwesomeCheckAsset);
         capi.Gui.Icons.CustomIcons[FontAwesomeCloseIcon] = capi.Gui.Icons.SvgIconSource(FontAwesomeCloseAsset);
+        capi.Gui.Icons.CustomIcons[FontAwesomeGearIcon] = capi.Gui.Icons.SvgIconSource(FontAwesomeGearAsset);
+        capi.Gui.Icons.CustomIcons[FontAwesomeUsersIcon] = capi.Gui.Icons.SvgIconSource(FontAwesomeUsersAsset);
     }
 
     private static void DrawWindowBackground(Context ctx, ImageSurface surface, ElementBounds bounds)
@@ -312,7 +319,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
     {
         const double labelX = 18;
         const double controlX = 235;
-        const double controlWidth = 250;
+        const double controlWidth = 600;
+        const double controlHeight = 34;
         double y = 0;
         CairoFont section = CairoFont.WhiteSmallishText().WithColor(new[] { 0.96, 0.97, 1.0, 1.0 });
         CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
@@ -326,42 +334,36 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
         composer
             .AddStaticText(SVCLang.Get("label-input-device"), label, ElementBounds.Fixed(labelX, y + 3, 210, 30))
-            .AddVoiceDropDown(inputValues, inputNames, Math.Max(0, Array.IndexOf(inputValues, selectedInput)), OnInputDeviceChanged, ElementBounds.Fixed(controlX, y, controlWidth, 32), "inputDevice")
-            .AddStaticText(SVCLang.Get("label-output-device"), label, ElementBounds.Fixed(labelX, y += 48, 210, 30))
-            .AddVoiceDropDown(outputValues, outputNames, Math.Max(0, Array.IndexOf(outputValues, selectedOutput)), OnOutputDeviceChanged, ElementBounds.Fixed(controlX, y, controlWidth, 32), "outputDevice")
-            .AddStaticText(SVCLang.Get("label-output-volume"), label, ElementBounds.Fixed(labelX, y += 48, 210, 30))
-            .AddVoiceSlider(value => { controller.SetOutputVolumeFromSettings(value); return true; }, ElementBounds.Fixed(controlX, y, controlWidth, 24), "outputVolume")
-            .AddStaticText(SVCLang.Get("label-mic-gain"), label, ElementBounds.Fixed(labelX, y += 48, 210, 30))
-            .AddVoiceSlider(value => { controller.SetMicGainFromSettings(value); return true; }, ElementBounds.Fixed(controlX, y, controlWidth, 24), "micGain")
-            .AddStaticText(SVCLang.Get("label-noise-gate"), label, ElementBounds.Fixed(labelX, y += 48, 210, 30))
-            .AddVoiceSlider(value => { controller.SetNoiseGateFromSettings(value); return true; }, ElementBounds.Fixed(controlX, y, controlWidth, 24), "noiseGate");
+            .AddVoiceDropDown(inputValues, inputNames, Math.Max(0, Array.IndexOf(inputValues, selectedInput)), OnInputDeviceChanged, ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), "inputDevice")
+            .AddStaticText(SVCLang.Get("label-output-device"), label, ElementBounds.Fixed(labelX, y += 46, 210, 30))
+            .AddVoiceDropDown(outputValues, outputNames, Math.Max(0, Array.IndexOf(outputValues, selectedOutput)), OnOutputDeviceChanged, ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), "outputDevice")
+            .AddStaticText(SVCLang.Get("label-output-volume"), label, ElementBounds.Fixed(labelX, y += 46, 210, 30))
+            .AddVoiceSlider(value => { controller.SetOutputVolumeFromSettings(value); return true; }, ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), "outputVolume")
+            .AddStaticText(SVCLang.Get("label-mic-gain"), label, ElementBounds.Fixed(labelX, y += 46, 210, 30))
+            .AddVoiceSlider(value => { controller.SetMicGainFromSettings(value); return true; }, ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), "micGain")
+            .AddStaticText(SVCLang.Get("label-noise-gate"), label, ElementBounds.Fixed(labelX, y += 46, 210, 30))
+            .AddVoiceSlider(value => { controller.SetNoiseGateFromSettings(value); return true; }, ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), "noiseGate");
 
         ConfigureSlider(composer, "outputVolume", (int)Math.Round(config.OutputVolume * 100), 0, 200, "%");
         ConfigureSlider(composer, "micGain", (int)Math.Round(config.MicGain * 100), 10, 400, "%");
         ConfigureSlider(composer, "noiseGate", (int)Math.Round(config.NoiseGate * 1000), 0, 200);
 
-        y += 58;
+        y += 56;
         composer.AddStaticText(SVCLang.Get("ui-section-behavior"), section, ElementBounds.Fixed(labelX, y, 868, 26));
         y += 36;
-        double leftY = y;
-        double rightY = y;
-        AddSwitchRow(composer, labelX, ref leftY, SVCLang.Get("label-mic-muted"), "localMute", controller.LocalMuted, controller.SetLocalMutedFromSettings);
-        AddSwitchRow(composer, labelX, ref leftY, SVCLang.Get("label-deafened"), "globalMute", controller.GlobalMuted, controller.SetGlobalMutedFromSettings);
-        AddSwitchRow(composer, labelX, ref leftY, SVCLang.Get("label-continuous-talk"), "continuous", controller.ContinuousTalkEnabled, controller.SetContinuousTalkFromSettings);
-        AddSwitchRow(composer, labelX, ref leftY, SVCLang.Get("label-adaptive-jitter"), "jitter", config.AdaptiveJitterBuffer, controller.SetAdaptiveJitterFromSettings);
-        AddSwitchRow(composer, labelX, ref leftY, SVCLang.Get("label-show-mic-hud"), "showHud", config.ShowMicrophoneHud, controller.SetHudVisibleFromSettings);
+        double behaviorY = y;
+        AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-mic-muted"), "localMute", controller.LocalMuted, controller.SetLocalMutedFromSettings);
+        AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-deafened"), "globalMute", controller.GlobalMuted, controller.SetGlobalMutedFromSettings);
+        AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-adaptive-jitter"), "jitter", config.AdaptiveJitterBuffer, controller.SetAdaptiveJitterFromSettings);
+        AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-noise-suppression"), "noiseSuppression", config.EnableNoiseSuppression, controller.SetNoiseSuppressionFromSettings);
+        AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-echo-cancellation"), "echoCancellation", config.EnableEchoCancellation, controller.SetEchoCancellationFromSettings);
+        AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-occlusion"), "occlusion", config.EnableOcclusionEffects, controller.SetOcclusionFromSettings);
+        AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-performance-mode"), "performance", config.PerformanceMode, controller.SetPerformanceModeFromSettings);
 
-        const double rightX = 466;
-        AddSwitchRow(composer, rightX, ref rightY, SVCLang.Get("label-noise-suppression"), "noiseSuppression", config.EnableNoiseSuppression, controller.SetNoiseSuppressionFromSettings);
-        AddSwitchRow(composer, rightX, ref rightY, SVCLang.Get("label-echo-cancellation"), "echoCancellation", config.EnableEchoCancellation, controller.SetEchoCancellationFromSettings);
-        AddSwitchRow(composer, rightX, ref rightY, SVCLang.Get("label-occlusion"), "occlusion", config.EnableOcclusionEffects, controller.SetOcclusionFromSettings);
-        AddSwitchRow(composer, rightX, ref rightY, SVCLang.Get("label-performance-mode"), "performance", config.PerformanceMode, controller.SetPerformanceModeFromSettings);
-
-        GetCheckBox(composer, "continuous").Enabled = controller.ContinuousTalkAllowed;
         GetCheckBox(composer, "noiseSuppression").Enabled = VoiceProcessingCapabilities.NoiseSuppressionAvailable;
         GetCheckBox(composer, "echoCancellation").Enabled = VoiceProcessingCapabilities.EchoCancellationAvailable;
         GetCheckBox(composer, "occlusion").Enabled = !controller.OcclusionForced;
-        return Math.Max(leftY, rightY) + 24;
+        return behaviorY + 24;
     }
 
     private double AddHomePage(GuiComposer composer)
@@ -453,108 +455,262 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private double AddChannelsPage(GuiComposer composer)
     {
         const double x = 18;
-        const double rightX = 466;
-        const double fieldWidth = 210;
-        const double controlWidth = 190;
-        const double channelActionWidth = 240;
-        double y = 0;
-        CairoFont section = CairoFont.WhiteSmallishText();
-        CairoFont label = CairoFont.WhiteSmallishText();
-        CairoFont detail = CairoFont.WhiteSmallText();
+        const double width = 868;
+        const double cardHeight = 58;
+        const double cardGap = 8;
+        CairoFont section = CairoFont.WhiteSmallishText().WithColor(new[] { 0.96, 0.97, 1.0, 1.0 });
+        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        CairoFont detail = CairoFont.WhiteDetailText().WithColor(new[] { 0.78, 0.82, 0.88, 1.0 });
 
         VoiceSettingsChannelOption[] channels = controller.BuildChannelOptions();
-        VoiceSettingsPlayerOption[] players = controller.BuildPlayerOptions();
-        NormalizePlayer(players);
-        string[] channelValues = new[] { string.Empty }.Concat(channels.Select(channel => channel.Id)).ToArray();
-        string[] channelNames = new[] { SVCLang.Get("channel-none") }
-            .Concat(channels.Select(channel => channel.Name))
-            .ToArray();
-        string[] playerValues = players.Length == 0 ? new[] { string.Empty } : players.Select(player => player.Id).ToArray();
-        string[] playerNames = players.Length == 0 ? new[] { SVCLang.Get("player-none") } : players.Select(player => player.Name).ToArray();
-        string[] transmitValues = { "proximity", "channel", "both" };
-        string[] transmitNames = transmitValues.Select(value => SVCLang.Get("transmit-" + value)).ToArray();
-
-        composer
-            .AddStaticText(SVCLang.Get("label-channel-select"), label, ElementBounds.Fixed(x, y + 3, fieldWidth, 30))
-            .AddStaticText(SVCLang.Get("label-transmit-target"), label, ElementBounds.Fixed(rightX, y + 3, fieldWidth, 30))
-            .AddVoiceDropDown(channelValues, channelNames, Math.Max(0, Array.IndexOf(channelValues, config.SelectedChannelId)), OnChannelChanged, ElementBounds.Fixed(x + 217, y, controlWidth, 32), "channel")
-            .AddVoiceDropDown(transmitValues, transmitNames, Math.Max(0, Array.IndexOf(transmitValues, TransmitCode(config.TransmitTarget))), OnTransmitChanged, ElementBounds.Fixed(rightX + 217, y, controlWidth, 32), "transmit")
-            .AddStaticText(SVCLang.Get("label-channel-volume"), label, ElementBounds.Fixed(x, y += 48, fieldWidth, 30))
-            .AddVoiceSlider(value => { controller.SetChannelVolumeFromSettings(value); return true; }, ElementBounds.Fixed(x + 217, y, controlWidth, 24), "channelVolume")
-            .AddStaticText(SVCLang.Get("ui-section-player"), section, ElementBounds.Fixed(x, y += 48, 868, 26))
-            .AddStaticText(SVCLang.Get("ui-target-player"), label, ElementBounds.Fixed(x, y += 38, fieldWidth, 30))
-            .AddVoiceDropDown(playerValues, playerNames, Math.Max(0, Array.IndexOf(playerValues, selectedPlayerUid)), OnPlayerChanged, ElementBounds.Fixed(x + 217, y, controlWidth, 32), "selectedPlayer")
-            .AddStaticText(SVCLang.Get("label-player-volume"), label, ElementBounds.Fixed(x, y += 48, fieldWidth, 30))
-            .AddVoiceSlider(OnSelectedPlayerVolumeChanged, ElementBounds.Fixed(x + 217, y, 132, 24), "selectedPlayerVolume")
-            ;
-        AddCheckBox(composer, OnSelectedPlayerMuteChanged, ElementBounds.Fixed(x + 397, y - 2, 28, 28), "selectedPlayerMute", false);
-
-        ((GuiElementControl)composer.GetElement("channel")).Enabled = true;
-        ConfigureSlider(composer, "channelVolume", (int)Math.Round(config.ChannelOutputVolume * 100), 0, 200, "%");
-        bool hasPlayer = !string.IsNullOrWhiteSpace(selectedPlayerUid);
-        ConfigureSlider(composer, "selectedPlayerVolume", hasPlayer ? controller.GetPlayerVolumePercent(selectedPlayerUid) : 100, 0, 200, "%");
-        composer.GetSlider("selectedPlayerVolume")!.Enabled = hasPlayer;
-        GetCheckBox(composer, "selectedPlayerMute").SetValue(hasPlayer && controller.IsPlayerMuted(selectedPlayerUid));
-        GetCheckBox(composer, "selectedPlayerMute").Enabled = hasPlayer;
-
-        List<string> actions = BuildChannelActions(channels);
-        if (!actions.Contains(selectedChannelAction, StringComparer.Ordinal))
-        {
-            selectedChannelAction = actions[0];
-        }
-        y += 58;
-        composer
-            .AddStaticText(SVCLang.Get("label-channel-manage"), section, ElementBounds.Fixed(x, y, 868, 26))
-            .AddVoiceDropDown(actions.ToArray(), actions.Select(action => SVCLang.Get("channel-action-" + action)).ToArray(), Math.Max(0, actions.IndexOf(selectedChannelAction)), OnChannelActionChanged, ElementBounds.Fixed(x, y += 38, channelActionWidth, 32), "channelAction");
-        AddFlatButton(composer, SVCLang.Get("button-apply"), ExecuteChannelAction, ElementBounds.Fixed(x + channelActionWidth + 12, y, 136, 32), "applyChannelAction");
-        composer.GetButton("applyChannelAction").Enabled = selectedChannelAction != "none";
-
-        VoiceSettingsChannelOption? selectedChannel = channels.Cast<VoiceSettingsChannelOption?>().FirstOrDefault(channel => channel?.Id == config.SelectedChannelId);
-        bool canRename = selectedChannel is { ExternallyManaged: false, LocalRole: VoiceChannelRole.Owner };
-        if (canRename)
-        {
-            if (string.IsNullOrWhiteSpace(renameText))
-            {
-                renameText = selectedChannel?.Name ?? string.Empty;
-            }
-            composer
-                .AddStaticText(SVCLang.Get("label-channel-name"), label, ElementBounds.Fixed(x, y += 48, fieldWidth, 30))
-                .AddTextInput(ElementBounds.Fixed(x + 217, y, 320, 32), OnRenameTextChanged, CairoFont.TextInput(), "channelRename");
-            AddFlatButton(composer, SVCLang.Get("button-rename-channel"), RenameSelectedChannel, ElementBounds.Fixed(x + 550, y, 86, 32), "renameChannel");
-            composer.GetTextInput("channelRename").SetValue(renameText);
-            composer.GetTextInput("channelRename").SetMaxLength(VoiceProtocol.MaxControlStringLength);
-        }
-
-        y += 64;
-        composer
-                .AddStaticText(SVCLang.Get("setting-voice-players"), section, ElementBounds.Fixed(x, y, 868, 26));
+        double y = 0;
+        composer.AddStaticText(SVCLang.Get("tab-channels"), section, ElementBounds.Fixed(x, y, width, 28));
         y += 38;
+        if (channels.Length == 0)
+        {
+            composer.AddStaticText(SVCLang.Get("channel-none"), detail, ElementBounds.Fixed(x, y, width, 30));
+            y += 42;
+        }
+        else
+        {
+            for (int index = 0; index < channels.Length; index++)
+            {
+                VoiceSettingsChannelOption channel = channels[index];
+                double cardY = y;
+                string meta = SVCLang.Get("ui-member-count", channel.MemberCount);
+                if (channel.Locked)
+                {
+                    meta += " | " + SVCLang.Get("channel-locked");
+                }
+                composer.AddStaticCustomDraw(ElementBounds.Fixed(x, cardY, width, cardHeight), DrawChannelCardBackground)
+                    .AddStaticText(Truncate(channel.Name, 48), label, ElementBounds.Fixed(x + 14, cardY + 7, 560, 24), "channel-name-" + index)
+                    .AddStaticText(meta, detail, ElementBounds.Fixed(x + 14, cardY + 32, 560, 18), "channel-meta-" + index);
+                VoiceSettingsIconButton settings = new(
+                    composer.Api,
+                    ElementBounds.Fixed(x + width - 48, cardY + 11, 36, 36),
+                    FontAwesomeGearIcon,
+                    _ => OpenChannelOverlay(channel.Id),
+                    darkIcon: true);
+                composer.AddInteractiveElement(settings, "channel-settings-" + index);
+                y += cardHeight + cardGap;
+            }
+        }
 
+        y += 8;
+        VoiceSettingsIconButton playersButton = new(
+            composer.Api,
+            ElementBounds.Fixed(x, y, 42, 36),
+            FontAwesomeUsersIcon,
+            _ => OpenPlayersOverlay(),
+            darkIcon: true);
+        composer.AddInteractiveElement(playersButton, "open-players");
+        AddFlatButton(composer, SVCLang.Get("button-create-channel"), OpenCreateChannelOverlay,
+            ElementBounds.Fixed(x + 52, y, 180, 36), "open-create-channel");
+        composer.GetButton("open-create-channel").Enabled = controller.HasServerControl;
+        return y + 52;
+    }
+
+    private void AddOverlay(GuiComposer composer)
+    {
+        composer.AddStaticCustomDraw(ElementBounds.Fixed(0, 0, WindowWidth, WindowHeight), DrawOverlayScrim);
+        switch (overlay)
+        {
+            case VoiceSettingsOverlay.Channel:
+                AddChannelOverlay(composer);
+                break;
+            case VoiceSettingsOverlay.Players:
+                AddPlayersOverlay(composer);
+                break;
+            case VoiceSettingsOverlay.Player:
+                AddPlayerOverlay(composer);
+                break;
+            case VoiceSettingsOverlay.CreateChannel:
+                AddCreateChannelOverlay(composer);
+                break;
+        }
+    }
+
+    private void AddChannelOverlay(GuiComposer composer)
+    {
+        const double x = 140;
+        const double y = 132;
+        const double width = 660;
+        const double height = 286;
+        VoiceSettingsChannelOption channel = controller.BuildChannelOptions()
+            .FirstOrDefault(option => option.Id == overlayChannelId);
+        if (string.IsNullOrWhiteSpace(channel.Id))
+        {
+            overlay = VoiceSettingsOverlay.None;
+            return;
+        }
+
+        AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("channel-settings-title"));
+        AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "channel-overlay-close");
+        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        composer.AddStaticText(Truncate(channel.Name, 44), label, ElementBounds.Fixed(x + 24, y + 54, 380, 24));
+        composer.AddStaticText(SVCLang.Get("label-channel-volume"), label, ElementBounds.Fixed(x + 24, y + 88, 180, 28));
+        composer.AddVoiceSlider(value => { controller.SetChannelVolumeFromSettings(value); return true; },
+            ElementBounds.Fixed(x + 214, y + 84, 390, 34), "overlay-channel-volume");
+        ConfigureSlider(composer, "overlay-channel-volume", (int)Math.Round(config.ChannelOutputVolume * 100), 0, 200, "%");
+
+        List<string> actions = BuildChannelActions(new[] { channel }, channel.Id);
+        if (!actions.Contains(overlayAction, StringComparer.Ordinal))
+        {
+            overlayAction = actions[0];
+        }
+        composer.AddStaticText(SVCLang.Get("ui-action-select"), label, ElementBounds.Fixed(x + 24, y + 142, 180, 28));
+        composer.AddVoiceDropDown(
+            actions.ToArray(),
+            actions.Select(action => SVCLang.Get("channel-action-" + action)).ToArray(),
+            Math.Max(0, actions.IndexOf(overlayAction)),
+            OnOverlayActionChanged,
+            ElementBounds.Fixed(x + 214, y + 138, 260, 34),
+            "overlay-channel-action");
+        AddFlatButton(composer, SVCLang.Get("button-apply"), ApplyChannelOverlay,
+            ElementBounds.Fixed(x + 478, y + 138, 126, 34), "overlay-channel-apply");
+        composer.GetButton("overlay-channel-apply").Enabled = overlayAction != "none";
+    }
+
+    private void AddPlayersOverlay(GuiComposer composer)
+    {
+        const double x = 74;
+        const double y = 38;
+        const double width = 792;
+        const double height = 574;
+        AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("players-title"));
+        AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "players-overlay-close");
+        VoiceSettingsPlayerOption[] players = controller.BuildPlayerOptions();
+        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
         if (players.Length == 0)
         {
-            composer.AddStaticText(SVCLang.Get("player-none"), detail, ElementBounds.Fixed(x, y, 868, 30));
-            return y + 48;
+            composer.AddStaticText(SVCLang.Get("player-none"), label, ElementBounds.Fixed(x + 24, y + 62, width - 48, 30));
+            return;
         }
 
+        ElementBounds viewport = ElementBounds.Fixed(x + 18, y + 54, width - 36, height - 84);
+        double playerRowHeight = 52;
+        double listHeight = Math.Max(viewport.fixedHeight, players.Length * playerRowHeight);
+        playerOverlayScroll = Math.Clamp(playerOverlayScroll, 0f, (float)Math.Max(0d, listHeight - viewport.fixedHeight));
+        ElementBounds listBounds = ElementBounds.Fixed(0, 0, viewport.fixedWidth, listHeight);
+        listBounds.fixedY = -playerOverlayScroll;
+        composer.BeginClip(viewport).BeginChildElements(listBounds);
         for (int index = 0; index < players.Length; index++)
         {
             VoiceSettingsPlayerOption player = players[index];
-            string sliderKey = "playerVolume" + index;
-            string muteKey = "playerMute" + index;
-            double cardY = y;
-            composer.AddStaticCustomDraw(ElementBounds.Fixed(x, cardY, 868, 44), DrawPlayerCardBackground)
-                .AddStaticText(Truncate(player.Name, 30), label, ElementBounds.Fixed(x + 12, cardY + 8, 206, 28), "playerName" + index)
-                .AddVoiceSlider(value => SetPlayerVolume(player.Id, value), ElementBounds.Fixed(x + 225, cardY + 10, 540, 24), sliderKey);
+            double cardY = index * playerRowHeight;
+            string sliderKey = "overlay-player-volume-" + index;
+            string muteKey = "overlay-player-mute-" + index;
+            string settingsKey = "overlay-player-settings-" + index;
+            composer.AddStaticCustomDraw(ElementBounds.Fixed(0, cardY, viewport.fixedWidth, 44), DrawPlayerCardBackground)
+                .AddStaticText(Truncate(player.Name, 24), label, ElementBounds.Fixed(12, cardY + 8, 170, 28), "overlay-player-name-" + index)
+                .AddVoiceSlider(value => SetPlayerVolume(player.Id, value), ElementBounds.Fixed(192, cardY + 5, 430, 34), sliderKey);
             VoiceSettingsMuteButton muteButton = new(
                 composer.Api,
-                ElementBounds.Fixed(x + 820, cardY + 8, 28, 28),
+                ElementBounds.Fixed(634, cardY + 6, 32, 32),
                 value => controller.SetPlayerMutedFromSettings(player.Id, value));
             composer.AddInteractiveElement(muteButton, muteKey);
-            ConfigureSlider(composer, sliderKey, controller.GetPlayerVolumePercent(player.Id), 0, 200, "%");
             muteButton.SetValue(controller.IsPlayerMuted(player.Id));
-            y += 50;
+            VoiceSettingsIconButton settingsButton = new(
+                composer.Api,
+                ElementBounds.Fixed(676, cardY + 6, 32, 32),
+                FontAwesomeGearIcon,
+                _ => OpenPlayerOverlay(player.Id),
+                darkIcon: true);
+            composer.AddInteractiveElement(settingsButton, settingsKey);
+            ConfigureSlider(composer, sliderKey, controller.GetPlayerVolumePercent(player.Id), 0, 200, "%");
         }
-        return y + 18;
+        composer.EndChildElements().EndClip();
+    }
+
+    private void AddPlayerOverlay(GuiComposer composer)
+    {
+        const double x = 170;
+        const double y = 142;
+        const double width = 600;
+        const double height = 294;
+        VoiceSettingsPlayerOption player = controller.BuildPlayerOptions()
+            .FirstOrDefault(option => option.Id == overlayPlayerUid);
+        if (string.IsNullOrWhiteSpace(player.Id))
+        {
+            overlay = VoiceSettingsOverlay.None;
+            return;
+        }
+        AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("player-settings-title"));
+        AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "player-overlay-close");
+        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        composer.AddStaticText(Truncate(player.Name, 36), label, ElementBounds.Fixed(x + 24, y + 54, width - 48, 24));
+
+        VoiceSettingsChannelOption[] channels = controller.BuildChannelOptions();
+        string[] channelValues = channels.Length == 0 ? new[] { string.Empty } : channels.Select(channel => channel.Id).ToArray();
+        string[] channelNames = channels.Length == 0 ? new[] { SVCLang.Get("channel-none") } : channels.Select(channel => channel.Name).ToArray();
+        string selectedChannel = string.IsNullOrWhiteSpace(overlayChannelId) ? config.SelectedChannelId : overlayChannelId;
+        if (!channelValues.Contains(selectedChannel, StringComparer.Ordinal)) selectedChannel = channelValues[0];
+        composer.AddStaticText(SVCLang.Get("label-channel-select"), label, ElementBounds.Fixed(x + 24, y + 92, 180, 28));
+        composer.AddVoiceDropDown(channelValues, channelNames, Math.Max(0, Array.IndexOf(channelValues, selectedChannel)), OnOverlayChannelChanged,
+            ElementBounds.Fixed(x + 214, y + 88, 260, 34), "overlay-player-channel");
+
+        string[] actions = { "invite", "add", "remove", "mute", "unmute", "listenonly", "member", "moderator", "ban", "unban" };
+        if (!actions.Contains(overlayAction, StringComparer.Ordinal)) overlayAction = actions[0];
+        composer.AddStaticText(SVCLang.Get("ui-action-select"), label, ElementBounds.Fixed(x + 24, y + 144, 180, 28));
+        composer.AddVoiceDropDown(actions, actions.Select(action => SVCLang.Get("channel-action-" + action)).ToArray(), Math.Max(0, Array.IndexOf(actions, overlayAction)), OnOverlayActionChanged,
+            ElementBounds.Fixed(x + 214, y + 140, 260, 34), "overlay-player-action");
+        AddFlatButton(composer, SVCLang.Get("button-apply"), ApplyPlayerOverlay,
+            ElementBounds.Fixed(x + 214, y + 202, 126, 34), "overlay-player-apply");
+    }
+
+    private void AddCreateChannelOverlay(GuiComposer composer)
+    {
+        const double x = 170;
+        const double y = 142;
+        const double width = 600;
+        const double height = 294;
+        AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("create-channel-title"));
+        AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "create-overlay-close");
+        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        CairoFont input = CairoFont.TextInput();
+        composer.AddStaticText(SVCLang.Get("label-channel-name"), label, ElementBounds.Fixed(x + 24, y + 68, 180, 28))
+            .AddTextInput(ElementBounds.Fixed(x + 214, y + 64, 340, 34), OnCreateNameChanged, input, "overlay-create-name")
+            .AddStaticText(SVCLang.Get("label-channel-password"), label, ElementBounds.Fixed(x + 24, y + 124, 180, 28))
+            .AddTextInput(ElementBounds.Fixed(x + 214, y + 120, 340, 34), OnCreatePasswordChanged, input, "overlay-create-password");
+        composer.GetTextInput("overlay-create-name").SetValue(createName);
+        composer.GetTextInput("overlay-create-password").SetValue(createPassword);
+        composer.GetTextInput("overlay-create-name").SetMaxLength(VoiceProtocol.MaxControlStringLength);
+        composer.GetTextInput("overlay-create-password").SetMaxLength(VoiceProtocol.MaxControlStringLength);
+        AddFlatButton(composer, SVCLang.Get("channel-action-create"), CreateChannelFromOverlay,
+            ElementBounds.Fixed(x + 214, y + 192, 126, 34), "overlay-create-submit");
+        composer.GetButton("overlay-create-submit").Enabled = controller.HasServerControl && !string.IsNullOrWhiteSpace(createName);
+    }
+
+    private static void AddOverlayPanel(GuiComposer composer, double x, double y, double width, double height, string title)
+    {
+        composer.AddStaticCustomDraw(ElementBounds.Fixed(x, y, width, height), DrawOverlayPanel)
+            .AddStaticText(title, CairoFont.WhiteSmallishText().WithFontSize(17).WithColor(new[] { 1.0, 1.0, 1.0, 1.0 }),
+                ElementBounds.Fixed(x + 24, y + 16, width - 72, 28));
+    }
+
+    private void AddOverlayCloseButton(GuiComposer composer, double x, double y, double width, Action close, string key)
+    {
+        composer.AddInteractiveElement(
+            new VoiceSettingsIconButton(capi, ElementBounds.Fixed(x + width - 44, y + 12, 30, 30), FontAwesomeCloseIcon, _ => close()), key);
+    }
+
+    private static void DrawOverlayScrim(Context ctx, ImageSurface surface, ElementBounds bounds)
+    {
+        bounds.CalcWorldBounds();
+        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
+        ctx.SetSourceRGBA(0.0, 0.0, 0.0, 0.52);
+        ctx.Fill();
+    }
+
+    private static void DrawOverlayPanel(Context ctx, ImageSurface surface, ElementBounds bounds)
+    {
+        bounds.CalcWorldBounds();
+        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
+        ctx.SetSourceRGBA(0.025, 0.03, 0.04, 0.98);
+        ctx.FillPreserve();
+        ctx.SetSourceRGBA(0.88, 0.92, 0.98, 0.72);
+        ctx.LineWidth = GuiElement.scaled(1);
+        ctx.Stroke();
     }
 
     private double AddAdminPage(GuiComposer composer)
@@ -652,6 +808,17 @@ public sealed class VoiceSettingsDialog : GuiDialog
         ctx.Stroke();
     }
 
+    private static void DrawChannelCardBackground(Context ctx, ImageSurface surface, ElementBounds bounds)
+    {
+        bounds.CalcWorldBounds();
+        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
+        ctx.SetSourceRGBA(0.10, 0.12, 0.15, 0.96);
+        ctx.FillPreserve();
+        ctx.SetSourceRGBA(0.86, 0.90, 0.96, 0.58);
+        ctx.LineWidth = GuiElement.scaled(1);
+        ctx.Stroke();
+    }
+
     private static void ConfigureSlider(
         GuiComposer composer,
         string key,
@@ -672,10 +839,11 @@ public sealed class VoiceSettingsDialog : GuiDialog
         }
     }
 
-    private List<string> BuildChannelActions(VoiceSettingsChannelOption[] channels)
+    private List<string> BuildChannelActions(VoiceSettingsChannelOption[] channels, string? channelId = null)
     {
         bool hasPlayer = !string.IsNullOrWhiteSpace(selectedPlayerUid);
-        VoiceSettingsChannelOption? selected = channels.Cast<VoiceSettingsChannelOption?>().FirstOrDefault(channel => channel?.Id == config.SelectedChannelId);
+        string selectedId = channelId ?? config.SelectedChannelId;
+        VoiceSettingsChannelOption? selected = channels.Cast<VoiceSettingsChannelOption?>().FirstOrDefault(channel => channel?.Id == selectedId);
         bool hasChannel = selected.HasValue;
         VoiceChannelRole role = selected?.LocalRole ?? VoiceChannelRole.Banned;
         bool external = selected?.ExternallyManaged ?? false;
@@ -749,6 +917,115 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private void OnQuickChannelChanged(string value, bool selected)
     {
         OnChannelChanged(value, selected);
+    }
+
+    private void OpenChannelOverlay(string channelId)
+    {
+        overlayChannelId = channelId;
+        overlayAction = "none";
+        overlay = VoiceSettingsOverlay.Channel;
+        QueueCompose();
+    }
+
+    private void OpenPlayersOverlay()
+    {
+        playerOverlayScroll = 0;
+        overlay = VoiceSettingsOverlay.Players;
+        QueueCompose();
+    }
+
+    private bool OpenCreateChannelOverlay()
+    {
+        createName = string.Empty;
+        createPassword = string.Empty;
+        overlay = VoiceSettingsOverlay.CreateChannel;
+        QueueCompose();
+        return true;
+    }
+
+    private void OpenPlayerOverlay(string playerUid)
+    {
+        overlayPlayerUid = playerUid;
+        overlayChannelId = config.SelectedChannelId;
+        overlayAction = "invite";
+        overlay = VoiceSettingsOverlay.Player;
+        QueueCompose();
+    }
+
+    private void CloseOverlay()
+    {
+        overlay = VoiceSettingsOverlay.None;
+        QueueCompose();
+    }
+
+    private void OnOverlayChannelChanged(string value, bool selected)
+    {
+        if (selected)
+        {
+            overlayChannelId = value;
+        }
+    }
+
+    private void OnOverlayActionChanged(string value, bool selected)
+    {
+        if (!selected)
+        {
+            return;
+        }
+        overlayAction = value;
+        SetButtonEnabled("overlay-channel-apply", value != "none");
+    }
+
+    private bool ApplyChannelOverlay()
+    {
+        if (overlayAction != "none" && !string.IsNullOrWhiteSpace(overlayChannelId))
+        {
+            VoiceChannelRole role = overlayAction switch
+            {
+                "listenonly" => VoiceChannelRole.ListenOnly,
+                "moderator" => VoiceChannelRole.Moderator,
+                _ => VoiceChannelRole.Member
+            };
+            string action = overlayAction is "listenonly" or "member" or "moderator" ? "role" : overlayAction;
+            controller.ManageSelectedChannel(action, overlayChannelId, selectedPlayerUid, string.Empty, role);
+        }
+        CloseOverlay();
+        return true;
+    }
+
+    private bool ApplyPlayerOverlay()
+    {
+        if (!string.IsNullOrWhiteSpace(overlayPlayerUid) && !string.IsNullOrWhiteSpace(overlayChannelId))
+        {
+            VoiceChannelRole role = overlayAction switch
+            {
+                "listenonly" => VoiceChannelRole.ListenOnly,
+                "moderator" => VoiceChannelRole.Moderator,
+                _ => VoiceChannelRole.Member
+            };
+            string action = overlayAction is "listenonly" or "member" or "moderator" ? "role" : overlayAction;
+            controller.ManageSelectedChannel(action, overlayChannelId, overlayPlayerUid, string.Empty, role);
+        }
+        CloseOverlay();
+        return true;
+    }
+
+    private void OnCreatePasswordChanged(string value)
+    {
+        createPassword = value;
+    }
+
+    private bool CreateChannelFromOverlay()
+    {
+        if (!controller.HasServerControl || string.IsNullOrWhiteSpace(createName))
+        {
+            return false;
+        }
+        controller.ManageSelectedChannel("create-channel", string.Empty, name: createName);
+        createName = string.Empty;
+        createPassword = string.Empty;
+        CloseOverlay();
+        return true;
     }
 
     private void OnTransmitChanged(string value, bool selected)
@@ -866,6 +1143,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     {
         createName = value;
         SetButtonEnabled("createChannel", controller.HasServerControl && !string.IsNullOrWhiteSpace(value));
+        SetButtonEnabled("overlay-create-submit", controller.HasServerControl && !string.IsNullOrWhiteSpace(value));
     }
 
     private bool CreateChannel()

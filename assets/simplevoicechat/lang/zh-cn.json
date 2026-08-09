@@ -390,5 +390,13 @@
   "simplevoicechat:quick-deafen": "拒听接听",
   "simplevoicechat:quick-mute-microphone": "静音麦克风",
   "simplevoicechat:quick-show-hud": "显示 HUD",
-  "simplevoicechat:settings-brand-title": "Simple Voice Chat"
+  "simplevoicechat:settings-brand-title": "Simple Voice Chat",
+  "simplevoicechat:button-create-channel": "创建频道",
+  "simplevoicechat:channel-settings-title": "频道设置",
+  "simplevoicechat:player-settings-title": "玩家设置",
+  "simplevoicechat:players-title": "玩家列表",
+  "simplevoicechat:players-more": "还有 {0} 名玩家",
+  "simplevoicechat:create-channel-title": "创建频道",
+  "simplevoicechat:label-channel-password": "频道密码",
+  "simplevoicechat:channel-locked": "已锁定"
 }

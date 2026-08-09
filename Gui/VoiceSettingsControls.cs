@@ -13,8 +13,6 @@ internal sealed class VoiceSettingsSlider : GuiElementSlider
     private int maximum = 100;
     private string suffix = string.Empty;
     private int valueTextureValue = int.MinValue;
-    private int valueTextureWidth;
-    private int valueTextureHeight;
 
     public VoiceSettingsSlider(ICoreClientAPI capi, ActionConsumable<int> changed, ElementBounds bounds)
         : base(capi, changed, bounds)
@@ -47,11 +45,13 @@ internal sealed class VoiceSettingsSlider : GuiElementSlider
     public override void ComposeElements(Context ctxStatic, ImageSurface surfaceStatic)
     {
         Bounds.CalcWorldBounds();
-        double trackHeight = Math.Max(GuiElement.scaled(4), Bounds.InnerHeight * 0.28);
-        double trackY = Bounds.drawY + (Bounds.InnerHeight - trackHeight) / 2;
-        GuiElement.RoundRectangle(ctxStatic, Bounds.drawX, trackY, Bounds.InnerWidth, trackHeight, trackHeight / 2d);
-        ctxStatic.SetSourceRGBA(0.24, 0.27, 0.31, Enabled ? 0.96 : 0.45);
+        ctxStatic.Rectangle(Bounds.drawX, Bounds.drawY, Bounds.InnerWidth, Bounds.InnerHeight);
+        ctxStatic.SetSourceRGBA(0.15, 0.18, 0.22, Enabled ? 0.98 : 0.45);
         ctxStatic.Fill();
+        ctxStatic.SetSourceRGBA(0.84, 0.89, 0.96, Enabled ? 0.72 : 0.35);
+        ctxStatic.LineWidth = GuiElement.scaled(1);
+        ctxStatic.Rectangle(Bounds.drawX, Bounds.drawY, Bounds.InnerWidth, Bounds.InnerHeight);
+        ctxStatic.Stroke();
         ComposeTextures();
     }
 
@@ -65,14 +65,15 @@ internal sealed class VoiceSettingsSlider : GuiElementSlider
             GuiElement.GenerateTexture(api, fillSurface, ref fillTexture.TextureId);
         }
 
-        int size = Math.Max(8, (int)GuiElement.scaled(15));
-        using (ImageSurface handleSurface = new(Format.Argb32, size, size))
+        int handleWidth = Math.Max(8, (int)GuiElement.scaled(10));
+        int handleHeight = Math.Max(8, Bounds.OuterHeightInt);
+        using (ImageSurface handleSurface = new(Format.Argb32, handleWidth, handleHeight))
         using (Context handleContext = new(handleSurface))
         {
-            handleContext.Arc(size / 2d, size / 2d, Math.Max(1, size / 2d - 1), 0, Math.PI * 2);
-            handleContext.SetSourceRGBA(0.96, 0.97, 0.99, Enabled ? 1 : 0.45);
+            handleContext.Rectangle(0, 0, handleWidth, handleHeight);
+            handleContext.SetSourceRGBA(0.96, 0.97, 0.99, Enabled ? 0.98 : 0.45);
             handleContext.FillPreserve();
-            handleContext.SetSourceRGBA(0.48, 0.53, 0.60, Enabled ? 1 : 0.45);
+            handleContext.SetSourceRGBA(0.40, 0.46, 0.54, Enabled ? 1 : 0.45);
             handleContext.LineWidth = GuiElement.scaled(1);
             handleContext.Stroke();
             GuiElement.GenerateTexture(api, handleSurface, ref handleTexture.TextureId);
@@ -82,19 +83,21 @@ internal sealed class VoiceSettingsSlider : GuiElementSlider
     public override void RenderInteractiveElements(float deltaTime)
     {
         Bounds.CalcWorldBounds();
-        double trackHeight = Math.Max(GuiElement.scaled(4), Bounds.InnerHeight * 0.28);
-        double trackY = Bounds.renderY + (Bounds.InnerHeight - trackHeight) / 2;
         double fraction = Math.Clamp((GetValue() - minimum) / (double)(maximum - minimum), 0, 1);
         double fillWidth = Bounds.InnerWidth * fraction;
         if (fillWidth > 0.5)
         {
-            api.Render.Render2DTexturePremultipliedAlpha(fillTexture.TextureId, Bounds.renderX, trackY, fillWidth, trackHeight);
+            api.Render.Render2DTexturePremultipliedAlpha(
+                fillTexture.TextureId, Bounds.renderX, Bounds.renderY, fillWidth, Bounds.InnerHeight);
         }
 
-        double handleSize = Math.Min(GuiElement.scaled(15), Bounds.InnerHeight + GuiElement.scaled(4));
-        double handleX = Bounds.renderX + Bounds.InnerWidth * fraction - handleSize / 2;
-        double handleY = Bounds.renderY + (Bounds.InnerHeight - handleSize) / 2;
-        api.Render.Render2DTexturePremultipliedAlpha(handleTexture.TextureId, handleX, handleY, handleSize, handleSize);
+        double handleWidth = Math.Max(GuiElement.scaled(8), Math.Min(GuiElement.scaled(11), Bounds.InnerWidth * 0.04));
+        double handleX = Math.Clamp(
+            Bounds.renderX + Bounds.InnerWidth * fraction - handleWidth / 2d,
+            Bounds.renderX,
+            Bounds.renderX + Bounds.InnerWidth - handleWidth);
+        api.Render.Render2DTexturePremultipliedAlpha(
+            handleTexture.TextureId, handleX, Bounds.renderY, handleWidth, Bounds.InnerHeight);
 
         int value = GetValue();
         if (value != valueTextureValue || valueTexture.TextureId == 0)
@@ -102,29 +105,31 @@ internal sealed class VoiceSettingsSlider : GuiElementSlider
             ComposeValueTexture(value);
         }
 
-        api.Render.Render2DTexturePremultipliedAlpha(valueTexture.TextureId,
-            Bounds.renderX + Bounds.InnerWidth + GuiElement.scaled(8),
-            Bounds.renderY + (Bounds.InnerHeight - valueTextureHeight) / 2d,
-            valueTextureWidth, valueTextureHeight);
+        api.Render.Render2DTexturePremultipliedAlpha(
+            valueTexture.TextureId, Bounds.renderX, Bounds.renderY, Bounds.InnerWidth, Bounds.InnerHeight);
     }
 
     private void ComposeValueTexture(int value)
     {
         string text = value + suffix;
         CairoFont font = CairoFont.WhiteSmallText().WithFontSize(13).WithColor(new[] { 0.96, 0.97, 1.0, 1.0 });
-        using ImageSurface measureSurface = new(Format.Argb32, 2, 2);
-        using Context measureContext = new(measureSurface);
-        font.SetupContext(measureContext);
-        TextExtents extents = measureContext.TextExtents(text);
-        valueTextureWidth = Math.Max(1, (int)Math.Ceiling(extents.XAdvance + GuiElement.scaled(2)));
-        valueTextureHeight = Math.Max(1, (int)Math.Ceiling(measureContext.FontExtents.Height + GuiElement.scaled(2)));
-
-        using ImageSurface surface = new(Format.Argb32, valueTextureWidth, valueTextureHeight);
+        int width = Math.Max(1, Bounds.OuterWidthInt);
+        int height = Math.Max(1, Bounds.OuterHeightInt);
+        using ImageSurface surface = new(Format.Argb32, width, height);
         using Context context = new(surface);
         font.SetupContext(context);
-        context.SetSourceRGBA(0.96, 0.97, 1.0, Enabled ? 1.0 : 0.45);
-        context.MoveTo(GuiElement.scaled(1) - extents.XBearing,
-            (valueTextureHeight - context.FontExtents.Height) / 2d + context.FontExtents.Ascent);
+        TextExtents extents = context.TextExtents(text);
+        double x = (width - extents.XAdvance) / 2d - extents.XBearing;
+        double y = (height - context.FontExtents.Height) / 2d + context.FontExtents.Ascent;
+        // A dark outline keeps the centered value readable over both the dark
+        // track and the light filled portion.
+        context.SetSourceRGBA(0.02, 0.025, 0.032, Enabled ? 0.92 : 0.65);
+        context.LineWidth = GuiElement.scaled(3);
+        context.MoveTo(x, y);
+        context.TextPath(text);
+        context.Stroke();
+        context.SetSourceRGBA(0.98, 0.99, 1.0, Enabled ? 1.0 : 0.45);
+        context.MoveTo(x, y);
         context.ShowText(text);
         GuiElement.GenerateTexture(api, surface, ref valueTexture.TextureId);
         valueTextureValue = value;
@@ -467,16 +472,23 @@ internal sealed class VoiceSettingsIconButton : GuiElementControl
 {
     private readonly string iconName;
     private readonly Action<bool>? clicked;
+    private readonly bool darkIcon;
     private int textureId;
     private bool pressed;
 
     public override bool Focusable => Enabled;
 
-    public VoiceSettingsIconButton(ICoreClientAPI capi, ElementBounds bounds, string iconName, Action<bool>? clicked)
+    public VoiceSettingsIconButton(
+        ICoreClientAPI capi,
+        ElementBounds bounds,
+        string iconName,
+        Action<bool>? clicked,
+        bool darkIcon = false)
         : base(capi, bounds)
     {
         this.iconName = iconName;
         this.clicked = clicked;
+        this.darkIcon = darkIcon;
     }
 
     public override void ComposeElements(Context ctx, ImageSurface surface)
@@ -495,7 +507,8 @@ internal sealed class VoiceSettingsIconButton : GuiElementControl
         ctx.SetSourceRGBA(0.92, 0.95, 1.0, Enabled ? 0.88 : 0.42);
         ctx.LineWidth = GuiElement.scaled(1);
         ctx.Stroke();
-        api.Gui.Icons.DrawIcon(ctx, iconName, GuiElement.scaled(5), GuiElement.scaled(5), Bounds.OuterWidth - GuiElement.scaled(10), Bounds.OuterHeight - GuiElement.scaled(10), new[] { 1.0, 1.0, 1.0, 1.0 });
+        double[] iconColor = darkIcon ? new[] { 0.02, 0.025, 0.032, 1.0 } : new[] { 1.0, 1.0, 1.0, 1.0 };
+        api.Gui.Icons.DrawIcon(ctx, iconName, GuiElement.scaled(5), GuiElement.scaled(5), Bounds.OuterWidth - GuiElement.scaled(10), Bounds.OuterHeight - GuiElement.scaled(10), iconColor);
         if (iconName == "svc-fa-xmark")
         {
             // Fallback for SVG loaders that do not resolve the custom asset.

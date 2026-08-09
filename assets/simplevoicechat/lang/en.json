@@ -390,5 +390,13 @@
   "simplevoicechat:quick-deafen": "Deafen",
   "simplevoicechat:quick-mute-microphone": "Mute mic",
   "simplevoicechat:quick-show-hud": "Show HUD",
-  "simplevoicechat:settings-brand-title": "Simple Voice Chat"
+  "simplevoicechat:settings-brand-title": "Simple Voice Chat",
+  "simplevoicechat:button-create-channel": "Create channel",
+  "simplevoicechat:channel-settings-title": "Channel settings",
+  "simplevoicechat:player-settings-title": "Player settings",
+  "simplevoicechat:players-title": "Players",
+  "simplevoicechat:players-more": "+{0} more players",
+  "simplevoicechat:create-channel-title": "Create channel",
+  "simplevoicechat:label-channel-password": "Channel password",
+  "simplevoicechat:channel-locked": "Locked"
 }

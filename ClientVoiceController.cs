@@ -852,7 +852,13 @@ public sealed class ClientVoiceController : IDisposable
     {
         return channelInfos
             .OrderBy(info => info.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(info => new VoiceSettingsChannelOption(info.ChannelId, info.Name, info.LocalRole, info.ExternallyManaged))
+            .Select(info => new VoiceSettingsChannelOption(
+                info.ChannelId,
+                info.Name,
+                info.LocalRole,
+                info.ExternallyManaged,
+                info.MemberCount,
+                info.Locked))
             .ToArray();
     }
 

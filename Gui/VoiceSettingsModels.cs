@@ -6,7 +6,9 @@ public readonly record struct VoiceSettingsChannelOption(
     string Id,
     string Name,
     VoiceChannelRole LocalRole,
-    bool ExternallyManaged);
+    bool ExternallyManaged,
+    int MemberCount = 0,
+    bool Locked = false);
 
 public readonly record struct VoiceSettingsPlayerOption(string Id, string Name);
 
