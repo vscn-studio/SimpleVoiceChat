@@ -187,56 +187,60 @@ public sealed class VoiceSettingsDialog : GuiDialog
         double viewportTop = selectedPage == VoiceSettingsPage.Home ? 58 : ContentTop;
         ElementBounds viewport = ElementBounds.Fixed(ContentLeft, viewportTop, activeContentWidth, activeViewportHeight);
         contentBounds = ElementBounds.Fixed(0, 0, activeContentWidth, activeViewportHeight);
+        bool overlayActive = overlay != VoiceSettingsOverlay.None;
 
         GuiComposer composer = capi.Gui.CreateCompo("simplevoicechat-settings", root)
             .AddStaticCustomDraw(background, DrawWindowBackground)
             .BeginChildElements(background);
 
-        composer.AddStaticText(
-                SVCLang.Get("settings-brand-title"),
-                CairoFont.WhiteSmallishText().WithFontSize(20).WithOrientation(EnumTextOrientation.Center)
-                    .WithColor(new[] { 1.0, 1.0, 1.0, 1.0 }),
-                ElementBounds.Fixed(ContentLeft, 10, activeContentWidth, 30),
-                "brand-title");
-
-        composer.AddInteractiveElement(
-            new VoiceSettingsIconButton(
-                capi,
-                ElementBounds.Fixed(windowWidth - 42, 10, 28, 28),
-                FontAwesomeCloseIcon,
-                _ => OnClose()),
-            "close");
-
-        if (!home)
+        if (!overlayActive)
         {
-            composer.BeginClip(viewport);
-        }
-        composer.BeginChildElements(contentBounds);
+            composer.AddStaticText(
+                    SVCLang.Get("settings-brand-title"),
+                    CairoFont.WhiteSmallishText().WithFontSize(20).WithOrientation(EnumTextOrientation.Center)
+                        .WithColor(new[] { 1.0, 1.0, 1.0, 1.0 }),
+                    ElementBounds.Fixed(ContentLeft, 10, activeContentWidth, 30),
+                    "brand-title");
 
-        contentHeight = selectedPage switch
-        {
-            VoiceSettingsPage.Home => AddHomePage(composer),
-            VoiceSettingsPage.Channels => AddChannelsPage(composer),
-            VoiceSettingsPage.Admin => AddAdminPage(composer),
-            _ => AddAudioPage(composer)
-        };
-        contentHeight = Math.Max(activeViewportHeight, contentHeight);
-        scrollPosition = Math.Clamp(
-            scrollPosition,
-            0f,
-            (float)Math.Max(0d, contentHeight - activeViewportHeight));
-        contentBounds.fixedY = -scrollPosition;
+            composer.AddInteractiveElement(
+                new VoiceSettingsIconButton(
+                    capi,
+                    ElementBounds.Fixed(windowWidth - 42, 10, 28, 28),
+                    FontAwesomeCloseIcon,
+                    _ => OnClose()),
+                "close");
 
-        GuiComposer completedComposer = composer.EndChildElements();
-        if (!home)
-        {
-            completedComposer = completedComposer.EndClip();
+            if (!home)
+            {
+                composer.BeginClip(viewport);
+            }
+            composer.BeginChildElements(contentBounds);
+
+            contentHeight = selectedPage switch
+            {
+                VoiceSettingsPage.Home => AddHomePage(composer),
+                VoiceSettingsPage.Channels => AddChannelsPage(composer),
+                VoiceSettingsPage.Admin => AddAdminPage(composer),
+                _ => AddAudioPage(composer)
+            };
+            contentHeight = Math.Max(activeViewportHeight, contentHeight);
+            scrollPosition = Math.Clamp(
+                scrollPosition,
+                0f,
+                (float)Math.Max(0d, contentHeight - activeViewportHeight));
+            contentBounds.fixedY = -scrollPosition;
+
+            composer = composer.EndChildElements();
+            if (!home)
+            {
+                composer = composer.EndClip();
+            }
         }
         if (overlay != VoiceSettingsOverlay.None)
         {
-            AddOverlay(completedComposer);
+            AddOverlay(composer);
         }
-        SingleComposer = completedComposer.EndChildElements().Compose();
+        SingleComposer = composer.EndChildElements().Compose();
     }
 
     public override void OnMouseWheel(MouseWheelEventArgs args)
