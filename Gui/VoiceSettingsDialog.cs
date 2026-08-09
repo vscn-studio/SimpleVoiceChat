@@ -140,7 +140,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         {
             VoiceSettingsPage captured = page;
             string key = "nav-" + page.ToString().ToLowerInvariant();
-            double width = page == VoiceSettingsPage.Channels ? 156 : 100;
+            double width = page == VoiceSettingsPage.Channels ? 148 : 94;
             composer.AddToggleButton(
                 GetPageName(page),
                 CairoFont.ButtonText(),
@@ -151,7 +151,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
                         SelectPage(captured);
                     }
                 },
-                ElementBounds.Fixed(navX, 40, width, 40),
+                ElementBounds.Fixed(navX, 40, width, 36),
                 key);
             composer.GetToggleButton(key).SetValue(page == selectedPage);
             navX += width + 6;
