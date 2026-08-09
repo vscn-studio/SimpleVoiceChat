@@ -110,7 +110,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private double contentHeight = ViewportHeight;
     private double activeViewportHeight = ViewportHeight;
     private double activeContentWidth = ContentWidth;
-    private double contentOriginY;
     private bool composeQueued;
 
     private string selectedPlayerUid = string.Empty;
@@ -200,8 +199,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         ElementBounds background = ElementBounds.Fixed(0, 0, windowWidth, windowHeight);
         double viewportTop = selectedPage == VoiceSettingsPage.Home ? 58 : ContentTop;
         ElementBounds viewport = ElementBounds.Fixed(ContentLeft, viewportTop, activeContentWidth, activeViewportHeight);
-        contentOriginY = home ? 0 : viewportTop;
-        contentBounds = ElementBounds.Fixed(0, contentOriginY, activeContentWidth, activeViewportHeight);
+        contentBounds = ElementBounds.Fixed(0, 0, activeContentWidth, activeViewportHeight);
         bool overlayActive = overlay != VoiceSettingsOverlay.None;
 
         GuiComposer composer = capi.Gui.CreateCompo("simplevoicechat-settings", root);
@@ -246,7 +244,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
                 scrollPosition,
                 0f,
                 (float)Math.Max(0d, contentHeight - activeViewportHeight));
-            contentBounds.fixedY = contentOriginY - scrollPosition;
+            contentBounds.fixedY = -scrollPosition;
 
             composer = composer.EndChildElements();
             if (!home)
@@ -871,12 +869,9 @@ public sealed class VoiceSettingsDialog : GuiDialog
         double playerRowHeight = 52;
         double listHeight = Math.Max(viewport.fixedHeight, players.Length * playerRowHeight);
         playerOverlayScroll = Math.Clamp(playerOverlayScroll, 0f, (float)Math.Max(0d, listHeight - viewport.fixedHeight));
-        // The list is clipped in the overlay viewport, so its child origin must
-        // match the viewport origin. A zero-origin child renders visibly but
-        // receives hit tests at the wrong screen coordinates.
         ElementBounds listBounds = ElementBounds.Fixed(
-            viewport.fixedX,
-            viewport.fixedY - playerOverlayScroll,
+            0,
+            -playerOverlayScroll,
             viewport.fixedWidth,
             listHeight);
         composer.BeginClip(viewport).BeginChildElements(listBounds);
@@ -1542,7 +1537,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             0f,
             (float)Math.Max(0d, contentHeight - activeViewportHeight));
         if (contentBounds == null) return;
-        contentBounds.fixedY = contentOriginY - scrollPosition;
+        contentBounds.fixedY = -scrollPosition;
         contentBounds.CalcWorldBounds();
         SingleComposer?.ReCompose();
     }
