@@ -53,7 +53,9 @@ internal static class VoiceSettingsNavigation
 public sealed class VoiceSettingsDialog : GuiDialog
 {
     private const double WindowWidth = 940;
-    private const double HomeWindowWidth = 705;
+    // The home page is sized to its quick-control row rather than the wider
+    // settings pages: three icon buttons, two selectors, four gaps, and margins.
+    private const double HomeWindowWidth = 640;
     private const double WindowHeight = 650;
     private const double ContentLeft = 14;
     private const double ContentTop = 98;
