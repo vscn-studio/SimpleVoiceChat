@@ -769,3 +769,125 @@ internal sealed class VoiceSettingsMuteButton : GuiElementControl
         base.Dispose();
     }
 }
+
+/// <summary>
+/// Square first-page toggle that renders the supplied pixel-art asset for each
+/// state. The image is fitted by height so narrow artwork remains centered.
+/// </summary>
+internal sealed class VoiceSettingsIconToggleButton : GuiElementControl
+{
+    private readonly Action<bool>? changed;
+    private readonly ImageSurface onSurface;
+    private readonly ImageSurface offSurface;
+    private int textureId;
+
+    public bool On { get; private set; }
+    public override bool Focusable => Enabled;
+
+    public VoiceSettingsIconToggleButton(
+        ICoreClientAPI capi,
+        ElementBounds bounds,
+        AssetLocation onIcon,
+        AssetLocation offIcon,
+        bool value,
+        Action<bool>? changed)
+        : base(capi, bounds)
+    {
+        this.changed = changed;
+        double size = Math.Min(bounds.fixedWidth, bounds.fixedHeight);
+        Bounds.fixedWidth = size;
+        Bounds.fixedHeight = size;
+        On = value;
+        onSurface = GuiElement.getImageSurfaceFromAsset(capi, onIcon);
+        offSurface = GuiElement.getImageSurfaceFromAsset(capi, offIcon);
+    }
+
+    public override void ComposeElements(Context ctx, ImageSurface surface)
+    {
+        Bounds.CalcWorldBounds();
+        Redraw();
+    }
+
+    public override void RenderInteractiveElements(float deltaTime)
+    {
+        api.Render.Render2DTexturePremultipliedAlpha(textureId, Bounds);
+    }
+
+    public override void OnMouseDownOnElement(ICoreClientAPI api, MouseEvent args)
+    {
+        base.OnMouseDownOnElement(api, args);
+        if (!Enabled)
+        {
+            return;
+        }
+
+        On = !On;
+        changed?.Invoke(On);
+        Redraw();
+        api.Gui.PlaySound("toggleswitch");
+    }
+
+    public override void OnKeyDown(ICoreClientAPI api, KeyEvent args)
+    {
+        if (!HasFocus || !Enabled || args.KeyCode is not (49 or 51))
+        {
+            return;
+        }
+
+        args.Handled = true;
+        On = !On;
+        changed?.Invoke(On);
+        Redraw();
+        api.Gui.PlaySound("toggleswitch");
+    }
+
+    private void Redraw()
+    {
+        if (Bounds.OuterWidthInt <= 0 || Bounds.OuterHeightInt <= 0)
+        {
+            return;
+        }
+
+        using ImageSurface surface = new(Format.Argb32, Bounds.OuterWidthInt, Bounds.OuterHeightInt);
+        using Context ctx = new(surface);
+        double width = Bounds.OuterWidth;
+        double height = Bounds.OuterHeight;
+        GuiElement.RoundRectangle(ctx, 0, 0, width, height, GuiElement.scaled(4));
+        ctx.SetSourceRGBA(0.62, 0.66, 0.72, On ? 0.36 : 0.22);
+        ctx.FillPreserve();
+        ctx.SetSourceRGBA(0.92, 0.95, 1.0, Enabled ? 0.95 : 0.45);
+        ctx.LineWidth = GuiElement.scaled(1);
+        ctx.Stroke();
+
+        ImageSurface icon = On ? onSurface : offSurface;
+        double padding = GuiElement.scaled(7);
+        double iconHeight = Math.Max(1, height - padding * 2);
+        double iconWidth = icon.Width * iconHeight / Math.Max(1, icon.Height);
+        if (iconWidth > width - padding * 2)
+        {
+            iconWidth = width - padding * 2;
+            iconHeight = icon.Height * iconWidth / Math.Max(1, icon.Width);
+        }
+
+        ctx.Save();
+        ctx.Translate((width - iconWidth) / 2d, (height - iconHeight) / 2d);
+        ctx.Scale(iconWidth / icon.Width, iconHeight / icon.Height);
+        ctx.SetSourceSurface(icon, 0, 0);
+        ctx.Rectangle(0, 0, icon.Width, icon.Height);
+        ctx.Fill();
+        ctx.Restore();
+        GuiElement.GenerateTexture(api, surface, ref textureId);
+    }
+
+    public override void Dispose()
+    {
+        if (textureId > 0)
+        {
+            api.Render.GLDeleteTexture(textureId);
+            textureId = 0;
+        }
+        onSurface.Dispose();
+        offSurface.Dispose();
+        base.Dispose();
+    }
+}

@@ -361,6 +361,7 @@
   "simplevoicechat:ui-section-temporary-actions": "Temporary controls (60 seconds)",
   "simplevoicechat:ui-target-player": "Target player",
   "simplevoicechat:button-back": "Back",
+  "simplevoicechat:button-admin": "Admin",
   "simplevoicechat:button-cancel": "Cancel",
   "simplevoicechat:button-confirm": "Confirm",
   "simplevoicechat:button-finish": "Finish",
@@ -382,5 +383,12 @@
   "simplevoicechat:setup-skip-to-settings": "Skip initial setup and open Settings",
   "simplevoicechat:setup-step": "Step {0} of {1}",
   "simplevoicechat:setup-title": "Set up Simple Voice Chat",
-  "simplevoicechat:setup-welcome-description": "Initial setup configures Simple Voice Chat. You can change every option later."
+  "simplevoicechat:setup-welcome-description": "Initial setup configures Simple Voice Chat. You can change every option later.",
+  "simplevoicechat:button-channels": "Channels",
+  "simplevoicechat:button-home": "Home",
+  "simplevoicechat:button-settings": "Settings",
+  "simplevoicechat:quick-deafen": "Deafen",
+  "simplevoicechat:quick-mute-microphone": "Mute mic",
+  "simplevoicechat:quick-show-hud": "Show HUD",
+  "simplevoicechat:settings-brand-title": "Simple Voice Chat"
 }

@@ -361,6 +361,7 @@
   "simplevoicechat:ui-section-temporary-actions": "临时控制（60秒）",
   "simplevoicechat:ui-target-player": "目标玩家",
   "simplevoicechat:button-back": "返回",
+  "simplevoicechat:button-admin": "管理",
   "simplevoicechat:button-cancel": "取消",
   "simplevoicechat:button-confirm": "确认",
   "simplevoicechat:button-finish": "完成",
@@ -382,5 +383,12 @@
   "simplevoicechat:setup-skip-to-settings": "跳过初始设置，进入设置窗口",
   "simplevoicechat:setup-step": "第 {0} / {1} 步",
   "simplevoicechat:setup-title": "设置 Simple Voice Chat",
-  "simplevoicechat:setup-welcome-description": "初始设置将配置 Simple Voice Chat，所有选项之后都可修改。"
+  "simplevoicechat:setup-welcome-description": "初始设置将配置 Simple Voice Chat，所有选项之后都可修改。",
+  "simplevoicechat:button-channels": "频道",
+  "simplevoicechat:button-home": "主页",
+  "simplevoicechat:button-settings": "设置",
+  "simplevoicechat:quick-deafen": "拒听接听",
+  "simplevoicechat:quick-mute-microphone": "静音麦克风",
+  "simplevoicechat:quick-show-hud": "显示 HUD",
+  "simplevoicechat:settings-brand-title": "Simple Voice Chat"
 }

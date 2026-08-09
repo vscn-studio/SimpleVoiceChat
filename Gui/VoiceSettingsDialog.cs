@@ -26,6 +26,7 @@ internal static class VoiceSettingsActionPolicy
 
 internal enum VoiceSettingsPage
 {
+    Home,
     Audio,
     Channels,
     Admin
@@ -37,6 +38,7 @@ internal static class VoiceSettingsNavigation
     {
         List<VoiceSettingsPage> pages = new()
         {
+            VoiceSettingsPage.Home,
             VoiceSettingsPage.Audio,
             VoiceSettingsPage.Channels
         };
@@ -51,24 +53,35 @@ internal static class VoiceSettingsNavigation
 public sealed class VoiceSettingsDialog : GuiDialog
 {
     private const double WindowWidth = 940;
+    private const double HomeWindowWidth = 705;
     private const double WindowHeight = 650;
     private const double ContentLeft = 14;
-    private const double ContentTop = 56;
+    private const double ContentTop = 98;
     private const double ContentWidth = 900;
-    private const double ViewportHeight = 580;
+    private const double ViewportHeight = 540;
+    private const double HomeWindowHeight = 190;
+    private const double HomeViewportHeight = HomeWindowHeight;
     private const string FontAwesomeCheckIcon = "svc-fa-check";
     private const string FontAwesomeCloseIcon = "svc-fa-xmark";
 
     private static readonly AssetLocation FontAwesomeCheckAsset = new("simplevoicechat", "icons/fontawesome/check.svg");
     private static readonly AssetLocation FontAwesomeCloseAsset = new("simplevoicechat", "icons/fontawesome/xmark.svg");
+    private static readonly AssetLocation MicMutedAsset = new("simplevoicechat", "gui/svc_mic_muted.png");
+    private static readonly AssetLocation MicTalkingAsset = new("simplevoicechat", "gui/svc_talking.png");
+    private static readonly AssetLocation SpeakerAsset = new("simplevoicechat", "gui/svc_speaker.png");
+    private static readonly AssetLocation SpeakerDisabledAsset = new("simplevoicechat", "gui/svc_speaker_disable.png");
+    private static readonly AssetLocation EyeAsset = new("simplevoicechat", "gui/svc_eye.png");
+    private static readonly AssetLocation NoEyeAsset = new("simplevoicechat", "gui/svc_no_eye.png");
 
     private readonly ClientVoiceController controller;
     private readonly SimpleVoiceChatClientConfig config;
 
-    private VoiceSettingsPage selectedPage = VoiceSettingsPage.Audio;
+    private VoiceSettingsPage selectedPage = VoiceSettingsPage.Home;
     private ElementBounds? contentBounds;
     private float scrollPosition;
     private double contentHeight = ViewportHeight;
+    private double activeViewportHeight = ViewportHeight;
+    private double activeContentWidth = ContentWidth;
     private bool composeQueued;
 
     private string selectedPlayerUid = string.Empty;
@@ -95,6 +108,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
     public override bool TryOpen()
     {
         controller.RequestSettingsRefresh();
+        selectedPage = VoiceSettingsPage.Home;
+        scrollPosition = 0;
         Compose();
         return base.TryOpen();
     }
@@ -103,7 +118,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     {
         if (selectedPage == VoiceSettingsPage.Admin && !controller.HasServerControl)
         {
-            selectedPage = VoiceSettingsPage.Audio;
+            selectedPage = VoiceSettingsPage.Home;
             scrollPosition = 0;
         }
         if (IsOpened())
@@ -123,65 +138,94 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private void Compose()
     {
         RegisterFontAwesomeIcons();
-        VoiceSettingsPage[] pages = VoiceSettingsNavigation.BuildPages(controller.HasServerControl);
-        if (!pages.Contains(selectedPage))
+        if (selectedPage == VoiceSettingsPage.Admin && !controller.HasServerControl)
         {
-            selectedPage = VoiceSettingsPage.Audio;
+            selectedPage = VoiceSettingsPage.Home;
             scrollPosition = 0;
         }
 
         SingleComposer?.Dispose();
-        ElementBounds root = ElementBounds.Fixed(EnumDialogArea.CenterMiddle, 0, 0, WindowWidth, WindowHeight);
-        ElementBounds background = ElementBounds.Fixed(0, 0, WindowWidth, WindowHeight);
-        ElementBounds viewport = ElementBounds.Fixed(ContentLeft, ContentTop, ContentWidth, ViewportHeight);
-        contentBounds = ElementBounds.Fixed(0, 0, ContentWidth, ViewportHeight);
+        bool home = selectedPage == VoiceSettingsPage.Home;
+        double windowWidth = home ? HomeWindowWidth : WindowWidth;
+        double windowHeight = home ? HomeWindowHeight : WindowHeight;
+        activeViewportHeight = home ? HomeViewportHeight : ViewportHeight;
+        activeContentWidth = home ? windowWidth - ContentLeft * 2 : ContentWidth;
+        ElementBounds root = ElementBounds.Fixed(EnumDialogArea.CenterMiddle, 0, 0, windowWidth, windowHeight);
+        ElementBounds background = ElementBounds.Fixed(0, 0, windowWidth, windowHeight);
+        double viewportTop = selectedPage == VoiceSettingsPage.Home ? 58 : ContentTop;
+        ElementBounds viewport = ElementBounds.Fixed(ContentLeft, viewportTop, activeContentWidth, activeViewportHeight);
+        contentBounds = ElementBounds.Fixed(0, 0, activeContentWidth, activeViewportHeight);
 
         GuiComposer composer = capi.Gui.CreateCompo("simplevoicechat-settings", root)
             .AddStaticCustomDraw(background, DrawWindowBackground)
             .BeginChildElements(background);
 
+        composer.AddStaticText(
+                SVCLang.Get("settings-brand-title"),
+                CairoFont.WhiteSmallishText().WithFontSize(20).WithOrientation(EnumTextOrientation.Center)
+                    .WithColor(new[] { 1.0, 1.0, 1.0, 1.0 }),
+                ElementBounds.Fixed(ContentLeft, 10, activeContentWidth, 30),
+                "brand-title");
+
         composer.AddInteractiveElement(
             new VoiceSettingsIconButton(
                 capi,
-                ElementBounds.Fixed(WindowWidth - 42, 10, 28, 28),
+                ElementBounds.Fixed(windowWidth - 42, 10, 28, 28),
                 FontAwesomeCloseIcon,
                 _ => OnClose()),
             "close");
 
-        double navX = ContentLeft;
-        foreach (VoiceSettingsPage page in pages)
+        if (!home)
         {
-            VoiceSettingsPage captured = page;
-            string key = "nav-" + page.ToString().ToLowerInvariant();
-            double width = page == VoiceSettingsPage.Channels ? 178 : 118;
             AddFlatButton(
                 composer,
-                GetPageName(page),
-                () => SelectPage(captured),
-                ElementBounds.Fixed(navX, 10, width, 32),
-                key,
-                page == selectedPage);
-            navX += width + 3;
+                SVCLang.Get("button-home"),
+                () => SelectPage(VoiceSettingsPage.Home),
+                ElementBounds.Fixed(ContentLeft, 54, 128, 32),
+                "nav-home");
+            if (controller.HasServerControl)
+            {
+                bool showingAdmin = selectedPage == VoiceSettingsPage.Admin;
+                AddFlatButton(
+                    composer,
+                    showingAdmin ? SVCLang.Get("button-channels") : SVCLang.Get("button-admin"),
+                    () => SelectPage(showingAdmin ? VoiceSettingsPage.Channels : VoiceSettingsPage.Admin),
+                    ElementBounds.Fixed(ContentLeft + ContentWidth - 128, 54, 128, 32),
+                    "nav-admin");
+            }
+            composer.AddStaticText(
+                GetPageName(selectedPage),
+                CairoFont.WhiteSmallishText().WithFontSize(16).WithColor(new[] { 0.96, 0.97, 1.0, 1.0 }),
+                ElementBounds.Fixed(ContentLeft + 144, 58, ContentWidth - (controller.HasServerControl ? 330 : 180), 24),
+                "page-title");
         }
 
-        composer
-            .BeginClip(viewport)
-            .BeginChildElements(contentBounds);
+        if (!home)
+        {
+            composer.BeginClip(viewport);
+        }
+        composer.BeginChildElements(contentBounds);
 
         contentHeight = selectedPage switch
         {
+            VoiceSettingsPage.Home => AddHomePage(composer),
             VoiceSettingsPage.Channels => AddChannelsPage(composer),
             VoiceSettingsPage.Admin => AddAdminPage(composer),
             _ => AddAudioPage(composer)
         };
-        contentHeight = Math.Max(ViewportHeight, contentHeight);
+        contentHeight = Math.Max(activeViewportHeight, contentHeight);
         scrollPosition = Math.Clamp(
             scrollPosition,
             0f,
-            (float)Math.Max(0d, contentHeight - ViewportHeight));
+            (float)Math.Max(0d, contentHeight - activeViewportHeight));
         contentBounds.fixedY = -scrollPosition;
 
-        SingleComposer = composer.EndChildElements().EndClip().EndChildElements().Compose();
+        GuiComposer completedComposer = composer.EndChildElements();
+        if (!home)
+        {
+            completedComposer = completedComposer.EndClip();
+        }
+        SingleComposer = completedComposer.EndChildElements().Compose();
     }
 
     public override void OnMouseWheel(MouseWheelEventArgs args)
@@ -201,7 +245,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         float next = Math.Clamp(
             scrollPosition - (float)(args.delta * GuiElement.scaled(36)),
             0f,
-            (float)Math.Max(0d, contentHeight - ViewportHeight));
+            (float)Math.Max(0d, contentHeight - activeViewportHeight));
         if (Math.Abs(next - scrollPosition) > 0.01f)
         {
             OnScroll(next);
@@ -316,6 +360,92 @@ public sealed class VoiceSettingsDialog : GuiDialog
         GetCheckBox(composer, "echoCancellation").Enabled = VoiceProcessingCapabilities.EchoCancellationAvailable;
         GetCheckBox(composer, "occlusion").Enabled = !controller.OcclusionForced;
         return Math.Max(leftY, rightY) + 24;
+    }
+
+    private double AddHomePage(GuiComposer composer)
+    {
+        const double buttonWidth = 180;
+        const double navigationY = 54;
+        const double quickY = 104;
+        const double quickIconSize = 42;
+        const double quickGap = 6;
+
+        // Keep both quick selectors inside the compact home window.  Their
+        // popup is drawn independently, so a selector must never rely on the
+        // popup width to determine the row layout.
+        double quickDropDownWidth = Math.Min(
+            230,
+            Math.Max(
+                160,
+                Math.Floor((activeContentWidth
+                    - ContentLeft
+                    - (ContentLeft + quickIconSize * 3 + quickGap * 3)
+                    - quickGap) / 2d)));
+
+        AddFlatButton(
+            composer,
+            SVCLang.Get("button-settings"),
+            () => SelectPage(VoiceSettingsPage.Audio),
+            ElementBounds.Fixed(ContentLeft, navigationY, buttonWidth, 42),
+            "open-settings",
+            active: true);
+        AddFlatButton(
+            composer,
+            SVCLang.Get("button-channels"),
+            () => SelectPage(VoiceSettingsPage.Channels),
+            ElementBounds.Fixed(ContentLeft + activeContentWidth - buttonWidth - 4, navigationY, buttonWidth, 42),
+            "open-channels");
+
+        double x = ContentLeft;
+        AddIconToggle(composer, MicMutedAsset, MicTalkingAsset, controller.LocalMuted,
+            controller.SetLocalMutedFromSettings, ElementBounds.Fixed(x, quickY, quickIconSize, quickIconSize), "quick-mute");
+        x += quickIconSize + quickGap;
+        AddIconToggle(composer, SpeakerDisabledAsset, SpeakerAsset, controller.GlobalMuted,
+            controller.SetGlobalMutedFromSettings, ElementBounds.Fixed(x, quickY, quickIconSize, quickIconSize), "quick-deafen");
+        x += quickIconSize + quickGap;
+        AddIconToggle(composer, EyeAsset, NoEyeAsset, config.ShowMicrophoneHud,
+            controller.SetHudVisibleFromSettings, ElementBounds.Fixed(x, quickY, quickIconSize, quickIconSize), "quick-hud");
+        x += quickIconSize + quickGap;
+
+        VoiceSettingsChannelOption[] channels = controller.BuildChannelOptions();
+        string[] channelValues = new[] { string.Empty }.Concat(channels.Select(channel => channel.Id)).ToArray();
+        string[] channelNames = new[] { SVCLang.Get("channel-none") }
+            .Concat(channels.Select(channel => channel.Name))
+            .ToArray();
+        composer.AddVoiceDropDown(
+            channelValues,
+            channelNames,
+            Math.Max(0, Array.IndexOf(channelValues, config.SelectedChannelId)),
+            OnQuickChannelChanged,
+            ElementBounds.Fixed(x, quickY, quickDropDownWidth, 42),
+            "quick-channel");
+        x += quickDropDownWidth + quickGap;
+
+        string[] transmitValues = { "proximity", "channel", "both" };
+        string[] transmitNames = transmitValues.Select(value => SVCLang.Get("transmit-" + value)).ToArray();
+        composer.AddVoiceDropDown(
+            transmitValues,
+            transmitNames,
+            Math.Max(0, Array.IndexOf(transmitValues, TransmitCode(config.TransmitTarget))),
+            OnQuickTransmitChanged,
+            ElementBounds.Fixed(x, quickY, quickDropDownWidth, 42),
+            "quick-transmit");
+
+        return quickY + 45;
+    }
+
+    private static void AddIconToggle(
+        GuiComposer composer,
+        AssetLocation onIcon,
+        AssetLocation offIcon,
+        bool value,
+        Action<bool> changed,
+        ElementBounds bounds,
+        string key)
+    {
+        composer.AddInteractiveElement(
+            new VoiceSettingsIconToggleButton(composer.Api, bounds, onIcon, offIcon, value, changed),
+            key);
     }
 
     private double AddChannelsPage(GuiComposer composer)
@@ -614,9 +744,19 @@ public sealed class VoiceSettingsDialog : GuiDialog
         QueueCompose();
     }
 
+    private void OnQuickChannelChanged(string value, bool selected)
+    {
+        OnChannelChanged(value, selected);
+    }
+
     private void OnTransmitChanged(string value, bool selected)
     {
         if (selected) controller.SetTransmitTargetFromSettings(value);
+    }
+
+    private void OnQuickTransmitChanged(string value, bool selected)
+    {
+        OnTransmitChanged(value, selected);
     }
 
     private void OnPlayerChanged(string value, bool selected)
@@ -780,7 +920,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         scrollPosition = Math.Clamp(
             value,
             0f,
-            (float)Math.Max(0d, contentHeight - ViewportHeight));
+            (float)Math.Max(0d, contentHeight - activeViewportHeight));
         if (contentBounds == null) return;
         contentBounds.fixedY = -scrollPosition;
         contentBounds.CalcWorldBounds();
