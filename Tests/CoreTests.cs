@@ -106,6 +106,20 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void GeneratedChannelIdsStayShortAndDeletedNumbersAreNotReused()
+    {
+        ChannelService channels = new();
+        VoiceChannel first = channels.Create("First", "owner", 8, 3, persistent: true);
+
+        Assert.Equal("channel-1", first.Id);
+        Assert.True(channels.Disband("owner", first.Id, administrator: false, out _));
+
+        VoiceChannel second = channels.Create("Second", "owner", 8, 3, persistent: true);
+
+        Assert.Equal("channel-2", second.Id);
+    }
+
+    [Fact]
     public void OwnerCanSetRolesAndModeratorCanManageLowerRoles()
     {
         ChannelService channels = new();
@@ -189,7 +203,8 @@ public sealed class CoreTests
 
         PersistentVoiceChannelConfig channel = Assert.Single(config.PersistentChannels);
         Assert.Equal(4, config.ConfigVersion);
-        Assert.StartsWith("channel-", channel.Id, StringComparison.Ordinal);
+        Assert.Equal("channel-1", channel.Id);
+        Assert.Equal(2, config.NextChannelNumber);
         Assert.NotEqual("legacy-general", channel.Id);
         Assert.Equal("General", channel.Name);
         Assert.Equal(VoiceChannelRole.Owner, channel.Members["owner"]);

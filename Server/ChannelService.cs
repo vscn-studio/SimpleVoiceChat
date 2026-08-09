@@ -7,9 +7,16 @@ public sealed class ChannelService
     private readonly Dictionary<string, VoiceChannel> channelsById = new(StringComparer.Ordinal);
     private readonly Dictionary<string, HashSet<string>> channelIdsByPlayer = new(StringComparer.Ordinal);
     private readonly Dictionary<string, PendingChannelInvite> inviteByTargetUid = new(StringComparer.Ordinal);
+    private long nextChannelNumber;
+
+    public ChannelService(long nextChannelNumber = 1)
+    {
+        this.nextChannelNumber = Math.Max(1, nextChannelNumber);
+    }
 
     public int ChannelCount => channelsById.Count;
     public int PendingInviteCount => inviteByTargetUid.Count;
+    public long NextChannelNumber => nextChannelNumber;
 
     public IEnumerable<VoiceChannel> Channels => channelsById.Values;
 
@@ -22,7 +29,7 @@ public sealed class ChannelService
         string password = "",
         VoiceChannelVisibility visibility = VoiceChannelVisibility.Open)
     {
-        string id = $"channel-{Guid.NewGuid():N}";
+        string id = AllocateChannelId();
         VoiceChannel channel = new(id, name, ownerUid, maxMembers, maxActiveTalkers, persistent, password: password, visibility: visibility);
         channelsById[id] = channel;
         AddMemberIndex(ownerUid, id);
@@ -38,6 +45,7 @@ public sealed class ChannelService
         IReadOnlyDictionary<string, VoiceChannelRole> members,
         int maxChannelsPerPlayer = 8)
     {
+        ObserveChannelId(id);
         int boundedMaxMembers = Math.Clamp(maxMembers, 2, 100);
         int boundedMaxActiveTalkers = Math.Clamp(maxActiveTalkers, 1, 12);
         Dictionary<string, VoiceChannelRole> boundedMembers = BuildBoundedMembers(ownerUid, boundedMaxMembers, members);
@@ -136,6 +144,7 @@ public sealed class ChannelService
         string password = "",
         VoiceChannelVisibility visibility = VoiceChannelVisibility.Open)
     {
+        ObserveChannelId(id);
         if (string.IsNullOrWhiteSpace(id)
             || string.IsNullOrWhiteSpace(ownerUid)
             || channelsById.ContainsKey(id)
@@ -612,6 +621,46 @@ public sealed class ChannelService
         return !channelIdsByPlayer.TryGetValue(playerUid, out HashSet<string>? ids)
             || ids.Contains(channelId)
             || ids.Count < Math.Max(1, maxChannelsPerPlayer);
+    }
+
+    public void EnsureNextChannelNumber(long value)
+    {
+        if (value > nextChannelNumber)
+        {
+            nextChannelNumber = value;
+        }
+    }
+
+    private string AllocateChannelId()
+    {
+        while (true)
+        {
+            if (nextChannelNumber == long.MaxValue)
+            {
+                throw new InvalidOperationException("No channel IDs are available.");
+            }
+
+            string id = VoiceProtocol.GeneratedChannelIdPrefix + nextChannelNumber;
+            nextChannelNumber++;
+            if (!channelsById.ContainsKey(id))
+            {
+                return id;
+            }
+        }
+    }
+
+    private void ObserveChannelId(string id)
+    {
+        string prefix = VoiceProtocol.GeneratedChannelIdPrefix;
+        if (!id.StartsWith(prefix, StringComparison.Ordinal)
+            || !long.TryParse(id[prefix.Length..], out long number)
+            || number <= 0
+            || number == long.MaxValue)
+        {
+            return;
+        }
+
+        EnsureNextChannelNumber(number + 1);
     }
 
     private static bool CanModerateTarget(VoiceChannel channel, string requesterUid, string targetUid, bool administrator)

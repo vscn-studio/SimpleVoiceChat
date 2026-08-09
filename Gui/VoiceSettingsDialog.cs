@@ -111,6 +111,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private double activeViewportHeight = ViewportHeight;
     private double activeContentWidth = ContentWidth;
     private bool composeQueued;
+    private bool syncingSearchInput;
 
     private string selectedPlayerUid = string.Empty;
     private string selectedChannelAction = "invite";
@@ -570,12 +571,23 @@ public sealed class VoiceSettingsDialog : GuiDialog
         composer.AddTextInput(ElementBounds.Fixed(x + 300, y - 2, 330, 34), value =>
         {
             channelSearch = value;
-            QueueCompose();
+            if (!syncingSearchInput)
+            {
+                QueueCompose();
+            }
         }, CairoFont.TextInput(), "channel-search");
         GuiElementTextInput channelSearchInput = composer.GetTextInput("channel-search");
         if (string.Join(string.Empty, channelSearchInput.GetLines()) != channelSearch)
         {
-            channelSearchInput.SetValue(channelSearch);
+            syncingSearchInput = true;
+            try
+            {
+                channelSearchInput.SetValue(channelSearch);
+            }
+            finally
+            {
+                syncingSearchInput = false;
+            }
         }
         channelSearchInput.SetPlaceHolderText(SVCLang.Get("channel-search-placeholder"));
         channelSearchInput.SetMaxLength(VoiceProtocol.MaxControlStringLength);
@@ -852,12 +864,23 @@ public sealed class VoiceSettingsDialog : GuiDialog
         composer.AddTextInput(ElementBounds.Fixed(x + 250, y + 12, 300, 32), value =>
         {
             playerSearch = value;
-            QueueCompose();
+            if (!syncingSearchInput)
+            {
+                QueueCompose();
+            }
         }, CairoFont.TextInput(), "players-search");
         GuiElementTextInput playerSearchInput = composer.GetTextInput("players-search");
         if (string.Join(string.Empty, playerSearchInput.GetLines()) != playerSearch)
         {
-            playerSearchInput.SetValue(playerSearch);
+            syncingSearchInput = true;
+            try
+            {
+                playerSearchInput.SetValue(playerSearch);
+            }
+            finally
+            {
+                syncingSearchInput = false;
+            }
         }
         playerSearchInput.SetPlaceHolderText(SVCLang.Get("player-search-placeholder"));
         playerSearchInput.SetMaxLength(VoiceProtocol.MaxControlStringLength);

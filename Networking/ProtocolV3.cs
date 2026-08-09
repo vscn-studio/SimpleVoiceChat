@@ -5,6 +5,7 @@ namespace SimpleVoiceChat.Networking;
 public static class VoiceProtocol
 {
     public const int CurrentVersion = 3;
+    public const string GeneratedChannelIdPrefix = "channel-";
     public const int CodecImaAdpcm = 1;
     public const int CodecOpus = 2;
     public const int ImaAdpcmPayloadBytes = 164;

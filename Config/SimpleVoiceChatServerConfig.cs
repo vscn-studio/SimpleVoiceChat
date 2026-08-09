@@ -35,13 +35,13 @@ public sealed class SimpleVoiceChatServerConfig
     public bool AllowContinuousTalk { get; set; } = true;
     public bool EnableChannels { get; set; } = true;
     public bool AllowPlayerChannelCreation { get; set; } = true;
+    public long NextChannelNumber { get; set; } = 1;
     public List<string> GloballyMutedPlayerUids { get; set; } = new();
     public List<string> ForceBlockedPlayerUids { get; set; } = new();
     public List<PersistentVoiceChannelConfig> PersistentChannels { get; set; } = new();
 
     public void Normalize()
     {
-        bool migrateLegacyChannelIds = ConfigVersion < 4;
         if (ConfigVersion < 2)
         {
             ConfigVersion = 2;
@@ -78,6 +78,7 @@ public sealed class SimpleVoiceChatServerConfig
         MaxChannels = Math.Clamp(MaxChannels, 16, 512);
         ChannelMemberPageSize = Math.Clamp(ChannelMemberPageSize, 8, 50);
         AuditRetention = Math.Clamp(AuditRetention, 50, 2_000);
+        NextChannelNumber = Math.Max(1, NextChannelNumber);
         GloballyMutedPlayerUids ??= new List<string>();
         ForceBlockedPlayerUids ??= new List<string>();
         PersistentChannels ??= new List<PersistentVoiceChannelConfig>();
@@ -104,13 +105,73 @@ public sealed class SimpleVoiceChatServerConfig
             .Select(group => group.First())
             .Take(MaxChannels)
             .ToList();
-        if (migrateLegacyChannelIds)
+
+        HashSet<string> usedChannelIds = new(StringComparer.Ordinal);
+        HashSet<PersistentVoiceChannelConfig> assignedChannels = new();
+        foreach (PersistentVoiceChannelConfig channel in PersistentChannels)
         {
-            foreach (PersistentVoiceChannelConfig channel in PersistentChannels)
+            if (TryParseGeneratedChannelNumber(channel.Id, out long channelNumber))
             {
-                channel.Id = "channel-" + Guid.NewGuid().ToString("N");
+                string canonicalId = Networking.VoiceProtocol.GeneratedChannelIdPrefix + channelNumber;
+                if (usedChannelIds.Add(canonicalId))
+                {
+                    channel.Id = canonicalId;
+                    assignedChannels.Add(channel);
+                    AdvanceNextChannelNumber(channelNumber);
+                }
             }
         }
+
+        foreach (PersistentVoiceChannelConfig channel in PersistentChannels)
+        {
+            if (assignedChannels.Contains(channel))
+            {
+                continue;
+            }
+            channel.Id = AllocateChannelId(usedChannelIds);
+            usedChannelIds.Add(channel.Id);
+        }
+    }
+
+    private string AllocateChannelId(ISet<string> usedChannelIds)
+    {
+        while (true)
+        {
+            if (NextChannelNumber == long.MaxValue)
+            {
+                throw new InvalidOperationException("No channel IDs are available.");
+            }
+
+            string id = Networking.VoiceProtocol.GeneratedChannelIdPrefix + NextChannelNumber;
+            NextChannelNumber++;
+            if (!usedChannelIds.Contains(id))
+            {
+                return id;
+            }
+        }
+    }
+
+    private void AdvanceNextChannelNumber(long channelNumber)
+    {
+        if (channelNumber >= NextChannelNumber && channelNumber < long.MaxValue)
+        {
+            NextChannelNumber = channelNumber + 1;
+        }
+    }
+
+    private static bool TryParseGeneratedChannelNumber(string id, out long channelNumber)
+    {
+        channelNumber = 0;
+        string prefix = Networking.VoiceProtocol.GeneratedChannelIdPrefix;
+        if (!id.StartsWith(prefix, StringComparison.Ordinal)
+            || !long.TryParse(id[prefix.Length..], out channelNumber)
+            || channelNumber <= 0)
+        {
+            channelNumber = 0;
+            return false;
+        }
+
+        return true;
     }
 
     public float GetRange(VoiceMode mode)

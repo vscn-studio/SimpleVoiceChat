@@ -25,7 +25,7 @@ public sealed class ServerVoiceController : IDisposable
     private readonly Dictionary<string, VoiceTokenBucket> handshakeRatesByUid = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ActiveTalkerNotification> activeTalkersByKey = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> channelProviderWarningMilliseconds = new(StringComparer.Ordinal);
-    private readonly ChannelService channels = new();
+    private readonly ChannelService channels;
     private readonly ListenerStreamArbiter streamArbiter = new();
     private readonly VoiceMetrics metrics = new();
     private readonly VoiceModerationService moderation = new();
@@ -47,6 +47,7 @@ public sealed class ServerVoiceController : IDisposable
         this.config = config;
         this.channelProviders = channelProviders?.Take(32).ToArray() ?? Array.Empty<IVoiceChannelProvider>();
         config.Normalize();
+        channels = new ChannelService(config.NextChannelNumber);
         auditLog = LoadAuditLog(sapi, config.AuditRetention);
         spatialIndex = new VoiceSpatialIndex(config.SpatialCellSize);
         egressBudget = CreateEgressBudget(sapi.World.ElapsedMilliseconds);
@@ -1848,6 +1849,7 @@ public sealed class ServerVoiceController : IDisposable
 
     private void RestorePersistentChannels()
     {
+        channels.EnsureNextChannelNumber(config.NextChannelNumber);
         channels.RemovePersistentChannels();
         foreach (PersistentVoiceChannelConfig stored in config.PersistentChannels)
         {
@@ -1869,6 +1871,7 @@ public sealed class ServerVoiceController : IDisposable
 
     private void SavePersistentChannels()
     {
+        config.NextChannelNumber = channels.NextChannelNumber;
         config.PersistentChannels = channels.Channels
             .Where(channel => channel.Persistent)
             .OrderBy(channel => channel.Id, StringComparer.Ordinal)
