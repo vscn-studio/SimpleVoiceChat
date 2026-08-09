@@ -867,7 +867,8 @@ public sealed class ClientVoiceController : IDisposable
     internal VoiceSettingsChannelOption[] BuildChannelOptions()
     {
         return channelInfos
-            .OrderBy(info => info.Name, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(info => info.LocalRole != VoiceChannelRole.Banned)
+            .ThenBy(info => info.Name, StringComparer.OrdinalIgnoreCase)
             .Select(info => new VoiceSettingsChannelOption(
                 info.ChannelId,
                 info.Name,

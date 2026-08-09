@@ -599,8 +599,33 @@ public sealed class VoiceSettingsDialog : GuiDialog
                 meta += " | " + SVCLang.Get("channel-visibility-" + channel.Visibility.ToString().ToLowerInvariant());
                 composer.AddStaticCustomDraw(ElementBounds.Fixed(x, cardY, width, cardHeight), DrawChannelCardBackground)
                     .AddStaticText(Truncate(channel.Name, 42), label, ElementBounds.Fixed(x + 14, cardY + 7, 480, 24), "channel-name-" + index)
-                    .AddStaticText(Truncate(channel.Id, 42), detail, ElementBounds.Fixed(x + 500, cardY + 7, 240, 18), "channel-id-" + index)
                     .AddStaticText(meta, detail, ElementBounds.Fixed(x + 14, cardY + 32, 560, 18), "channel-meta-" + index);
+                string channelActionLabel = channel.LocalRole == VoiceChannelRole.Banned
+                    ? (channel.Visibility == VoiceChannelVisibility.Password
+                        ? SVCLang.Get("button-join-password")
+                        : SVCLang.Get("button-join-channel"))
+                    : SVCLang.Get("button-select-channel");
+                composer.AddInteractiveElement(
+                    new VoiceSettingsClickArea(composer.Api,
+                        ElementBounds.Fixed(x + 8, cardY + 4, 470, cardHeight - 8),
+                        _ =>
+                        {
+                            if (channel.LocalRole == VoiceChannelRole.Banned)
+                            {
+                                OpenJoinChannelOverlay(channel.Id);
+                            }
+                            else
+                            {
+                                controller.SelectChannelFromSettings(channel.Id);
+                                QueueCompose();
+                            }
+                        }),
+                    "channel-card-action-" + index);
+                AddFlatButton(composer, Truncate(channel.Id, 22), () =>
+                {
+                    CopyChannelId(channel.Id);
+                    return true;
+                }, ElementBounds.Fixed(x + 500, cardY + 12, 150, 34), "channel-id-" + index);
                 VoiceSettingsIconButton settings = new(
                     composer.Api,
                     ElementBounds.Fixed(x + width - 48, cardY + 11, 36, 36),
@@ -611,7 +636,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
                 if (channel.LocalRole == VoiceChannelRole.Banned && !channel.ExternallyManaged)
                 {
                     AddFlatButton(composer,
-                        channel.Visibility == VoiceChannelVisibility.Password ? SVCLang.Get("button-join-password") : SVCLang.Get("button-join-channel"),
+                        channelActionLabel,
                         () =>
                         {
                             OpenJoinChannelOverlay(channel.Id);
@@ -1023,20 +1048,10 @@ public sealed class VoiceSettingsDialog : GuiDialog
             .AddStaticText(SVCLang.Get("label-channel-name"), section, ElementBounds.Fixed(rightX, rightY += 52, columnWidth, 26))
             .AddTextInput(ElementBounds.Fixed(rightX + 217, rightY += 38, 120, 32), OnRenameTextChanged, input, "adminRenameInput");
         AddFlatButton(composer, SVCLang.Get("button-rename-channel"), RenameAdminChannel, ElementBounds.Fixed(rightX + 345, rightY, 76, 32), "adminRename");
-        composer
-            .AddStaticText(SVCLang.Get("ui-section-create-channel"), section, ElementBounds.Fixed(rightX, rightY += 48, columnWidth, 26))
-            .AddTextInput(ElementBounds.Fixed(rightX + 217, rightY += 38, controlWidth, 32), OnCreateNameChanged, input, "createName");
-        rightY += 44;
-        AddFlatButton(composer, SVCLang.Get("channel-action-create"), CreateChannel, ElementBounds.Fixed(rightX + 217, rightY, 120, 32), "createChannel");
-
         composer.GetTextInput("adminRenameInput").SetValue(renameText);
         composer.GetTextInput("adminRenameInput").SetMaxLength(VoiceProtocol.MaxControlStringLength);
-        composer.GetTextInput("createName").SetValue(createName);
-        composer.GetTextInput("createName").SetMaxLength(VoiceProtocol.MaxControlStringLength);
-        composer.GetTextInput("createName").SetPlaceHolderText(SVCLang.Get("placeholder-channel-name"));
         composer.GetButton("adminApply").Enabled = CanExecuteAdminAction();
         composer.GetButton("adminRename").Enabled = CanRenameAdminChannel(channels);
-        composer.GetButton("createChannel").Enabled = !string.IsNullOrWhiteSpace(createName);
         return Math.Max(leftY, rightY) + 60;
     }
 
@@ -1311,6 +1326,13 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private void OnCreatePasswordChanged(string value)
     {
         createPassword = value;
+    }
+
+    private void CopyChannelId(string channelId)
+    {
+        if (string.IsNullOrWhiteSpace(channelId)) return;
+        capi.Input.ClipboardText = channelId;
+        capi.ShowChatMessage(SVCLang.Get("channel-id-copied", channelId));
     }
 
     private void OnCreateVisibilityChanged(string value, bool selected)

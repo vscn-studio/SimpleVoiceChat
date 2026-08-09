@@ -636,6 +636,49 @@ internal sealed class VoiceSettingsIconButton : GuiElementControl
     }
 }
 
+internal sealed class VoiceSettingsClickArea : GuiElementControl
+{
+    private readonly Action<bool>? clicked;
+    private bool pressed;
+
+    public override bool Focusable => Enabled;
+
+    public VoiceSettingsClickArea(ICoreClientAPI capi, ElementBounds bounds, Action<bool>? clicked)
+        : base(capi, bounds)
+    {
+        this.clicked = clicked;
+    }
+
+    public override void ComposeElements(Context ctx, ImageSurface surface)
+    {
+    }
+
+    public override void RenderInteractiveElements(float deltaTime)
+    {
+    }
+
+    public override void OnMouseDownOnElement(ICoreClientAPI api, MouseEvent args)
+    {
+        base.OnMouseDownOnElement(api, args);
+        if (!Enabled) return;
+        pressed = true;
+        args.Handled = true;
+    }
+
+    public override void OnMouseUpOnElement(ICoreClientAPI api, MouseEvent args)
+    {
+        bool wasPressed = pressed;
+        pressed = false;
+        base.OnMouseUpOnElement(api, args);
+        if (wasPressed && Enabled)
+        {
+            api.Gui.PlaySound("menubutton");
+            clicked?.Invoke(true);
+            args.Handled = true;
+        }
+    }
+}
+
 internal sealed class VoiceSettingsImageButton : GuiElementControl
 {
     private readonly ImageSurface imageSurface;
