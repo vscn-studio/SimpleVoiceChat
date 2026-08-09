@@ -582,6 +582,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
         channelSearchInput.SetMaxLength(VoiceProtocol.MaxControlStringLength);
         AddFlatButton(composer, SVCLang.Get("button-search"), ApplyChannelSearch,
             ElementBounds.Fixed(x + 646, y - 2, 100, 34), "channel-search-submit");
+        AddFlatButton(composer, SVCLang.Get("button-cancel"), ClearChannelSearch,
+            ElementBounds.Fixed(x + 752, y - 2, 100, 34), "channel-search-cancel");
         y += 46;
         string normalizedSearch = channelSearch.Trim();
         if (!string.IsNullOrEmpty(normalizedSearch))
@@ -865,6 +867,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
         playerSearchInput.SetMaxLength(VoiceProtocol.MaxControlStringLength);
         AddFlatButton(composer, SVCLang.Get("button-search"), ApplyPlayerSearch,
             ElementBounds.Fixed(x + 560, y + 12, 100, 32), "players-search-submit");
+        AddFlatButton(composer, SVCLang.Get("button-cancel"), ClearPlayerSearch,
+            ElementBounds.Fixed(x + 666, y + 12, 100, 32), "players-search-cancel");
         if (!string.IsNullOrWhiteSpace(playerSearch))
         {
             players = players.Where(player => player.Name.Contains(playerSearch, StringComparison.OrdinalIgnoreCase)
@@ -1206,6 +1210,22 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private bool ApplyPlayerSearch()
     {
         playerSearch = playerSearchDraft;
+        QueueCompose();
+        return true;
+    }
+
+    private bool ClearChannelSearch()
+    {
+        channelSearch = string.Empty;
+        channelSearchDraft = string.Empty;
+        QueueCompose();
+        return true;
+    }
+
+    private bool ClearPlayerSearch()
+    {
+        playerSearch = string.Empty;
+        playerSearchDraft = string.Empty;
         QueueCompose();
         return true;
     }
