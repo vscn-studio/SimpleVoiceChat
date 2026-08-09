@@ -1292,14 +1292,9 @@ public sealed class ClientVoiceController : IDisposable
 
     internal bool HasServerControl => hasServerControl;
 
-    internal string BuildSettingsStatus() => BuildSettingsSummary();
-
-    internal string BuildSettingsDiagnostics() => BuildDiagnosticsSummary();
-
     internal void RequestSettingsRefresh()
     {
         SendChannelCommand("request");
-        SendChannelCommand("diagnostics");
     }
 
     private void OnVoiceRelayFrameV3(VoiceRelayFrameV3Packet packet)

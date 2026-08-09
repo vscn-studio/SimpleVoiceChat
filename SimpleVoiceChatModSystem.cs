@@ -1,6 +1,5 @@
 using SimpleVoiceChat.Config;
 using SimpleVoiceChat.Integration;
-using HarmonyLib;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Server;
@@ -11,7 +10,6 @@ public sealed class SimpleVoiceChatModSystem : ModSystem
 {
     private ClientVoiceController? clientController;
     private ServerVoiceController? serverController;
-    private Harmony? clientHarmony;
     private readonly List<IVoiceChannelProvider> channelProviders = new();
     private readonly HashSet<string> channelProviderIds = new(StringComparer.OrdinalIgnoreCase);
 
@@ -46,8 +44,6 @@ public sealed class SimpleVoiceChatModSystem : ModSystem
 
     public override void StartClientSide(ICoreClientAPI api)
     {
-        clientHarmony = new Harmony("simplevoicechat.gui");
-        clientHarmony.PatchAll(typeof(SimpleVoiceChatModSystem).Assembly);
         SimpleVoiceChatClientConfig config = LoadClientConfig(api);
         clientController = new ClientVoiceController(api, config);
         clientController.Start();
@@ -62,8 +58,6 @@ public sealed class SimpleVoiceChatModSystem : ModSystem
 
     public override void Dispose()
     {
-        clientHarmony?.UnpatchAll("simplevoicechat.gui");
-        clientHarmony = null;
         clientController?.Dispose();
         clientController = null;
         serverController?.Dispose();
