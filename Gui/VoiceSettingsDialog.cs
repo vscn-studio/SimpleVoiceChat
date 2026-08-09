@@ -110,6 +110,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private double contentHeight = ViewportHeight;
     private double activeViewportHeight = ViewportHeight;
     private double activeContentWidth = ContentWidth;
+    private double contentOriginY;
     private bool composeQueued;
 
     private string selectedPlayerUid = string.Empty;
@@ -142,6 +143,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
     public override string? ToggleKeyCombinationCode => null;
     public override bool PrefersUngrabbedMouse => true;
     public override bool DisableMouseGrab => true;
+    public override bool CaptureAllInputs() => true;
+    public override bool CaptureRawMouse() => true;
     public override EnumDialogType DialogType => EnumDialogType.Dialog;
     public override double DrawOrder => 0.48;
     public override double InputOrder => 0.3;
@@ -197,7 +200,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
         ElementBounds background = ElementBounds.Fixed(0, 0, windowWidth, windowHeight);
         double viewportTop = selectedPage == VoiceSettingsPage.Home ? 58 : ContentTop;
         ElementBounds viewport = ElementBounds.Fixed(ContentLeft, viewportTop, activeContentWidth, activeViewportHeight);
-        contentBounds = ElementBounds.Fixed(0, 0, activeContentWidth, activeViewportHeight);
+        contentOriginY = home ? 0 : viewportTop;
+        contentBounds = ElementBounds.Fixed(0, contentOriginY, activeContentWidth, activeViewportHeight);
         bool overlayActive = overlay != VoiceSettingsOverlay.None;
 
         GuiComposer composer = capi.Gui.CreateCompo("simplevoicechat-settings", root);
@@ -242,7 +246,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
                 scrollPosition,
                 0f,
                 (float)Math.Max(0d, contentHeight - activeViewportHeight));
-            contentBounds.fixedY = -scrollPosition;
+            contentBounds.fixedY = contentOriginY - scrollPosition;
 
             composer = composer.EndChildElements();
             if (!home)
@@ -867,8 +871,14 @@ public sealed class VoiceSettingsDialog : GuiDialog
         double playerRowHeight = 52;
         double listHeight = Math.Max(viewport.fixedHeight, players.Length * playerRowHeight);
         playerOverlayScroll = Math.Clamp(playerOverlayScroll, 0f, (float)Math.Max(0d, listHeight - viewport.fixedHeight));
-        ElementBounds listBounds = ElementBounds.Fixed(0, 0, viewport.fixedWidth, listHeight);
-        listBounds.fixedY = -playerOverlayScroll;
+        // The list is clipped in the overlay viewport, so its child origin must
+        // match the viewport origin. A zero-origin child renders visibly but
+        // receives hit tests at the wrong screen coordinates.
+        ElementBounds listBounds = ElementBounds.Fixed(
+            viewport.fixedX,
+            viewport.fixedY - playerOverlayScroll,
+            viewport.fixedWidth,
+            listHeight);
         composer.BeginClip(viewport).BeginChildElements(listBounds);
         for (int index = 0; index < players.Length; index++)
         {
@@ -1532,7 +1542,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             0f,
             (float)Math.Max(0d, contentHeight - activeViewportHeight));
         if (contentBounds == null) return;
-        contentBounds.fixedY = -scrollPosition;
+        contentBounds.fixedY = contentOriginY - scrollPosition;
         contentBounds.CalcWorldBounds();
         SingleComposer?.ReCompose();
     }
