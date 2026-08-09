@@ -130,6 +130,7 @@ public sealed class PersistentVoiceChannelConfig
     public string OwnerUid { get; set; } = string.Empty;
     public int MaxMembers { get; set; } = 100;
     public int MaxActiveTalkers { get; set; } = 3;
+    public string Password { get; set; } = string.Empty;
     public Dictionary<string, Networking.VoiceChannelRole> Members { get; set; } = new(StringComparer.Ordinal);
     public bool Locked { get; set; }
     public List<string> MutedPlayerUids { get; set; } = new();
@@ -140,9 +141,11 @@ public sealed class PersistentVoiceChannelConfig
         Id = (Id ?? string.Empty).Trim();
         Name = (Name ?? string.Empty).Trim();
         OwnerUid = (OwnerUid ?? string.Empty).Trim();
+        Password = (Password ?? string.Empty).Trim();
         Id = Limit(Id);
         Name = Limit(Name);
         OwnerUid = Limit(OwnerUid);
+        Password = Limit(Password);
         MaxMembers = Math.Clamp(MaxMembers, 2, 100);
         MaxActiveTalkers = Math.Clamp(MaxActiveTalkers, 1, 12);
         Members ??= new Dictionary<string, Networking.VoiceChannelRole>(StringComparer.Ordinal);

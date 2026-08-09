@@ -802,7 +802,8 @@ public sealed class ClientVoiceController : IDisposable
         string targetPlayerUid = "",
         string name = "",
         int page = 0,
-        int pageSize = 0)
+        int pageSize = 0,
+        string password = "")
     {
         if (controlChannel?.Connected != true)
         {
@@ -815,7 +816,8 @@ public sealed class ClientVoiceController : IDisposable
             TargetPlayerUid = targetPlayerUid,
             Name = name,
             Page = page,
-            PageSize = pageSize
+            PageSize = pageSize,
+            Password = password
         });
     }
 
@@ -1252,14 +1254,15 @@ public sealed class ClientVoiceController : IDisposable
         string channelId,
         string targetUid = "",
         string name = "",
-        VoiceChannelRole role = VoiceChannelRole.Member)
+        VoiceChannelRole role = VoiceChannelRole.Member,
+        string password = "")
     {
         if (action == "create-channel" || action == "create")
         {
             string channelName = string.IsNullOrWhiteSpace(name)
                 ? $"{SVCLang.Get("channel-default-name")} - {capi.World.Player.PlayerName}"
                 : name.Trim();
-            SendChannelCommand("create", name: channelName);
+            SendChannelCommand("create", name: channelName, password: password);
             return;
         }
 

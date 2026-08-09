@@ -227,6 +227,9 @@ public sealed class ChannelCommandPacket
 
     [ProtoMember(6)]
     public int PageSize;
+
+    [ProtoMember(7)]
+    public string Password = string.Empty;
 }
 
 [ProtoContract]

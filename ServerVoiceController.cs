@@ -787,11 +787,13 @@ public sealed class ServerVoiceController : IDisposable
         packet.ChannelId ??= string.Empty;
         packet.TargetPlayerUid ??= string.Empty;
         packet.Name ??= string.Empty;
+        packet.Password ??= string.Empty;
         string action = (packet.Action ?? string.Empty).Trim().ToLowerInvariant();
         if (action.Length == 0 || action.Length > 32
             || packet.ChannelId.Length > VoiceProtocol.MaxControlStringLength
             || packet.TargetPlayerUid.Length > VoiceProtocol.MaxControlStringLength
-            || packet.Name.Length > VoiceProtocol.MaxControlStringLength)
+            || packet.Name.Length > VoiceProtocol.MaxControlStringLength
+            || packet.Password.Length > VoiceProtocol.MaxControlStringLength)
         {
             SendFeedback(fromPlayer, "invalid-channel-command");
             return;
@@ -1030,7 +1032,8 @@ public sealed class ServerVoiceController : IDisposable
                         fromPlayer.PlayerUID,
                         maxMembers: config.MaxChannelMembers,
                         maxActiveTalkers: config.MaxChannelTalkers,
-                        persistent: true);
+                        persistent: true,
+                        password: packet.Password.Trim());
                     commandSession.SelectedChannelId = channel.Id;
                     SavePersistentChannels();
                     SendChannelSnapshot(fromPlayer);
@@ -1763,7 +1766,8 @@ public sealed class ServerVoiceController : IDisposable
                 stored.Locked,
                 stored.MutedPlayerUids,
                 stored.BannedPlayerUids,
-                config.MaxChannelsPerPlayer);
+                config.MaxChannelsPerPlayer,
+                stored.Password);
         }
     }
 
@@ -1779,6 +1783,7 @@ public sealed class ServerVoiceController : IDisposable
                 OwnerUid = channel.OwnerUid,
                 MaxMembers = channel.MaxMembers,
                 MaxActiveTalkers = channel.MaxActiveTalkers,
+                Password = channel.Password,
                 Members = new Dictionary<string, VoiceChannelRole>(channel.Members, StringComparer.Ordinal),
                 Locked = channel.Locked,
                 MutedPlayerUids = channel.MutedPlayerUids.OrderBy(uid => uid, StringComparer.Ordinal).ToList(),

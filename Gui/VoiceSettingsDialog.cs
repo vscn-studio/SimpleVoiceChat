@@ -1021,7 +1021,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         {
             return false;
         }
-        controller.ManageSelectedChannel("create-channel", string.Empty, name: createName);
+        controller.ManageSelectedChannel("create-channel", string.Empty, name: createName, password: createPassword);
         createName = string.Empty;
         createPassword = string.Empty;
         CloseOverlay();

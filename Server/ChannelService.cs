@@ -18,10 +18,11 @@ public sealed class ChannelService
         string ownerUid,
         int maxMembers,
         int maxActiveTalkers,
-        bool persistent = false)
+        bool persistent = false,
+        string password = "")
     {
         string id = $"channel-{Guid.NewGuid():N}";
-        VoiceChannel channel = new(id, name, ownerUid, maxMembers, maxActiveTalkers, persistent);
+        VoiceChannel channel = new(id, name, ownerUid, maxMembers, maxActiveTalkers, persistent, password: password);
         channelsById[id] = channel;
         AddMemberIndex(ownerUid, id);
         return channel;
@@ -130,7 +131,8 @@ public sealed class ChannelService
         bool locked = false,
         IReadOnlyCollection<string>? mutedPlayerUids = null,
         IReadOnlyCollection<string>? bannedPlayerUids = null,
-        int maxChannelsPerPlayer = 8)
+        int maxChannelsPerPlayer = 8,
+        string password = "")
     {
         if (string.IsNullOrWhiteSpace(id)
             || string.IsNullOrWhiteSpace(ownerUid)
@@ -142,7 +144,7 @@ public sealed class ChannelService
 
         int boundedMaxMembers = Math.Clamp(maxMembers, 2, 100);
         Dictionary<string, VoiceChannelRole> boundedMembers = BuildBoundedMembers(ownerUid, boundedMaxMembers, members);
-        VoiceChannel channel = new(id, name, ownerUid, boundedMaxMembers, maxActiveTalkers, persistent: true);
+        VoiceChannel channel = new(id, name, ownerUid, boundedMaxMembers, maxActiveTalkers, persistent: true, password: password);
         foreach (KeyValuePair<string, VoiceChannelRole> member in boundedMembers)
         {
             if (member.Key == ownerUid)
@@ -602,7 +604,8 @@ public sealed class VoiceChannel
         int maxMembers,
         int maxActiveTalkers,
         bool persistent,
-        bool externallyManaged = false)
+        bool externallyManaged = false,
+        string password = "")
     {
         Id = id;
         Name = NormalizeName(name, "channel");
@@ -611,6 +614,7 @@ public sealed class VoiceChannel
         MaxActiveTalkers = Math.Clamp(maxActiveTalkers, 1, 12);
         Persistent = persistent;
         ExternallyManaged = externallyManaged;
+        Password = NormalizePassword(password);
         Members[ownerUid] = VoiceChannelRole.Owner;
         Revision = 1;
     }
@@ -622,6 +626,7 @@ public sealed class VoiceChannel
     public int MaxActiveTalkers { get; }
     public bool Persistent { get; }
     public bool ExternallyManaged { get; }
+    public string Password { get; }
     public bool Locked { get; private set; }
     public int Revision { get; private set; }
     public Dictionary<string, VoiceChannelRole> Members { get; } = new(StringComparer.Ordinal);
@@ -840,6 +845,14 @@ public sealed class VoiceChannel
     private static string NormalizeName(string? name, string fallback)
     {
         string normalized = string.IsNullOrWhiteSpace(name) ? fallback : name.Trim();
+        return normalized.Length <= VoiceProtocol.MaxControlStringLength
+            ? normalized
+            : normalized[..VoiceProtocol.MaxControlStringLength];
+    }
+
+    private static string NormalizePassword(string? password)
+    {
+        string normalized = (password ?? string.Empty).Trim();
         return normalized.Length <= VoiceProtocol.MaxControlStringLength
             ? normalized
             : normalized[..VoiceProtocol.MaxControlStringLength];
