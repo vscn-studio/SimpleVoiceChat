@@ -192,9 +192,12 @@ public sealed class VoiceSettingsDialog : GuiDialog
         contentBounds = ElementBounds.Fixed(0, 0, activeContentWidth, activeViewportHeight);
         bool overlayActive = overlay != VoiceSettingsOverlay.None;
 
-        GuiComposer composer = capi.Gui.CreateCompo("simplevoicechat-settings", root)
-            .AddStaticCustomDraw(background, DrawWindowBackground)
-            .BeginChildElements(background);
+        GuiComposer composer = capi.Gui.CreateCompo("simplevoicechat-settings", root);
+        if (!overlayActive)
+        {
+            composer.AddStaticCustomDraw(background, DrawWindowBackground);
+        }
+        composer = composer.BeginChildElements(background);
 
         if (!overlayActive)
         {
@@ -396,7 +399,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             CairoFont.WhiteDetailText().WithColor(new[] { 0.78, 0.82, 0.88, 1.0 }),
             ElementBounds.Fixed(controlX + 404, recordingY + 3, 190, 30));
 
-        // Keep the first behavior row clear of the recording controls.
+        // Keep the first behavior row clear of the recording and playback controls.
         y = recordingY + 54;
         double behaviorY = y;
         AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-mic-muted"), "localMute", controller.LocalMuted, controller.SetLocalMutedFromSettings);
@@ -567,7 +570,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private void AddOverlay(GuiComposer composer)
     {
-        composer.AddStaticCustomDraw(ElementBounds.Fixed(0, 0, WindowWidth, WindowHeight), DrawOverlayScrim);
         switch (overlay)
         {
             case VoiceSettingsOverlay.Channel:
@@ -781,15 +783,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
     {
         composer.AddInteractiveElement(
             new VoiceSettingsIconButton(capi, ElementBounds.Fixed(x + width - 44, y + 12, 30, 30), FontAwesomeCloseIcon, _ => close()), key);
-    }
-
-    private static void DrawOverlayScrim(Context ctx, ImageSurface surface, ElementBounds bounds)
-    {
-        bounds.CalcWorldBounds();
-        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
-        // Modal dialogs fully cover the underlying channel/player page.
-        ctx.SetSourceRGBA(0.0, 0.0, 0.0, 1.0);
-        ctx.Fill();
     }
 
     private static void DrawOverlayPanel(Context ctx, ImageSurface surface, ElementBounds bounds)
