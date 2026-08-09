@@ -71,9 +71,9 @@ internal sealed class VoiceSettingsSlider : GuiElementSlider
         using (Context handleContext = new(handleSurface))
         {
             handleContext.Rectangle(0, 0, handleWidth, handleHeight);
-            handleContext.SetSourceRGBA(0.96, 0.97, 0.99, Enabled ? 0.98 : 0.45);
+            handleContext.SetSourceRGBA(0.24, 0.12, 0.06, Enabled ? 0.98 : 0.45);
             handleContext.FillPreserve();
-            handleContext.SetSourceRGBA(0.40, 0.46, 0.54, Enabled ? 1 : 0.45);
+            handleContext.SetSourceRGBA(0.46, 0.28, 0.16, Enabled ? 1 : 0.45);
             handleContext.LineWidth = GuiElement.scaled(1);
             handleContext.Stroke();
             GuiElement.GenerateTexture(api, handleSurface, ref handleTexture.TextureId);
@@ -522,7 +522,53 @@ internal sealed class VoiceSettingsIconButton : GuiElementControl
             ctx.LineTo(inset, Bounds.OuterHeight - inset);
             ctx.Stroke();
         }
+        else if (darkIcon && iconName == "svc-fa-gear")
+        {
+            DrawGearFallback(ctx, Bounds.OuterWidth, Bounds.OuterHeight);
+        }
+        else if (darkIcon && iconName == "svc-fa-users")
+        {
+            DrawUsersFallback(ctx, Bounds.OuterWidth, Bounds.OuterHeight);
+        }
         GuiElement.GenerateTexture(api, surface, ref textureId);
+    }
+
+    private static void DrawGearFallback(Context ctx, double width, double height)
+    {
+        double cx = width / 2d;
+        double cy = height / 2d;
+        ctx.Save();
+        ctx.SetSourceRGBA(0.02, 0.025, 0.032, 1.0);
+        ctx.LineWidth = GuiElement.scaled(4);
+        ctx.LineCap = LineCap.Butt;
+        for (int index = 0; index < 8; index++)
+        {
+            double angle = index * Math.PI / 4d;
+            ctx.MoveTo(cx + Math.Cos(angle) * GuiElement.scaled(6), cy + Math.Sin(angle) * GuiElement.scaled(6));
+            ctx.LineTo(cx + Math.Cos(angle) * GuiElement.scaled(11), cy + Math.Sin(angle) * GuiElement.scaled(11));
+        }
+        ctx.Stroke();
+        ctx.Arc(cx, cy, GuiElement.scaled(8), 0, Math.PI * 2);
+        ctx.Fill();
+        ctx.SetSourceRGBA(0.62, 0.66, 0.72, 1.0);
+        ctx.Arc(cx, cy, GuiElement.scaled(3), 0, Math.PI * 2);
+        ctx.Fill();
+        ctx.Restore();
+    }
+
+    private static void DrawUsersFallback(Context ctx, double width, double height)
+    {
+        double cx = width / 2d;
+        double top = GuiElement.scaled(7);
+        ctx.Save();
+        ctx.SetSourceRGBA(0.02, 0.025, 0.032, 1.0);
+        ctx.Arc(cx - GuiElement.scaled(5), top + GuiElement.scaled(4), GuiElement.scaled(4), 0, Math.PI * 2);
+        ctx.Arc(cx + GuiElement.scaled(5), top + GuiElement.scaled(4), GuiElement.scaled(4), 0, Math.PI * 2);
+        ctx.Fill();
+        GuiElement.RoundRectangle(ctx, cx - GuiElement.scaled(11), top + GuiElement.scaled(10), GuiElement.scaled(12), GuiElement.scaled(10), GuiElement.scaled(2));
+        GuiElement.RoundRectangle(ctx, cx - GuiElement.scaled(1), top + GuiElement.scaled(10), GuiElement.scaled(12), GuiElement.scaled(10), GuiElement.scaled(2));
+        ctx.Fill();
+        ctx.Restore();
     }
 
     public override void RenderInteractiveElements(float deltaTime)

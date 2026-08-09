@@ -322,7 +322,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
         const double controlWidth = 600;
         const double controlHeight = 34;
         double y = 0;
-        CairoFont section = CairoFont.WhiteSmallishText().WithColor(new[] { 0.96, 0.97, 1.0, 1.0 });
         CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
 
         string[] inputValues = controller.GetInputDeviceValues();
@@ -348,9 +347,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         ConfigureSlider(composer, "micGain", (int)Math.Round(config.MicGain * 100), 10, 400, "%");
         ConfigureSlider(composer, "noiseGate", (int)Math.Round(config.NoiseGate * 1000), 0, 200);
 
-        y += 56;
-        composer.AddStaticText(SVCLang.Get("ui-section-behavior"), section, ElementBounds.Fixed(labelX, y, 868, 26));
-        y += 36;
+        y += 24;
         double behaviorY = y;
         AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-mic-muted"), "localMute", controller.LocalMuted, controller.SetLocalMutedFromSettings);
         AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-deafened"), "globalMute", controller.GlobalMuted, controller.SetGlobalMutedFromSettings);
@@ -698,7 +695,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
     {
         bounds.CalcWorldBounds();
         ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
-        ctx.SetSourceRGBA(0.0, 0.0, 0.0, 0.52);
+        // Modal dialogs fully cover the underlying channel/player page.
+        ctx.SetSourceRGBA(0.0, 0.0, 0.0, 0.96);
         ctx.Fill();
     }
 
@@ -1220,6 +1218,19 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private void OnClose()
     {
+        if (overlay != VoiceSettingsOverlay.None)
+        {
+            overlay = VoiceSettingsOverlay.None;
+            QueueCompose();
+            return;
+        }
+        if (selectedPage != VoiceSettingsPage.Home)
+        {
+            selectedPage = VoiceSettingsPage.Home;
+            scrollPosition = 0;
+            Compose();
+            return;
+        }
         TryClose();
     }
 
