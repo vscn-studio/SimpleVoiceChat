@@ -1,390 +1,190 @@
 <h1>SimpleVoiceChat User and Administration Guide</h1>
 <table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr>
 <th style="padding: 6px 8px; text-align: left;">Item</th>
-<th style="padding: 6px 8px; text-align: left;">Documented Version</th>
+<th style="padding: 6px 8px; text-align: left;">Current Release</th>
 </tr></thead><tbody>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Mod name</td>
-<td style="padding: 6px 8px; vertical-align: top;">SimpleVoiceChat</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Mod version</td>
-<td style="padding: 6px 8px; vertical-align: top;"><code>0.2.0</code></td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Game version</td>
-<td style="padding: 6px 8px; vertical-align: top;">Vintage Story <code>1.22.2</code></td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Installation scope</td>
-<td style="padding: 6px 8px; vertical-align: top;">Required on both the client and the server</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Document verification date</td>
-<td style="padding: 6px 8px; vertical-align: top;"><code>2026-07-28</code></td>
-</tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Mod name</td><td style="padding: 6px 8px; vertical-align: top;">SimpleVoiceChat</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Mod version</td><td style="padding: 6px 8px; vertical-align: top;"><code>1.0.0</code></td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Game version</td><td style="padding: 6px 8px; vertical-align: top;">Vintage Story <code>1.22.2</code></td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Voice protocol</td><td style="padding: 6px 8px; vertical-align: top;">Protocol V3; Opus is the preferred codec, and the server configuration determines whether ADPCM fallback is allowed</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Installation scope</td><td style="padding: 6px 8px; vertical-align: top;">The same version must be installed on both the client and server</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Documentation verified</td><td style="padding: 6px 8px; vertical-align: top;"><code>2026-08-10</code></td></tr>
 </tbody></table>
-<p>SimpleVoiceChat is a client-and-server voice chat mod designed for multiplayer servers and civilization simulation events. It provides proximity voice chat, temporary squads, civilization, command, diplomacy, staff, broadcast, and radio channels, together with per-player volume controls, role permissions, channel administration, moderation, and connection diagnostics.</p>
-<div style="border-left: 4px solid #e03e2d; padding: 8px 12px; margin: 12px 0; background-color: #fff5f5;"><p style="color: #e03e2d; margin: 0;"><strong>Important:</strong> By default every player can create a channel. An administrator can disable this with <code>/svc channelallow off</code>. Channel visibility controls whether a channel is listed: open channels can be joined directly, password channels require a password, and hidden channels are only reachable through an invitation.</p></div>
-<h2>1. Installation and Joining a Server</h2>
+<p>SimpleVoiceChat provides proximity voice chat, whisper/normal/shout modes, custom channels, per-player local volume and muting, recording, audio processing, permission management, and capacity safeguards. The server handles only authentication, routing, and forwarding; clients handle capture, playback, and local settings.</p>
+<div style="border-left: 4px solid #e03e2d; padding: 8px 12px; margin: 12px 0; background-color: #fff5f5;"><p style="color: #e03e2d; margin: 0;"><strong>Important:</strong> The current release uses protocol V3. The voice handshake may be rejected when the client and server versions do not match. Do not install multiple SimpleVoiceChat ZIP files at the same time.</p></div>
+
+<h2>1. Installation and First Launch</h2>
 <ol>
-<li>Close the Vintage Story client and server.</li>
-<li>Delete the older SimpleVoiceChat mod archive so that two versions are not loaded on the same side.</li>
-<li>Place <code>SimpleVoiceChat-v0.2.0.zip</code> in the client's <code>Mods</code> directory.</li>
-<li>Place the same archive in the server's <code>Mods</code> directory.</li>
-<li>Start the server, then start the client and join the world.</li>
-<li>After entering the world, press <code>'</code> and confirm that the SimpleVoiceChat window opens.</li>
-<li>Open the Status page, confirm that the server handshake has completed, and check the UDP, RTT, and probe packet-loss information.</li>
+<li>Shut down the Vintage Story client and server.</li>
+<li>Delete old SimpleVoiceChat ZIP files from the Mods directory, leaving only the version you intend to use.</li>
+<li>Place <code>SimpleVoiceChat-v1.0.0.zip</code> in the <code>Mods</code> directory on both the client and server.</li>
+<li>Start the server first, then start the client and join the world.</li>
+<li>On first use, the chat box prompts you to press <code>'</code> to open settings. The prompt itself does not open a window.</li>
+<li>Press <code>'</code> to open the initial setup wizard. On the welcome page, you can choose "Skip Initial Setup and Open Settings," select "Cancel" to close the wizard, or select "Confirm" to begin configuration.</li>
 </ol>
-<div style="border-left: 4px solid #e03e2d; padding: 8px 12px; margin: 12px 0; background-color: #fff5f5;"><p style="color: #e03e2d; margin: 0;"><strong>Important:</strong> Version <code>0.2.0</code> uses voice protocol V2 by default and is not compatible with <code>0.1.x</code> clients. The server and every client participating in voice chat should use the same version. Do not rely on <code>AllowLegacyProtocol</code> or an ADPCM fallback as a substitute for a complete upgrade during a live event.</p></div>
+<p>The wizard configures the input device, output device, speaking method, microphone level test, noise gate, and voice-activation threshold in sequence. It appears as a centered dialog and does not cover the entire game viewport. Push-to-talk uses <code>N</code> by default. After you complete or skip the wizard, pressing <code>'</code> opens the main settings window.</p>
+
 <h2>2. Default Key Bindings</h2>
-<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr>
-<th style="padding: 6px 8px; text-align: left;">Function</th>
-<th style="padding: 6px 8px; text-align: left;">Default key binding</th>
-<th style="padding: 6px 8px; text-align: left;">Result</th>
-</tr></thead><tbody>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Push to talk</td>
-<td style="padding: 6px 8px; vertical-align: top;"><code>N</code></td>
-<td style="padding: 6px 8px; vertical-align: top;">Transmits microphone audio while held and stops when released</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Push-to-talk / voice activation</td>
-<td style="padding: 6px 8px; vertical-align: top;"><code>Alt + N</code></td>
-<td style="padding: 6px 8px; vertical-align: top;">Toggles push-to-talk and voice activation. Voice activation continuously monitors the microphone and sends when the trigger threshold is exceeded.</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Change speaking mode</td>
-<td style="padding: 6px 8px; vertical-align: top;"><code>[</code> or <code>]</code></td>
-<td style="padding: 6px 8px; vertical-align: top;">Cycles between whisper, normal speech, and shout</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Mute local microphone</td>
-<td style="padding: 6px 8px; vertical-align: top;"><code>Ctrl + -</code></td>
-<td style="padding: 6px 8px; vertical-align: top;">Stops transmitting your microphone</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Stop or resume listening</td>
-<td style="padding: 6px 8px; vertical-align: top;"><code>;</code></td>
-<td style="padding: 6px 8px; vertical-align: top;">Stops or resumes playback of all voice audio</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Open the voice window</td>
-<td style="padding: 6px 8px; vertical-align: top;"><code>'</code></td>
-<td style="padding: 6px 8px; vertical-align: top;">Opens the Audio, Channels &amp; Players, Status, and other pages</td>
-</tr>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Function</th><th style="padding: 6px 8px; text-align: left;">Default key</th><th style="padding: 6px 8px; text-align: left;">Description</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Push to Talk</td><td style="padding: 6px 8px; vertical-align: top;"><code>N</code></td><td style="padding: 6px 8px; vertical-align: top;">Hold to transmit microphone audio; release to stop.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Push-to-Talk / Voice Activation</td><td style="padding: 6px 8px; vertical-align: top;"><code>Alt + N</code></td><td style="padding: 6px 8px; vertical-align: top;">Switches between push-to-talk and voice-activated transmission (open mic).</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Change speaking mode</td><td style="padding: 6px 8px; vertical-align: top;"><code>[</code> or <code>]</code></td><td style="padding: 6px 8px; vertical-align: top;">Cycles through Whisper, Normal, and Shout.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Mute microphone</td><td style="padding: 6px 8px; vertical-align: top;"><code>Ctrl + -</code></td><td style="padding: 6px 8px; vertical-align: top;">Stops transmitting your microphone audio.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Deafen / Undeafen</td><td style="padding: 6px 8px; vertical-align: top;"><code>;</code></td><td style="padding: 6px 8px; vertical-align: top;">Stops or resumes playback of all remote voice audio.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Open voice window</td><td style="padding: 6px 8px; vertical-align: top;"><code>'</code></td><td style="padding: 6px 8px; vertical-align: top;">Opens the wizard on first use and the main settings window afterward.</td></tr>
 </tbody></table>
-<p>The default push-to-talk binding is <code>N</code> and the mode toggle remains <code>Alt + N</code>. To change the key, use the <code>Simple Voice Chat</code> category of the game's control settings; the first-time setup guide no longer contains a key-capture field.</p>
-<h2>3. First-Time Setup and Microphone Check</h2>
+<p>The default push-to-talk key is <code>N</code>; <code>Alt + N</code> is reserved for switching between push-to-talk and voice activation. To change a binding, use the Simple Voice Chat category in the game's key-binding settings. The initial setup wizard no longer includes a key-capture control.</p>
+
+<h2>3. Speaking Methods and Voice Activation</h2>
+<p><strong>Push-to-talk:</strong> Transmits voice while you hold the assigned key (default: <code>N</code>).</p>
+<p><strong>Voice activation (open mic):</strong> The microphone continuously monitors input but begins transmitting only when the level exceeds the activation threshold. A single rectangular level meter in the wizard shows the live microphone level and includes two slider handles: the noise gate filters background noise, while the activation threshold determines when transmission begins. You can adjust both handles while speaking.</p>
+
+<h2>4. Main Window and Settings Page</h2>
+<p>The main window is a compact home page. <strong>Simple Voice Chat</strong> is centered at the top, with "Settings" and "Channels" below it. Players with the <code>controlserver</code> privilege also see "Administration." The bottom of the home page contains a row of square icon buttons and two quick-selection menus:</p>
+<ul>
+<li>Microphone icon: enables or mutes the local microphone.</li>
+<li>Speaker icon: deafens or undeafens local voice playback.</li>
+<li>Eye icon: shows or hides the HUD in the lower-right corner.</li>
+<li>Record icon: starts or stops a recording to file. When starting, you first choose a recording mode.</li>
+<li>Quick Channel: selects the current channel; a blank value means no channel is selected.</li>
+<li>Quick Transmission Mode: Proximity Only, Current Channel Only, or Proximity and Current Channel.</li>
+</ul>
+<p>Only the current dialog layer is displayed. Closing a dialog returns to the previous layer instead of leaving multiple interactive windows stacked on screen.</p>
+
+<h3>Settings (Audio)</h3>
+<p>The "Settings" page uses single-row controls for the input device, output device, playback volume, and microphone gain. The noise gate and activation threshold for voice activation are configured in the initial setup wizard and can also be adjusted later in their corresponding settings. Slider values are displayed inside the sliders without being obscured by the handles.</p>
+<p>"Microphone Test" is a local-only test. It does not transmit to the server or write a recording file. Select "Start Recording" to begin, "Stop Recording" to finish, and then "Play Recording" or "Stop Playback" to check your speakers. Test audio is held in memory and is discarded when you leave the game.</p>
+<p>The switches below include Microphone Mute, Deafen, Adaptive Jitter Buffering, Occlusion/Propagation Correction, and Performance Mode. Noise suppression and echo cancellation settings are not currently shown in the interface. Occlusion cannot be disabled when the server enforces it.</p>
+
+<h2>5. Proximity Voice Chat</h2>
+<p>Proximity voice chat does not require channel membership. The default server ranges are:</p>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Mode</th><th style="padding: 6px 8px; text-align: left;">Default range</th><th style="padding: 6px 8px; text-align: left;">Use</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Whisper</td><td style="padding: 6px 8px; vertical-align: top;"><code>8</code> blocks</td><td style="padding: 6px 8px; vertical-align: top;">Private conversation at close range.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Normal</td><td style="padding: 6px 8px; vertical-align: top;"><code>18</code> blocks</td><td style="padding: 6px 8px; vertical-align: top;">Everyday conversation.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Shout</td><td style="padding: 6px 8px; vertical-align: top;"><code>35</code> blocks</td><td style="padding: 6px 8px; vertical-align: top;">Reaching players farther away.</td></tr>
+</tbody></table>
+<p>Server administrators can change these ranges with <code>/svc setrange whisper|talk|shout &lt;blocks&gt;</code>. The server also imposes a maximum range.</p>
+
+<h2>6. Channel Page and Pagination</h2>
+<p>All players can view the channels they are authorized to see. Administrators can view every channel. Ordinary players cannot see Hidden channels unless they have already joined them. Open channels can be joined directly, Password channels prompt for a password, and Hidden channels require an invitation from a Channel Moderator or Owner.</p>
 <ol>
-<li>On first use, press <code>'</code> to open the centered setup dialog. It is a modal panel and does not draw a full-screen opaque overlay over the game view.</li>
-<li>Select the microphone you actually use under Input Device. The mod restarts audio capture after the device is changed.</li>
-<li>Choose Push-to-talk or Voice activation. For Voice activation, use the single rectangular microphone meter with two draggable handles: Noise gate filters background noise, while Trigger threshold starts transmission when speech is loud enough.</li>
-<li>Adjust Playback Volume and Microphone Gain on the final levels step. The guide no longer uses a key-selection drop-down or a separate “continuous talk” option.</li>
-<li>Confirm that Mute and Deafen are not enabled.</li>
-<li>Use the microphone test controls to record, pause or stop, and play the captured clip. The test stays in memory and is not written to a file or sent to the server.</li>
-<li>Open the Status page and confirm that a connection has been established. Return to the game and hold <code>N</code> to test an actual conversation.</li>
+<li>Select "Channels" on the home page.</li>
+<li>Enter a channel name or ID in the search box at the top, then select "Search." The list does not refresh as you type. Select "Cancel" on the right to clear the search and restore all visible channels.</li>
+<li>Each channel card shows its name, member count, lock state, channel type, and unique ID. Select the ID to copy it to the clipboard.</li>
+<li>Select a card or the "Select Channel" button to make it the current channel. Select the gear icon to open channel settings. For an Open or Password channel you have not joined, select Join.</li>
 </ol>
-<div style="border-left: 4px solid #2f6f9f; padding: 8px 12px; margin: 12px 0; background-color: #f5f9fc;"><p style="margin: 0;"><strong>Note:</strong> Noise suppression and echo cancellation settings are intentionally hidden from the current interface. Basic high-pass filtering, gain control, soft limiting, the noise gate, and voice activity detection still work.</p></div>
-<h2>4. Proximity Voice Chat and Transmission Targets</h2>
-<p>Proximity voice chat does not require you to join a channel. The default ranges are shown below; server administrators can change these values.</p>
-<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr>
-<th style="padding: 6px 8px; text-align: left;">Speaking mode</th>
-<th style="padding: 6px 8px; text-align: left;">Default range</th>
-<th style="padding: 6px 8px; text-align: left;">Suitable use</th>
-</tr></thead><tbody>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Whisper</td>
-<td style="padding: 6px 8px; vertical-align: top;"><code>8</code> blocks</td>
-<td style="padding: 6px 8px; vertical-align: top;">Private conversation at close range</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Normal speech</td>
-<td style="padding: 6px 8px; vertical-align: top;"><code>18</code> blocks</td>
-<td style="padding: 6px 8px; vertical-align: top;">Everyday conversation</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Shout</td>
-<td style="padding: 6px 8px; vertical-align: top;"><code>35</code> blocks</td>
-<td style="padding: 6px 8px; vertical-align: top;">Alerting nearby players from farther away</td>
-</tr>
+<p>The channel list displays up to six rows per page. Use "Previous / Page X / Y / Next" at the bottom of the list to change pages. Previous and Next are disabled automatically on the first and last pages. The player icon at the bottom opens the player list, and "Create Channel" opens the channel-creation dialog.</p>
+
+<h3>Creating a Channel</h3>
+<p>By default, all players can create channels. A server administrator can prevent ordinary players from creating channels with <code>/svc channelallow off</code> and restore permission with <code>/svc channelallow on</code>. When creating a channel, enter a name, optionally enter a password, and choose a type:</p>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Type</th><th style="padding: 6px 8px; text-align: left;">List visibility</th><th style="padding: 6px 8px; text-align: left;">How to join</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Open</td><td style="padding: 6px 8px; vertical-align: top;">Visible</td><td style="padding: 6px 8px; vertical-align: top;">Players can join directly.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Password</td><td style="padding: 6px 8px; vertical-align: top;">Visible</td><td style="padding: 6px 8px; vertical-align: top;">Players can join after entering the correct password.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Hidden</td><td style="padding: 6px 8px; vertical-align: top;">Hidden from ordinary players; visible to administrators</td><td style="padding: 6px 8px; vertical-align: top;">Players must be invited by the Channel Owner or a Channel Moderator.</td></tr>
 </tbody></table>
-<p>After joining a channel, first select the Current Channel on the Channels &amp; Players page, then choose a transmission target:</p>
-<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr>
-<th style="padding: 6px 8px; text-align: left;">Transmission target</th>
-<th style="padding: 6px 8px; text-align: left;">Who receives it</th>
-<th style="padding: 6px 8px; text-align: left;">Usage note</th>
-</tr></thead><tbody>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Proximity Only</td>
-<td style="padding: 6px 8px; vertical-align: top;">Players within range</td>
-<td style="padding: 6px 8px; vertical-align: top;">Audio is not sent to the current channel</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Current Channel Only</td>
-<td style="padding: 6px 8px; vertical-align: top;">Members of the current channel who are allowed to listen</td>
-<td style="padding: 6px 8px; vertical-align: top;">Not limited by proximity range</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Proximity and Current Channel</td>
-<td style="padding: 6px 8px; vertical-align: top;">Nearby players and members of the current channel</td>
-<td style="padding: 6px 8px; vertical-align: top;">A listener reached through both paths hears the audio only once</td>
-</tr>
+<p>The creator becomes the Channel Owner. Channel IDs use the unique, never-reused format <code>channel-number</code>, for example <code>channel-12</code>. A channel can contain up to 100 members and allows up to three simultaneous speakers by default.</p>
+
+<h3>Channel Roles and Actions</h3>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Role</th><th style="padding: 6px 8px; text-align: left;">Permissions</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Owner</td><td style="padding: 6px 8px; vertical-align: top;">The channel creator. Owners can invite and remove lower-ranking members; mute or ban them within the channel; assign roles; and lock, unlock, or disband their own channel. The current interface places the rename control on the Administration page.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Channel Moderator</td><td style="padding: 6px 8px; vertical-align: top;">Can invite players and remove, mute, unmute, ban, or unban lower-ranking members. Cannot change the Owner.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Member</td><td style="padding: 6px 8px; vertical-align: top;">Can speak and listen, subject to speaking slots, mutes, and server moderation. Can leave the channel.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Listen Only</td><td style="padding: 6px 8px; vertical-align: top;">Can listen but cannot speak in the channel.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Banned</td><td style="padding: 6px 8px; vertical-align: top;">Cannot join or use the channel.</td></tr>
 </tbody></table>
-<div style="border-left: 4px solid #e03e2d; padding: 8px 12px; margin: 12px 0; background-color: #fff5f5;"><p style="color: #e03e2d; margin: 0;"><strong>Important:</strong> Check your transmission target before participating in an event. When Current Channel Only or Proximity and Current Channel is selected, a local conversation may be transmitted to a civilization, staff, or broadcast channel.</p></div>
-<h2>5. Channel Types</h2>
-<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr>
-<th style="padding: 6px 8px; text-align: left;">Channel</th>
-<th style="padding: 6px 8px; text-align: left;">Default speaking rules</th>
-<th style="padding: 6px 8px; text-align: left;">How it is created</th>
-</tr></thead><tbody>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Squad</td>
-<td style="padding: 6px 8px; vertical-align: top;">Squad members can speak; defaults to a maximum of 12 members and 3 concurrent speaking slots</td>
-<td style="padding: 6px 8px; vertical-align: top;">Created automatically after an ordinary player sends an invitation and the other player accepts it</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Civilization</td>
-<td style="padding: 6px 8px; vertical-align: top;">Members can speak; defaults to 3 concurrent speaking slots</td>
-<td style="padding: 6px 8px; vertical-align: top;">Created by an administrator or supplied by an external civilization mod</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Command</td>
-<td style="padding: 6px 8px; vertical-align: top;">Only the owner and officers can speak; defaults to 2 concurrent speaking slots</td>
-<td style="padding: 6px 8px; vertical-align: top;">Created by an administrator</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Diplomacy</td>
-<td style="padding: 6px 8px; vertical-align: top;">Authorized members can speak; defaults to 3 concurrent speaking slots</td>
-<td style="padding: 6px 8px; vertical-align: top;">Created by an administrator</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Staff</td>
-<td style="padding: 6px 8px; vertical-align: top;">Members can speak; routing has a higher priority</td>
-<td style="padding: 6px 8px; vertical-align: top;">Created by an administrator</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Broadcast</td>
-<td style="padding: 6px 8px; vertical-align: top;">Only the owner and officers can speak; other members should generally be assigned Listen Only</td>
-<td style="padding: 6px 8px; vertical-align: top;">Created by an administrator</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Radio</td>
-<td style="padding: 6px 8px; vertical-align: top;">Membership and frequency semantics are defined by an administrator or external provider</td>
-<td style="padding: 6px 8px; vertical-align: top;">Created by an administrator or supplied by an external system</td>
-</tr>
-</tbody></table>
-<div style="border-left: 4px solid #2f6f9f; padding: 8px 12px; margin: 12px 0; background-color: #f5f9fc;"><p style="margin: 0;"><strong>Note:</strong> A concurrent speaking slot is one speaker whose audio is actually being forwarded at a given moment. All eligible members can attempt to speak, but when a channel is busy they may be told that all speaking slots in the current channel are occupied and to try again later.</p></div>
-<h2>6. Creating and Using a Temporary Squad</h2>
-<h3>Creating a New Squad</h3>
-<ol>
-<li>Make sure squad channels are enabled on the server.</li>
-<li>Move close to the target player. The default required range is <code>4</code> blocks.</li>
-<li>Face the target player and enter <code>/svc bind</code>, or enter <code>/svc bind &lt;player name&gt;</code> directly.</li>
-<li>The target player receives a Squad Invitation panel in the lower-right corner.</li>
-<li>The target player must click Accept Invitation within <code>10</code> seconds, or can enter <code>/svc accept</code>.</li>
-<li>After the invitation is accepted, the system automatically creates a temporary squad channel and adds both players to it.</li>
-<li>Select the squad channel on the Channels &amp; Players page, then choose Current Channel Only or Proximity and Current Channel as needed.</li>
-</ol>
-<h3>Leaving, Inviting, and Merging</h3>
-<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr>
-<th style="padding: 6px 8px; text-align: left;">Situation</th>
-<th style="padding: 6px 8px; text-align: left;">Rule</th>
-</tr></thead><tbody>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Not yet in a squad</td>
-<td style="padding: 6px 8px; vertical-align: top;">You can invite another player; accepting the invitation creates a new squad</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Already an ordinary squad member</td>
-<td style="padding: 6px 8px; vertical-align: top;">You cannot invite additional members; only the squad owner or an officer can invite</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Merging two existing squads</td>
-<td style="padding: 6px 8px; vertical-align: top;">Both the inviter and recipient must be an owner or officer of their respective squad, and the merged squad must not exceed the membership or channel limits</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Leaving a squad</td>
-<td style="padding: 6px 8px; vertical-align: top;">Select Leave Channel in the interface, or enter <code>/svc unbind</code></td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Disbanding a squad</td>
-<td style="padding: 6px 8px; vertical-align: top;">Only the squad owner or a server administrator can do this</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Invitation is not handled</td>
-<td style="padding: 6px 8px; vertical-align: top;">It is automatically treated as declined after <code>10</code> seconds</td>
-</tr>
-</tbody></table>
-<div style="border-left: 4px solid #e03e2d; padding: 8px 12px; margin: 12px 0; background-color: #fff5f5;"><p style="color: #e03e2d; margin: 0;"><strong>Important:</strong> A squad invitation is not a way to freely create a formal channel. Ordinary players cannot enter a name, choose a channel type, or create a persistent channel. Accepting an invitation only creates a system-managed temporary squad.</p></div>
-<h2>7. Channel Roles and Ordinary Member Permissions</h2>
-<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr>
-<th style="padding: 6px 8px; text-align: left;">Role</th>
-<th style="padding: 6px 8px; text-align: left;">What the role can do</th>
-<th style="padding: 6px 8px; text-align: left;">What the role cannot do</th>
-</tr></thead><tbody>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Listen Only</td>
-<td style="padding: 6px 8px; vertical-align: top;">Listen to the channel and adjust its local volume</td>
-<td style="padding: 6px 8px; vertical-align: top;">Cannot speak in the channel or manage members</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Member</td>
-<td style="padding: 6px 8px; vertical-align: top;">Speak and listen according to channel policy, select channels and transmission targets, and leave channels that are not externally managed</td>
-<td style="padding: 6px 8px; vertical-align: top;">Cannot create formal channels, change roles, lock or disband a channel, or manage other members</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Officer</td>
-<td style="padding: 6px 8px; vertical-align: top;">Has member abilities; can invite squad members and mute, ban, or remove lower-ranking members in a channel</td>
-<td style="padding: 6px 8px; vertical-align: top;">Cannot change the owner or modify the owner's status</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Owner</td>
-<td style="padding: 6px 8px; vertical-align: top;">Has officer abilities; can assign Listen Only, Member, and Officer roles; can lock, unlock, or disband the channel; can rename persistent channels</td>
-<td style="padding: 6px 8px; vertical-align: top;">Cannot override authoritative membership and name management performed by an external provider</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Banned</td>
-<td style="padding: 6px 8px; vertical-align: top;">None</td>
-<td style="padding: 6px 8px; vertical-align: top;">Cannot join or use the channel</td>
-</tr>
-</tbody></table>
-<p>Ordinary players can adjust the local volume of individual players or mute them on the Channels &amp; Players page. These settings affect only their own client. They do not change what anyone else hears and do not create a server moderation record.</p>
-<h2>8. Administrator Privileges and the Administration Interface</h2>
-<p>When a player has Vintage Story's <code>controlserver</code> privilege, an additional Administration page appears on the left side of the voice window. The client only displays the entry point; every operation is authorized again by the server.</p>
-<h3>Creating a Formal Channel</h3>
-<ol>
-<li>Press <code>'</code> to open the voice window, then open the Administration page.</li>
-<li>Enter a channel or civilization name in the Create Event Channel section.</li>
-<li>Select the Civilization, Command, Diplomacy, Staff, Broadcast, or Radio channel type.</li>
-<li>Click Create Channel. The creator becomes the channel owner, and the channel is saved as a persistent channel.</li>
-<li>Select a target player and the new channel, then use Admin Join Channel.</li>
-<li>Assign members the Listen Only, Member, or Officer role as required by the event.</li>
-<li>Return to Channels &amp; Players or use <code>/svc channels</code> to check membership, speaking slots, and lock status.</li>
-</ol>
-<h3>Administrator Capabilities</h3>
-<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr>
-<th style="padding: 6px 8px; text-align: left;">Administrative scope</th>
-<th style="padding: 6px 8px; text-align: left;">Available operations</th>
-</tr></thead><tbody>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Server-wide voice chat</td>
-<td style="padding: 6px 8px; vertical-align: top;">Enable or disable voice chat, change whisper/normal/shout ranges, and reload configuration</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Channel creation</td>
-<td style="padding: 6px 8px; vertical-align: top;">Create persistent Civilization, Command, Diplomacy, Staff, Broadcast, and Radio channels</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Channel maintenance</td>
-<td style="padding: 6px 8px; vertical-align: top;">Add or remove members, change roles, rename, lock, unlock, and disband channels</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Channel moderation</td>
-<td style="padding: 6px 8px; vertical-align: top;">Mute, unmute, ban, and unban within a channel</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Temporary player moderation</td>
-<td style="padding: 6px 8px; vertical-align: top;">Temporarily mute or forcibly deafen a player; the interface defaults to 60 seconds, while commands can specify a duration in seconds</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Persistent player moderation</td>
-<td style="padding: 6px 8px; vertical-align: top;">Persistently mute or unmute a player, and block or unblock a player server-wide</td>
-</tr>
-<tr>
-<td style="padding: 6px 8px; vertical-align: top;">Diagnostics and auditing</td>
-<td style="padding: 6px 8px; vertical-align: top;">Inspect channels, player connections, codecs, rate limiting, routing metrics, and recent administrative actions</td>
-</tr>
-</tbody></table>
-<div style="border-left: 4px solid #e03e2d; padding: 8px 12px; margin: 12px 0; background-color: #fff5f5;"><p style="color: #e03e2d; margin: 0;"><strong>Important:</strong> Channels created by an external civilization or grouping provider are authoritatively managed by that external system. Administrators cannot locally add or remove members, change roles, rename, leave, or disband such channels through this mod. They can still lock a channel and apply channel mutes or bans.</p></div>
+<p>The volume slider and mute button in the player list affect only local playback. Management actions under a player's settings gear are filtered according to your permissions in that channel. Ordinary players do not see server-wide moderation actions reserved for administrators.</p>
+
+<h3>Leaving, Transferring Ownership, and Disbanding</h3>
+<p>Selecting "Leave Channel" or "Disband Channel" under channel actions always requires confirmation. The confirmation dialog places "Cancel" on the left and "Confirm" on the right. Disbanding never skips confirmation, even when the channel contains only one player.</p>
+<p>If other members remain in a channel when its Owner tries to leave, the server requires another choice:</p>
+<ul>
+<li>Transfer Channel Ownership: the target must be a current member of the channel.</li>
+<li>Delete Channel: opens the disband confirmation dialog and deletes the channel after confirmation.</li>
+</ul>
+<p>Ownership is never transferred to a random player when the Owner leaves. If no other members remain, the channel is removed after the Owner confirms leaving. Closing any dialog returns only to the previous window; windows underneath do not continue intercepting mouse input.</p>
+
+<h2>7. Player List and Recordings to File</h2>
+<p>The player icon at the bottom of the Channels page opens the player list. The list displays up to six players per page and supports searching by player name or ID. You must select "Search" to run a search; "Cancel" on the right restores the full player list. Each player card includes a local volume slider, mute icon, and settings gear. These volume and mute settings do not change server permissions.</p>
+<p>The record icon at the bottom of the home page controls recording to file. Select it, then choose "Record Input Only" or "Record Input and Output." Select the record icon again to stop and save a WAV file. Recordings are saved in:</p>
+<p><code>AppData\Roaming\VintagestoryData\ModData\SimpleVoiceChat</code></p>
+<p>"Microphone Test" is separate from recording to file. Test audio on the Settings page is kept only in memory for start/stop recording and playback checks; it does not create a file.</p>
+
+<h2>8. Administration Page and Privileges</h2>
+<p>Players who have the Vintage Story <code>controlserver</code> privilege and have completed the voice handshake see an "Administration" button at the top of the home page. The Administration page does not provide a channel-creation entry point. Channels are still created with "Create Channel" at the bottom of the Channels page or by using a server command. Administrators can view all channels and players and perform these server-authorized management actions:</p>
+<ul>
+<li>Channels: add or remove members; assign Listen Only, Member, or Channel Moderator roles; mute or unmute; ban or unban; lock or unlock; rename; and disband.</li>
+<li>Players: temporarily mute, forcibly deafen, persistently mute or unmute, and block or unblock server-wide.</li>
+</ul>
+<p>When an administrator uses "Add Member" to put a player in a channel, the target joins as an ordinary Member and does not become the Channel Owner. The player who created the channel remains its Owner; server administrators perform management actions through their <code>controlserver</code> privilege.</p>
+<p>For channels managed by an external channel provider, the external system controls membership, roles, and names. These properties cannot be changed locally through this mod, and such channels cannot be left or disbanded locally. Administrators can still perform permitted lock, channel-mute, and ban actions.</p>
+
 <h2>9. Player Command Reference</h2>
-<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr>
-<th style="padding: 6px 8px; text-align: left;">Command</th>
-<th style="padding: 6px 8px; text-align: left;">Purpose</th>
-</tr></thead><tbody>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc status</code></td><td style="padding: 6px 8px; vertical-align: top;">Shows the current voice chat status</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc volume &lt;0-200&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Sets the overall voice playback volume</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc volumeplayer &lt;player name&gt; &lt;0-200&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Sets the local playback volume for a specific player</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc mute &lt;player name&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Mutes a specific player on your client only</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc unmute &lt;player name&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Removes your local mute from a specific player</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc bind [player name]</code></td><td style="padding: 6px 8px; vertical-align: top;">Sends a 10-second squad invitation to a nearby or specified player</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc accept</code></td><td style="padding: 6px 8px; vertical-align: top;">Accepts the currently pending squad invitation</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc decline</code></td><td style="padding: 6px 8px; vertical-align: top;">Declines the currently pending squad invitation</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc unbind</code></td><td style="padding: 6px 8px; vertical-align: top;">Leaves the current squad channel</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc squad</code></td><td style="padding: 6px 8px; vertical-align: top;">Shows squad invitation or membership status</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc diag</code></td><td style="padding: 6px 8px; vertical-align: top;">Requests voice chat diagnostic information</td></tr>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Command</th><th style="padding: 6px 8px; text-align: left;">Purpose</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc status</code></td><td style="padding: 6px 8px; vertical-align: top;">Shows a summary of the local voice mode, microphone, volume, key bindings, and diagnostics.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc volume &lt;0-200&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Sets the overall local playback volume.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc volumeplayer &lt;player name&gt; &lt;0-200&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Sets the local playback volume for a specific player.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc mute &lt;player name&gt;</code> / <code>/svc unmute &lt;player name&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Mutes or unmutes a specific player on your client.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelinvite &lt;player name&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Invites a player to the currently selected channel; requires Channel Moderator or Owner permission.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelleave [channel ID]</code></td><td style="padding: 6px 8px; vertical-align: top;">Requests to leave a channel. The GUI asks for confirmation; the command sends the request immediately.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channel</code></td><td style="padding: 6px 8px; vertical-align: top;">Requests a refresh of the current channel state.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc diag</code></td><td style="padding: 6px 8px; vertical-align: top;">Requests voice-chat diagnostic information.</td></tr>
 </tbody></table>
-<h2>10. Administrator Command Reference</h2>
-<p>The following administrative commands require the <code>controlserver</code> privilege. Angle brackets indicate required arguments; do not type the brackets themselves in the game.</p>
-<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr>
-<th style="padding: 6px 8px; text-align: left;">Command</th>
-<th style="padding: 6px 8px; text-align: left;">Purpose</th>
-</tr></thead><tbody>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channels</code></td><td style="padding: 6px 8px; vertical-align: top;">Lists channel IDs, types, member counts, speaking slots, and lock status</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc playerdiag &lt;player&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Shows a player's handshake, codec, channel count, moderation, and protocol anomaly status</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc diag</code></td><td style="padding: 6px 8px; vertical-align: top;">Shows cumulative transmission and reception counts, drops, routing time, and currently monitored streams</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc metrics reset</code></td><td style="padding: 6px 8px; vertical-align: top;">Resets the one-minute rolling metrics without deleting the cumulative audit history</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc audit</code></td><td style="padding: 6px 8px; vertical-align: top;">Shows the 10 most recent voice administration audit entries</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc reload</code></td><td style="padding: 6px 8px; vertical-align: top;">Reloads and normalizes the server configuration; retains the old configuration if reloading fails</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc enable</code> / <code>/svc disable</code></td><td style="padding: 6px 8px; vertical-align: top;">Enables or quickly disables all voice forwarding</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc setrange whisper|talk|shout &lt;blocks&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Changes the whisper, normal speech, or shout range</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc tempmute &lt;player&gt; [seconds]</code></td><td style="padding: 6px 8px; vertical-align: top;">Temporarily prevents a player from transmitting voice audio; defaults to 60 seconds</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc deafen &lt;player&gt; [seconds]</code></td><td style="padding: 6px 8px; vertical-align: top;">Temporarily forces a player to stop receiving voice audio; defaults to 60 seconds</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc adminmute &lt;player or UID&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Adds a player to the persistent global mute list</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc adminunmute &lt;player or UID&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Removes a player from the persistent global mute list</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc forceblock &lt;player or UID&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Adds a player to the persistent server-wide block list</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc unforceblock &lt;player or UID&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Removes a player from the persistent server-wide block list</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc adminmutes</code></td><td style="padding: 6px 8px; vertical-align: top;">Shows the persistent mute and server-wide block lists</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelcreate civilization|command|diplomacy|staff|broadcast|radio &lt;name&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Creates a persistent channel of the specified type</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channeladd &lt;channel ID&gt; &lt;player or UID&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Adds a player to a channel</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelremove &lt;channel ID&gt; &lt;player or UID&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Removes a player from a channel</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelrole &lt;channel ID&gt; &lt;player or UID&gt; listenonly|member|officer</code></td><td style="padding: 6px 8px; vertical-align: top;">Sets a channel member's role</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channellock &lt;channel ID&gt;</code> / <code>/svc channelunlock &lt;channel ID&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Locks or unlocks a channel</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelmute &lt;channel ID&gt; &lt;player or UID&gt;</code> / <code>/svc channelunmute ...</code></td><td style="padding: 6px 8px; vertical-align: top;">Mutes or unmutes a player in the specified channel</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelban &lt;channel ID&gt; &lt;player or UID&gt;</code> / <code>/svc channelunban ...</code></td><td style="padding: 6px 8px; vertical-align: top;">Bans or unbans a player in the specified channel</td></tr>
+
+<h2>10. Server Administrator Commands</h2>
+<p>The following commands require the <code>controlserver</code> privilege. Angle brackets indicate required arguments. Channel IDs use the <code>channel-number</code> format; select an ID on the Channels page to copy it, or look it up with <code>/svc channels</code>.</p>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Command</th><th style="padding: 6px 8px; text-align: left;">Purpose</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc status</code></td><td style="padding: 6px 8px; vertical-align: top;">Shows the server enable state, ranges, channel count, and server-wide moderation counts.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc enable</code> / <code>/svc disable</code></td><td style="padding: 6px 8px; vertical-align: top;">Enables or disables all voice forwarding.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelallow on|off</code></td><td style="padding: 6px 8px; vertical-align: top;">Allows or prevents ordinary players from creating channels; the default is <code>on</code>.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc setrange whisper|talk|shout &lt;blocks&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Changes a proximity voice range.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channels</code></td><td style="padding: 6px 8px; vertical-align: top;">Lists channel IDs, types, Owners, member counts, speaking slots, and lock states.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelcreate &lt;name&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Creates a persistent Open channel; the interface can also create Password or Hidden channels.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelinvite &lt;channel ID&gt; &lt;player&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Sends an invitation to the specified channel.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelleave &lt;channel ID&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Requests, by command, to leave the specified channel.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channeladd &lt;channel ID&gt; &lt;player or UID&gt;</code> / <code>/svc channelremove ...</code></td><td style="padding: 6px 8px; vertical-align: top;">Adds or removes a channel member.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelrole &lt;channel ID&gt; &lt;player or UID&gt; listenonly|member|moderator</code></td><td style="padding: 6px 8px; vertical-align: top;">Sets a channel role; this command cannot assign the Owner role.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channellock &lt;channel ID&gt;</code> / <code>/svc channelunlock &lt;channel ID&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Locks or unlocks a channel.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelmute|channelunmute &lt;channel ID&gt; &lt;player or UID&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Mutes or unmutes a player in the specified channel.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc channelban|channelunban &lt;channel ID&gt; &lt;player or UID&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Bans or unbans a player in the specified channel.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc tempmute &lt;player&gt; [seconds]</code> / <code>/svc deafen &lt;player&gt; [seconds]</code></td><td style="padding: 6px 8px; vertical-align: top;">Temporarily mutes or forcibly deafens a player; the default duration is 60 seconds.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc adminmute|adminunmute &lt;player or UID&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Adds or removes a persistent global mute.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc forceblock|unforceblock &lt;player or UID&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Adds or removes a server-wide voice block.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc adminmutes</code></td><td style="padding: 6px 8px; vertical-align: top;">Shows the persistent mute and server-wide block lists.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc playerdiag &lt;player&gt;</code> / <code>/svc diag</code></td><td style="padding: 6px 8px; vertical-align: top;">Shows player-connection or server-routing diagnostics.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc audit</code> / <code>/svc metrics reset</code></td><td style="padding: 6px 8px; vertical-align: top;">Shows recent administration audit entries or resets rolling metrics.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc reload</code></td><td style="padding: 6px 8px; vertical-align: top;">Reloads and normalizes the server configuration; retains the old configuration if reloading fails.</td></tr>
 </tbody></table>
-<div style="border-left: 4px solid #2f6f9f; padding: 8px 12px; margin: 12px 0; background-color: #f5f9fc;"><p style="margin: 0;"><strong>Note:</strong> Channels can be renamed and disbanded through the voice administration interface. Use <code>/svc channels</code> first to find the channel ID required by a command.</p></div>
-<h2>11. Common Messages and Troubleshooting</h2>
-<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr>
-<th style="padding: 6px 8px; text-align: left;">Message or symptom</th>
-<th style="padding: 6px 8px; text-align: left;">Meaning</th>
-<th style="padding: 6px 8px; text-align: left;">Resolution</th>
-</tr></thead><tbody>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Microphone unavailable</td><td style="padding: 6px 8px; vertical-align: top;">The capture device cannot be opened or has been disconnected</td><td style="padding: 6px 8px; vertical-align: top;">Select the device again on the Audio page; the mod silently attempts recovery every 10 seconds</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Waiting for voice server handshake</td><td style="padding: 6px 8px; vertical-align: top;">The client has not completed voice negotiation</td><td style="padding: 6px 8px; vertical-align: top;">Confirm that the client and server versions match and that the mod is enabled on both sides</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Server requires protocol V2</td><td style="padding: 6px 8px; vertical-align: top;">The client version is too old</td><td style="padding: 6px 8px; vertical-align: top;">Update SimpleVoiceChat on the client</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Incompatible codec</td><td style="padding: 6px 8px; vertical-align: top;">The client does not have a voice codec allowed by the server</td><td style="padding: 6px 8px; vertical-align: top;">Install the complete release package of the same version and make sure no dependencies are missing</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Channel speaking slots are full</td><td style="padding: 6px 8px; vertical-align: top;">The number of simultaneous speakers in the channel exceeds the available slots</td><td style="padding: 6px 8px; vertical-align: top;">Try again later; an administrator can inspect the channel slots and active speakers</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">No permission to speak in the current channel</td><td style="padding: 6px 8px; vertical-align: top;">Your role is Listen Only, or a Command/Broadcast channel requires the Owner or Officer role</td><td style="padding: 6px 8px; vertical-align: top;">Check the channel and your role, or switch back to Proximity Only</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Target is too far away</td><td style="padding: 6px 8px; vertical-align: top;">The squad invitation target is outside the binding range</td><td style="padding: 6px 8px; vertical-align: top;">Move closer and try again; the default range is 4 blocks</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Only the owner or an officer can invite</td><td style="padding: 6px 8px; vertical-align: top;">The inviter is already in a squad but is only an ordinary member</td><td style="padding: 6px 8px; vertical-align: top;">Ask the squad owner or an officer to send the invitation</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Channel is locked or player is banned</td><td style="padding: 6px 8px; vertical-align: top;">Channel policy refuses the join or merge operation</td><td style="padding: 6px 8px; vertical-align: top;">Contact the channel owner or server administrator</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Server voice egress limit reached</td><td style="padding: 6px 8px; vertical-align: top;">The server is dropping low-priority voice traffic to protect game stability</td><td style="padding: 6px 8px; vertical-align: top;">The administrator should inspect <code>/svc diag</code>, actual sustained public-network upload capacity, and the egress budget</td></tr>
+
+<h2>11. Capacity, Configuration, and Privacy</h2>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Item</th><th style="padding: 6px 8px; text-align: left;">Default or location</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Channel members</td><td style="padding: 6px 8px; vertical-align: top;">Up to 100 members per channel.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Simultaneous channel speakers</td><td style="padding: 6px 8px; vertical-align: top;">Up to three by default; configurable on the server.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Channels per player</td><td style="padding: 6px 8px; vertical-align: top;">Up to eight explicit channels by default.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Total server channels</td><td style="padding: 6px 8px; vertical-align: top;">Up to 256 by default; the configurable range is 16-512.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Main configuration</td><td style="padding: 6px 8px; vertical-align: top;"><code>SimpleVoiceChat.Server.json</code> and <code>SimpleVoiceChat.Client.json</code>.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Administration audit</td><td style="padding: 6px 8px; vertical-align: top;"><code>SimpleVoiceChat.Audit.json</code>; records administrative actions, not voice content.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Recordings to file</td><td style="padding: 6px 8px; vertical-align: top;"><code>AppData\Roaming\VintagestoryData\ModData\SimpleVoiceChat</code>; stored only on the local client.</td></tr>
 </tbody></table>
-<h2>12. Capacity, Configuration, and Privacy Boundaries</h2>
-<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr>
-<th style="padding: 6px 8px; text-align: left;">Item</th>
-<th style="padding: 6px 8px; text-align: left;">Default value or boundary</th>
-</tr></thead><tbody>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Explicit channels per player</td><td style="padding: 6px 8px; vertical-align: top;">Maximum of 8; proximity voice chat does not count toward this limit</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Server channels</td><td style="padding: 6px 8px; vertical-align: top;">Maximum of 256 by default</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Temporary squad size</td><td style="padding: 6px 8px; vertical-align: top;">Maximum of 12 members by default</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Total voice streams per listener</td><td style="padding: 6px 8px; vertical-align: top;">Maximum of 8 by default, with a hard limit of 12</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Server configuration</td><td style="padding: 6px 8px; vertical-align: top;"><code>SimpleVoiceChat.Server.json</code></td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Client configuration</td><td style="padding: 6px 8px; vertical-align: top;"><code>SimpleVoiceChat.Client.json</code></td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Administration audit</td><td style="padding: 6px 8px; vertical-align: top;"><code>SimpleVoiceChat.Audit.json</code></td></tr>
+<p>The server forwards compressed voice frames and does not routinely decode, mix, or store voice payloads. This mod does not provide end-to-end encryption; transport protection depends on the underlying Vintage Story connection. Recording is an explicit player action and should be managed according to the server's and event's privacy policies.</p>
+
+<h2>12. Frequently Asked Questions</h2>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Symptom</th><th style="padding: 6px 8px; text-align: left;">Resolution</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;">No settings window appears the first time I press <code>'</code></td><td style="padding: 6px 8px; vertical-align: top;">Check the chat prompt first. On first use, the key opens the wizard; it opens the main window only after you complete or skip the wizard.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Drop-down menus or search do not work</td><td style="padding: 6px 8px; vertical-align: top;">You must select "Search"; entering a single character does not refresh the list immediately. Only the topmost dialog is displayed. Update the client and server to the same version, then reopen the window.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">The seventh row is missing from a list</td><td style="padding: 6px 8px; vertical-align: top;">Channel and player lists display up to six rows per page. Use the paginator at the bottom to change pages.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Cannot join a channel</td><td style="padding: 6px 8px; vertical-align: top;">Check whether the channel is locked, the password is correct, you are banned, or you have reached the limit of eight channels per player.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Channel speaking slots are full</td><td style="padding: 6px 8px; vertical-align: top;">The channel has reached its simultaneous-speaker limit. Try again later. Listen Only and muted players cannot speak.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Protocol V3 incompatibility message</td><td style="padding: 6px 8px; vertical-align: top;">Both the client and server must be updated to <code>1.0.0</code>, with the mod installed on both sides.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Microphone Test does not create a file</td><td style="padding: 6px 8px; vertical-align: top;">This is by design. "Microphone Test" on the Settings page records only in memory. To save a file, use the record icon on the home page.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">The Owner leaves a channel</td><td style="padding: 6px 8px; vertical-align: top;">In a channel with multiple members, the Owner must transfer ownership to a current member or confirm deletion. Ownership is never transferred randomly. Both leaving and disbanding require confirmation.</td></tr>
 </tbody></table>
-<p>The server only forwards compressed voice audio. It does not routinely decode, mix, or record audio, and it does not store voice payloads. Administration audit entries record the time, operator, target, scope, and reason, but do not record voice content.</p>
-<div style="border-left: 4px solid #e03e2d; padding: 8px 12px; margin: 12px 0; background-color: #fff5f5;"><p style="color: #e03e2d; margin: 0;"><strong>Important:</strong> This mod does not provide end-to-end encryption. Transport protection depends on the underlying Vintage Story connection. Server owners should still control access to server logs, configuration files, and audit files according to the event's privacy policy.</p></div>
-<h2>13. Quick Permissions Summary</h2>
-<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr>
-<th style="padding: 6px 8px; text-align: left;">Question</th>
-<th style="padding: 6px 8px; text-align: left;">Answer</th>
-</tr></thead><tbody>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Can ordinary players use proximity voice chat?</td><td style="padding: 6px 8px; vertical-align: top;">Yes. No channel membership is required.</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Can ordinary players create a temporary squad?</td><td style="padding: 6px 8px; vertical-align: top;">Yes, but they must send an invitation and the other player must accept it within 10 seconds.</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Can an ordinary squad member invite more members?</td><td style="padding: 6px 8px; vertical-align: top;">No. After joining a squad, only the owner or an officer can invite.</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Can ordinary players create Civilization, Command, or Broadcast channels?</td><td style="padding: 6px 8px; vertical-align: top;"><strong>No.</strong> These formal channels can only be created by administrators with the <code>controlserver</code> privilege.</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Is a channel owner the same as a server administrator?</td><td style="padding: 6px 8px; vertical-align: top;">No. Owners can only manage channels they are authorized to manage. They cannot apply server-wide voice moderation or create new formal channels.</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Can administrators manage the membership and names of external civilization channels?</td><td style="padding: 6px 8px; vertical-align: top;">They cannot locally change members, roles, or names, but they can lock the channel and apply channel mutes or bans.</td></tr>
+
+<h2>13. Quick Permissions Reference</h2>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Question</th><th style="padding: 6px 8px; text-align: left;">Answer</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Can ordinary players create channels?</td><td style="padding: 6px 8px; vertical-align: top;"><strong>Yes, by default.</strong> Administrators can disable channel creation with <code>/svc channelallow off</code>.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Who is the Channel Owner?</td><td style="padding: 6px 8px; vertical-align: top;">The player who created the channel. An administrator who adds a member does not automatically become the Owner.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Who can invite players?</td><td style="padding: 6px 8px; vertical-align: top;">The Channel Owner and Channel Moderators. Administrators can use the administrative Add Member action.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Can ordinary players see Hidden channels?</td><td style="padding: 6px 8px; vertical-align: top;">No. They must be invited or already be a member of the channel.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Is a Channel Moderator the same as an administrator?</td><td style="padding: 6px 8px; vertical-align: top;">No. A Channel Moderator manages only their channels; an administrator has server-wide management privileges through <code>controlserver</code>.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Who takes over after the Owner leaves?</td><td style="padding: 6px 8px; vertical-align: top;">The Owner must choose a current channel member in the dialog or confirm channel deletion. No one is selected at random.</td></tr>
 </tbody></table>
