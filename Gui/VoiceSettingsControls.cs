@@ -636,6 +636,101 @@ internal sealed class VoiceSettingsIconButton : GuiElementControl
     }
 }
 
+internal sealed class VoiceSettingsImageButton : GuiElementControl
+{
+    private readonly ImageSurface imageSurface;
+    private readonly Action<bool>? clicked;
+    private int textureId;
+    private bool pressed;
+
+    public override bool Focusable => Enabled;
+
+    public VoiceSettingsImageButton(
+        ICoreClientAPI capi,
+        ElementBounds bounds,
+        AssetLocation image,
+        Action<bool>? clicked)
+        : base(capi, bounds)
+    {
+        this.clicked = clicked;
+        imageSurface = GuiElement.getImageSurfaceFromAsset(capi, image);
+    }
+
+    public override void ComposeElements(Context ctx, ImageSurface surface)
+    {
+        Bounds.CalcWorldBounds();
+        Redraw();
+    }
+
+    private void Redraw()
+    {
+        using ImageSurface surface = new(Format.Argb32, Bounds.OuterWidthInt, Bounds.OuterHeightInt);
+        using Context ctx = new(surface);
+        double width = Bounds.OuterWidth;
+        double height = Bounds.OuterHeight;
+        ctx.Rectangle(0, 0, width, height);
+        ctx.SetSourceRGBA(0.62, 0.66, 0.72, Enabled ? 0.30 : 0.14);
+        ctx.FillPreserve();
+        ctx.SetSourceRGBA(0.92, 0.95, 1.0, Enabled ? 0.88 : 0.42);
+        ctx.LineWidth = GuiElement.scaled(1);
+        ctx.Stroke();
+
+        double padding = GuiElement.scaled(5);
+        double imageHeight = Math.Max(1, height - padding * 2);
+        double imageWidth = imageSurface.Width * imageHeight / Math.Max(1, imageSurface.Height);
+        if (imageWidth > width - padding * 2)
+        {
+            imageWidth = width - padding * 2;
+            imageHeight = imageSurface.Height * imageWidth / Math.Max(1, imageSurface.Width);
+        }
+        ctx.Save();
+        ctx.Translate((width - imageWidth) / 2d, (height - imageHeight) / 2d);
+        ctx.Scale(imageWidth / imageSurface.Width, imageHeight / imageSurface.Height);
+        ctx.SetSourceSurface(imageSurface, 0, 0);
+        ctx.Rectangle(0, 0, imageSurface.Width, imageSurface.Height);
+        ctx.Fill();
+        ctx.Restore();
+        GuiElement.GenerateTexture(api, surface, ref textureId);
+    }
+
+    public override void RenderInteractiveElements(float deltaTime)
+    {
+        api.Render.Render2DTexturePremultipliedAlpha(textureId, Bounds);
+    }
+
+    public override void OnMouseDownOnElement(ICoreClientAPI api, MouseEvent args)
+    {
+        base.OnMouseDownOnElement(api, args);
+        if (!Enabled) return;
+        pressed = true;
+        Redraw();
+    }
+
+    public override void OnMouseUpOnElement(ICoreClientAPI api, MouseEvent args)
+    {
+        bool wasPressed = pressed;
+        pressed = false;
+        base.OnMouseUpOnElement(api, args);
+        if (wasPressed && Enabled)
+        {
+            api.Gui.PlaySound("menubutton");
+            clicked?.Invoke(true);
+        }
+        Redraw();
+    }
+
+    public override void Dispose()
+    {
+        if (textureId > 0)
+        {
+            api.Render.GLDeleteTexture(textureId);
+            textureId = 0;
+        }
+        imageSurface.Dispose();
+        base.Dispose();
+    }
+}
+
 /// <summary>
 /// Compact square toggle used by the settings dialog. The checked mark is
 /// rendered through the Font Awesome SVG registered by the dialog.

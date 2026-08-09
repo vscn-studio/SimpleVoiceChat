@@ -94,6 +94,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private static readonly AssetLocation SpeakerDisabledAsset = new("simplevoicechat", "gui/svc_speaker_disable.png");
     private static readonly AssetLocation EyeAsset = new("simplevoicechat", "gui/svc_eye.png");
     private static readonly AssetLocation NoEyeAsset = new("simplevoicechat", "gui/svc_no_eye.png");
+    private static readonly AssetLocation PlayersAsset = new("simplevoicechat", "gui/svc_players.png");
 
     private readonly ClientVoiceController controller;
     private readonly SimpleVoiceChatClientConfig config;
@@ -505,12 +506,11 @@ public sealed class VoiceSettingsDialog : GuiDialog
         }
 
         y += 8;
-        VoiceSettingsIconButton playersButton = new(
+        VoiceSettingsImageButton playersButton = new(
             composer.Api,
             ElementBounds.Fixed(x, y, 42, 36),
-            FontAwesomeUsersIcon,
-            _ => OpenPlayersOverlay(),
-            darkIcon: true);
+            PlayersAsset,
+            _ => OpenPlayersOverlay());
         composer.AddInteractiveElement(playersButton, "open-players");
         AddFlatButton(composer, SVCLang.Get("button-create-channel"), OpenCreateChannelOverlay,
             ElementBounds.Fixed(x + 52, y, 180, 36), "open-create-channel");
@@ -707,7 +707,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         bounds.CalcWorldBounds();
         ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
         // Modal dialogs fully cover the underlying channel/player page.
-        ctx.SetSourceRGBA(0.0, 0.0, 0.0, 0.96);
+        ctx.SetSourceRGBA(0.0, 0.0, 0.0, 1.0);
         ctx.Fill();
     }
 
