@@ -1760,6 +1760,10 @@ public sealed class ClientVoiceController : IDisposable
             && voiceHandshakeAccepted
             && capture?.IsAvailable == true
             && voiceChannel?.Connected == true;
+        VoiceTransmitTarget transmitTarget = ResolveTransmitTarget(config.TransmitTarget, config.SelectedChannelId);
+        bool directorCaptureReady = capture?.IsAvailable == true
+            && directorVoice?.CanCaptureLocalFrame(transmitTarget, serverConfig) == true;
+        bool captureReady = voiceReady || directorCaptureReady;
         bool isRecording = recording?.IsRecording == true || testRecordingActive;
         bool canSpeak = false;
         if (pressed && capture?.IsAvailable != true && !captureWarningShown)
@@ -1781,29 +1785,36 @@ public sealed class ClientVoiceController : IDisposable
             capture?.Start();
             DrainCapturedFrames(sendVoice: false);
         }
-        else if (voiceReady && activationMode)
+        else if (captureReady && activationMode)
         {
             if (!lastPressed)
             {
                 BeginVoiceSession();
             }
             capture?.Start();
-            bool triggered = DrainCapturedFrames(sendVoice: true, requireVoiceActivation: true);
+            bool triggered = DrainCapturedFrames(
+                sendVoice: voiceReady,
+                captureDirectorAudio: directorCaptureReady,
+                requireVoiceActivation: true);
             canSpeak = triggered;
         }
-        else if (voiceReady && pushToTalkPressed)
+        else if (captureReady && pushToTalkPressed)
         {
             if (!lastPressed)
             {
                 BeginVoiceSession();
                 capture?.Start();
             }
-            DrainCapturedFrames(sendVoice: true);
+            DrainCapturedFrames(
+                sendVoice: voiceReady,
+                captureDirectorAudio: directorCaptureReady);
             canSpeak = true;
         }
         else if (lastPressed)
         {
-            DrainCapturedFrames(sendVoice: voiceReady);
+            DrainCapturedFrames(
+                sendVoice: voiceReady,
+                captureDirectorAudio: directorCaptureReady);
             if (!isRecording)
             {
                 capture?.Stop();
@@ -2070,7 +2081,10 @@ public sealed class ClientVoiceController : IDisposable
         capi.ShowChatMessage(SVCLang.Get("chat-output-device-switched", string.IsNullOrWhiteSpace(config.OutputDeviceName) ? SVCLang.Get("default-speaker") : config.OutputDeviceName));
     }
 
-    private bool DrainCapturedFrames(bool sendVoice, bool requireVoiceActivation = false)
+    private bool DrainCapturedFrames(
+        bool sendVoice,
+        bool captureDirectorAudio = false,
+        bool requireVoiceActivation = false)
     {
         int processedFrames = 0;
         bool hadFrame = false;
@@ -2108,7 +2122,7 @@ public sealed class ClientVoiceController : IDisposable
             {
                 microphoneTest.AppendInput(captureBuffer);
             }
-            if (!sendVoice)
+            if (!sendVoice && !captureDirectorAudio)
             {
                 continue;
             }
@@ -2116,12 +2130,15 @@ public sealed class ClientVoiceController : IDisposable
             VoiceTransmitTarget transmitTarget = ResolveTransmitTarget(config.TransmitTarget, config.SelectedChannelId);
             // Director records the local proximity microphone independently of
             // VAD. VAD still controls network transmission below.
-            directorVoice?.SubmitLocalFrame(
-                captureBuffer,
-                captureTimestampMilliseconds,
-                mode,
-                transmitTarget,
-                serverConfig);
+            if (captureDirectorAudio)
+            {
+                directorVoice?.SubmitLocalFrame(
+                    captureBuffer,
+                    captureTimestampMilliseconds,
+                    mode,
+                    transmitTarget,
+                    serverConfig);
+            }
             if (!active)
             {
                 continue;

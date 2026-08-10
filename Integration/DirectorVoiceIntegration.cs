@@ -181,6 +181,22 @@ internal sealed class DirectorVoiceIntegration : IDisposable
             timestampMilliseconds);
     }
 
+    internal bool CanCaptureLocalFrame(
+        VoiceTransmitTarget transmitTarget,
+        ServerVoiceConfigPacket serverConfig)
+    {
+        if (disposed
+            || !serverConfig.EnableDirectorProximityCapture
+            || transmitTarget is not (VoiceTransmitTarget.Proximity or VoiceTransmitTarget.ProximityAndChannel)
+            || !TryGetDirector(out VSDirectorModSystem director)
+            || !director.VoiceApi.IsCaptureEnabled)
+        {
+            return false;
+        }
+
+        return director.TryGetActiveVoiceListener(out _);
+    }
+
     public void Dispose()
     {
         if (disposed)
