@@ -1,6 +1,6 @@
 # SimpleVoiceChat
 
-`SimpleVoiceChat 1.0.1` is a general-purpose voice chat mod for Vintage Story. It provides proximity voice, whisper/normal/shout modes, custom channels, audio processing, permission management, and capacity protection.
+`SimpleVoiceChat 1.0.6` is a general-purpose voice chat mod for Vintage Story. It provides proximity voice, whisper/normal/shout modes, custom channels, audio processing, permission management, and capacity protection.
 
 ## Voice
 
@@ -83,7 +83,7 @@ public interface IVoiceChannelProvider
 
 ### VS Director Proximity Capture
 
-When `VS Director 0.16.94` is installed with SimpleVoiceChat, a director client with the server `controlserver` privilege can record only the proximity voices around an active replay or live offscreen camera. Custom channels are never sent to the director audio path.
+When `VS Director 0.16.99` is installed with SimpleVoiceChat, a director client with the server `controlserver` privilege can record only the proximity voices around an active replay or live offscreen camera. Custom channels are never sent to the director audio path. During replay recording without an active director camera, the recording player's position becomes the proximity listener, so local and nearby voices remain spatialized with the SimpleVoiceChat mode attenuation. The replay timeline creates one voice row per speaker, using the player name.
 
 The server owner must explicitly enable the feature in `SimpleVoiceChat.Server.json`:
 

@@ -1687,7 +1687,8 @@ public sealed class ServerVoiceController : IDisposable
                 Codec = codec,
                 MaxDistance = range,
                 ReferenceDistance = referenceDistance,
-                RolloffFactor = rolloffFactor
+                RolloffFactor = rolloffFactor,
+                SpeakerName = speaker.PlayerName
             }, target);
             metrics.Relayed(1, estimatedPacketBytes, now);
             listenerCount++;

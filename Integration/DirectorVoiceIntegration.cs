@@ -82,7 +82,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
 
         if (!serverConfig.EnableDirectorProximityCapture)
         {
-            ClearStreams();
+            ClearRemoteStreams();
             return;
         }
 
@@ -99,7 +99,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
             while (remaining > 0 && stream.TryDecode(out short[] samples, out DirectorVoiceFrameMetadata metadata))
             {
                 remaining--;
-                DirectorVoiceSource source = GetSource(director, speakerUid);
+                DirectorVoiceSource source = GetSource(director, speakerUid, metadata.SpeakerName);
                 source.SubmitPcm16(
                     samples,
                     VoiceConstants.SampleRate,
@@ -128,19 +128,34 @@ internal sealed class DirectorVoiceIntegration : IDisposable
     internal void SubmitLocalFrame(
         ReadOnlySpan<short> samples,
         VoiceMode mode,
+        VoiceTransmitTarget transmitTarget,
         ServerVoiceConfigPacket serverConfig)
     {
         if (disposed
             || samples.IsEmpty
-            || !serverConfig.EnableDirectorProximityCapture
-            || !TryGetDirector(out VSDirectorModSystem director)
-            || !director.TryGetActiveVoiceListener(out DirectorVoicePosition listenerPosition))
+            || !TryGetDirector(out VSDirectorModSystem director))
         {
             return;
         }
 
         var entity = capi.World.Player.Entity;
         int dimension = entity.Pos.Dimension;
+        DirectorVoiceSource source = GetSource(
+            director,
+            capi.World.Player.PlayerUID,
+            capi.World.Player.PlayerName);
+        long timestamp = capi.World.ElapsedMilliseconds;
+        if (!serverConfig.EnableDirectorProximityCapture
+            || transmitTarget is not (VoiceTransmitTarget.Proximity or VoiceTransmitTarget.ProximityAndChannel))
+        {
+            return;
+        }
+
+        if (!director.TryGetActiveVoiceListener(out DirectorVoicePosition listenerPosition))
+        {
+            return;
+        }
+
         if (dimension != listenerPosition.Dimension)
         {
             return;
@@ -155,7 +170,6 @@ internal sealed class DirectorVoiceIntegration : IDisposable
             return;
         }
 
-        DirectorVoiceSource source = GetSource(director, capi.World.Player.PlayerUID);
         source.SubmitPcm16(
             samples,
             VoiceConstants.SampleRate,
@@ -164,7 +178,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
                 range,
                 CalculateReferenceDistance(range),
                 CalculateRolloff(range)),
-            capi.World.ElapsedMilliseconds);
+            timestamp);
     }
 
     public void Dispose()
@@ -175,21 +189,25 @@ internal sealed class DirectorVoiceIntegration : IDisposable
         }
 
         disposed = true;
-        ClearStreams();
-    }
-
-    private void ClearStreams()
-    {
-        foreach (DirectorVoiceStream stream in streams.Values)
-        {
-            stream.Dispose();
-        }
-        streams.Clear();
+        ClearRemoteStreams();
         foreach (DirectorVoiceSource source in sources.Values)
         {
             source.Dispose();
         }
         sources.Clear();
+    }
+
+    private void ClearRemoteStreams()
+    {
+        foreach (KeyValuePair<string, DirectorVoiceStream> entry in streams)
+        {
+            entry.Value.Dispose();
+            if (sources.Remove(entry.Key, out DirectorVoiceSource? source))
+            {
+                source.Dispose();
+            }
+        }
+        streams.Clear();
     }
 
     private bool TryGetDirector(out VSDirectorModSystem director)
@@ -198,14 +216,17 @@ internal sealed class DirectorVoiceIntegration : IDisposable
         return director is not null && director.VoiceApi.Version == DirectorVoiceApi.ApiVersion;
     }
 
-    private DirectorVoiceSource GetSource(VSDirectorModSystem director, string speakerUid)
+    private DirectorVoiceSource GetSource(
+        VSDirectorModSystem director,
+        string speakerUid,
+        string? speakerName = null)
     {
         if (sources.TryGetValue(speakerUid, out DirectorVoiceSource? source))
         {
             return source;
         }
 
-        source = director.VoiceApi.RegisterSpeaker("simplevoicechat", speakerUid);
+        source = director.VoiceApi.RegisterSpeaker("simplevoicechat", speakerUid, speakerName);
         sources[speakerUid] = source;
         return source;
     }
@@ -224,6 +245,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
         float MaxDistance,
         float ReferenceDistance,
         float RolloffFactor,
+        string SpeakerName,
         long TimestampMilliseconds);
 
     private sealed class DirectorVoiceStream : IDisposable
@@ -259,6 +281,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
                 packet.MaxDistance,
                 packet.ReferenceDistance,
                 packet.RolloffFactor,
+                packet.SpeakerName,
                 arrivalMilliseconds);
             metadataBySequence[packet.Sequence] = metadata;
             latestMetadata = metadata;

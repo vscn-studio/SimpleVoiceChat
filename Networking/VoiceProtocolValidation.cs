@@ -68,6 +68,8 @@ public static class VoiceProtocolValidation
         if (packet == null
             || string.IsNullOrWhiteSpace(packet.SpeakerUid)
             || packet.SpeakerUid.Length > VoiceProtocol.MaxControlStringLength
+            || packet.SpeakerName is null
+            || packet.SpeakerName.Length > VoiceProtocol.MaxControlStringLength
             || packet.SpeakerEntityId <= 0
             || packet.SessionId <= 0
             || packet.Payload == null

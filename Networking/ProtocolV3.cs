@@ -283,6 +283,9 @@ public sealed class DirectorVoiceRelayFrameV3Packet
 
     [ProtoMember(14)]
     public float RolloffFactor;
+
+    [ProtoMember(15)]
+    public string SpeakerName = string.Empty;
 }
 
 [ProtoContract]

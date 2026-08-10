@@ -551,7 +551,7 @@ public sealed class ClientVoiceController : IDisposable
         controlChannel.SendPacket(new VoiceHelloPacket
         {
             ProtocolVersion = VoiceProtocol.CurrentVersion,
-            ModVersion = "1.0.1",
+            ModVersion = "1.0.2",
             SupportedCodecs = new[] { VoiceProtocol.CodecOpus, VoiceProtocol.CodecImaAdpcm },
             Capabilities = (int)(VoiceCapability.ProtocolV3
                 | VoiceCapability.ChannelDeltas
@@ -2117,10 +2117,7 @@ public sealed class ClientVoiceController : IDisposable
             }
 
             VoiceTransmitTarget transmitTarget = ResolveTransmitTarget(config.TransmitTarget, config.SelectedChannelId);
-            if (transmitTarget is VoiceTransmitTarget.Proximity or VoiceTransmitTarget.ProximityAndChannel)
-            {
-                directorVoice?.SubmitLocalFrame(captureBuffer, mode, serverConfig);
-            }
+            directorVoice?.SubmitLocalFrame(captureBuffer, mode, transmitTarget, serverConfig);
 
             peakMicLevel = Math.Max(peakMicLevel, NormalizeVoiceLevel(stats.Rms, mode));
             lastVoiceLevelMs = capi.World.ElapsedMilliseconds;
