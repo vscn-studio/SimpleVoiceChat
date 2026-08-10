@@ -103,7 +103,7 @@ public sealed class EncodedJitterBuffer
 
         if (frames.Remove(nextSequence, out byte[]? payload))
         {
-            frame = new EncodedJitterFrame(payload, false, false);
+            frame = new EncodedJitterFrame(nextSequence, payload, false, false);
             nextSequence++;
             return true;
         }
@@ -118,19 +118,19 @@ public sealed class EncodedJitterBuffer
             payload = frames[first];
             frames.Remove(first);
             nextSequence = unchecked((ushort)(first + 1));
-            frame = new EncodedJitterFrame(payload, false, false);
+            frame = new EncodedJitterFrame(first, payload, false, false);
             return true;
         }
 
         if (distance == 1)
         {
             FecFrames++;
-            frame = new EncodedJitterFrame(frames[first], true, true);
+            frame = new EncodedJitterFrame(nextSequence, frames[first], true, true);
         }
         else
         {
             ConcealedFrames++;
-            frame = new EncodedJitterFrame(Array.Empty<byte>(), true, false);
+            frame = new EncodedJitterFrame(nextSequence, Array.Empty<byte>(), true, false);
         }
         nextSequence++;
         return true;
@@ -211,4 +211,4 @@ public sealed class EncodedJitterBuffer
     }
 }
 
-public readonly record struct EncodedJitterFrame(byte[] Payload, bool Concealment, bool UseFec);
+public readonly record struct EncodedJitterFrame(ushort Sequence, byte[] Payload, bool Concealment, bool UseFec);

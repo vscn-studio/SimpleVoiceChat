@@ -22,11 +22,13 @@ public sealed class ServerVoiceController : IDisposable
     private readonly Dictionary<string, PacketRateWindow> packetRates = new();
     private readonly Dictionary<string, IServerPlayer> onlinePlayersByUid = new(StringComparer.Ordinal);
     private readonly Dictionary<string, VoiceClientSession> sessionsByUid = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DirectorVoiceListener> directorListenersByUid = new(StringComparer.Ordinal);
     private readonly Dictionary<string, VoiceTokenBucket> handshakeRatesByUid = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ActiveTalkerNotification> activeTalkersByKey = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> channelProviderWarningMilliseconds = new(StringComparer.Ordinal);
     private readonly ChannelService channels;
     private readonly ListenerStreamArbiter streamArbiter = new();
+    private readonly ListenerStreamArbiter directorStreamArbiter = new();
     private readonly VoiceMetrics metrics = new();
     private readonly VoiceModerationService moderation = new();
     private VoiceAuditLog auditLog;
@@ -91,17 +93,20 @@ public sealed class ServerVoiceController : IDisposable
             .RegisterMessageType<ChannelMemberDeltaPacket>()
             .RegisterMessageType<ChannelMemberPagePacket>()
             .RegisterMessageType<TalkerStateDeltaPacket>()
+            .RegisterMessageType<DirectorVoiceListenerUpdatePacket>()
             .RegisterMessageType<VoiceFeedbackPacket>()
             .RegisterMessageType<VoiceDiagnosticsPacket>()
             .SetMessageHandler<ClientVoiceStatePacket>(OnClientState)
             .SetMessageHandler<MutePlayerPacket>(OnMutePlayer)
             .SetMessageHandler<AdminVoiceControlPacket>(OnAdminVoiceControl)
             .SetMessageHandler<VoiceHelloPacket>(OnVoiceHello)
+            .SetMessageHandler<DirectorVoiceListenerUpdatePacket>(OnDirectorVoiceListenerUpdate)
             .SetMessageHandler<ChannelCommandPacket>(OnChannelCommand);
 
         voiceChannel = sapi.Network.RegisterUdpChannel(VoiceConstants.VoiceChannelName)
             .RegisterMessageType<VoiceFrameV3Packet>()
             .RegisterMessageType<VoiceRelayFrameV3Packet>()
+            .RegisterMessageType<DirectorVoiceRelayFrameV3Packet>()
             .RegisterMessageType<VoicePingPacket>()
             .RegisterMessageType<VoicePongPacket>()
             .SetMessageHandler<VoiceFrameV3Packet>(OnVoiceFrameV3)
@@ -546,6 +551,8 @@ public sealed class ServerVoiceController : IDisposable
         handshakeRatesByUid.Remove(player.PlayerUID);
         spatialIndex.Remove(player.PlayerUID);
         streamArbiter.RemovePlayer(player.PlayerUID);
+        directorStreamArbiter.RemovePlayer(player.PlayerUID);
+        directorListenersByUid.Remove(player.PlayerUID);
         channels.RemoveOnlineState(player.PlayerUID);
         RemoveActiveTalkerNotifications(player.PlayerUID);
         SendSnapshots(affectedChannelMembers);
@@ -793,6 +800,44 @@ public sealed class ServerVoiceController : IDisposable
             ConnectionEpoch = session.ConnectionEpoch,
             Nonce = packet.Nonce
         }, player);
+    }
+
+    private void OnDirectorVoiceListenerUpdate(
+        IServerPlayer player,
+        DirectorVoiceListenerUpdatePacket packet)
+    {
+        if (!lifecycle.IsStarted)
+        {
+            return;
+        }
+
+        long now = sapi.World.ElapsedMilliseconds;
+        if (!sessionsByUid.TryGetValue(player.PlayerUID, out VoiceClientSession? session)
+            || !session.DirectorListenerRate.TryConsume(1, now))
+        {
+            return;
+        }
+
+        if (!config.EnableDirectorProximityCapture
+            || !player.HasPrivilege(Privilege.controlserver)
+            || !packet.Active)
+        {
+            directorListenersByUid.Remove(player.PlayerUID);
+            return;
+        }
+
+        if (!double.IsFinite(packet.X)
+            || !double.IsFinite(packet.Y)
+            || !double.IsFinite(packet.Z)
+            || packet.Dimension is < -1024 or > 1024)
+        {
+            return;
+        }
+
+        directorListenersByUid[player.PlayerUID] = new DirectorVoiceListener(
+            new Vec3d(packet.X, packet.Y, packet.Z),
+            packet.Dimension,
+            now + 750L);
     }
 
     private void OnChannelCommand(IServerPlayer fromPlayer, ChannelCommandPacket packet)
@@ -1393,6 +1438,7 @@ public sealed class ServerVoiceController : IDisposable
         }
 
         SendV2Relays(fromPlayer, packet, mode, position, routeRecipients, now);
+        SendDirectorProximityRelays(fromPlayer, packet, session.Codec, mode, position, now);
         metrics.RecordRoute(Stopwatch.GetElapsedTime(routeStarted).TotalMilliseconds, candidateCount, now);
     }
 
@@ -1550,6 +1596,109 @@ public sealed class ServerVoiceController : IDisposable
             SendFeedback(speaker, "server-egress-limited");
         }
     }
+
+    private void SendDirectorProximityRelays(
+        IServerPlayer speaker,
+        VoiceFrameV3Packet frame,
+        int codec,
+        VoiceMode mode,
+        Vec3d position,
+        long now)
+    {
+        if (!config.EnableDirectorProximityCapture
+            || frame.Target is not (VoiceTransmitTarget.Proximity or VoiceTransmitTarget.ProximityAndChannel)
+            || speaker.Entity is null)
+        {
+            return;
+        }
+
+        float range = Math.Min(config.GetRange(mode), config.MaxRange);
+        double rangeSquared = range * range;
+        int speakerDimension = speaker.Entity.Pos.Dimension;
+        float referenceDistance = CalculateReferenceDistance(range);
+        float rolloffFactor = CalculateRolloff(range);
+        int listenerCount = 0;
+
+        foreach (KeyValuePair<string, DirectorVoiceListener> entry in directorListenersByUid.ToArray())
+        {
+            string listenerUid = entry.Key;
+            DirectorVoiceListener listener = entry.Value;
+            if (listener.ExpiresAtMilliseconds < now)
+            {
+                directorListenersByUid.Remove(listenerUid);
+                directorStreamArbiter.RemovePlayer(listenerUid);
+                continue;
+            }
+            if (listenerCount >= config.MaxDirectorListeners
+                || listener.Dimension != speakerDimension
+                || listenerUid == speaker.PlayerUID
+                || !onlinePlayersByUid.TryGetValue(listenerUid, out IServerPlayer? target)
+                || !sessionsByUid.ContainsKey(listenerUid)
+                || (statesByUid.TryGetValue(listenerUid, out ClientVoiceStatePacket? state) && state.GlobalMuted)
+                || !moderation.CanReceive(listenerUid, now)
+                || (mutedByListenerUid.TryGetValue(listenerUid, out HashSet<string>? muted) && muted.Contains(speaker.PlayerUID)))
+            {
+                continue;
+            }
+
+            double distanceSquared = (position.X - listener.Position.X) * (position.X - listener.Position.X)
+                + (position.Y - listener.Position.Y) * (position.Y - listener.Position.Y)
+                + (position.Z - listener.Position.Z) * (position.Z - listener.Position.Z);
+            if (!double.IsFinite(distanceSquared) || distanceSquared > rangeSquared)
+            {
+                continue;
+            }
+            if (!directorStreamArbiter.TryAdmit(
+                    listenerUid,
+                    speaker.PlayerUID,
+                    priority: 1,
+                    distanceSquared,
+                    config.MaxDirectorStreamsPerListener,
+                    now,
+                    proximity: true,
+                    maxProximityStreams: config.MaxDirectorStreamsPerListener))
+            {
+                metrics.DropNoSlot(now);
+                continue;
+            }
+
+            int estimatedPacketBytes = frame.Payload.Length + 128;
+            if (!listenerEgressBudget.HasCapacity(listenerUid, estimatedPacketBytes, now)
+                || egressBudget.Available(now) + 0.0001d < estimatedPacketBytes
+                || !listenerEgressBudget.TryConsume(listenerUid, estimatedPacketBytes, now)
+                || !egressBudget.TryConsume(estimatedPacketBytes, now))
+            {
+                metrics.DropBudget(now);
+                continue;
+            }
+
+            voiceChannel?.SendPacket(new DirectorVoiceRelayFrameV3Packet
+            {
+                SpeakerUid = speaker.PlayerUID,
+                SpeakerEntityId = speaker.Entity.EntityId,
+                SessionId = frame.SessionId,
+                Sequence = frame.Sequence,
+                Mode = mode,
+                Payload = frame.Payload,
+                X = (float)position.X,
+                Y = (float)position.Y,
+                Z = (float)position.Z,
+                Dimension = speakerDimension,
+                Codec = codec,
+                MaxDistance = range,
+                ReferenceDistance = referenceDistance,
+                RolloffFactor = rolloffFactor
+            }, target);
+            metrics.Relayed(1, estimatedPacketBytes, now);
+            listenerCount++;
+        }
+    }
+
+    private static float CalculateRolloff(float range)
+        => range > 1f ? (float)-Math.Log(0.01d) / (float)Math.Log(range) : 1f;
+
+    private static float CalculateReferenceDistance(float range)
+        => (float)Math.Max(3d, Math.Sqrt(Math.Max(range, 1f)) - 2d);
 
     private void NotifyTalkerStarted(VoiceChannel channel, IServerPlayer speaker, long now)
     {
@@ -2338,6 +2487,7 @@ public sealed class ServerVoiceController : IDisposable
             ApplyRateLimits(config, nowMilliseconds);
             NewSessionRate = new VoiceTokenBucket(5, 5, nowMilliseconds);
             ControlRate = new VoiceTokenBucket(5, 10, nowMilliseconds);
+            DirectorListenerRate = new VoiceTokenBucket(10, 10, nowMilliseconds);
             StateRate = new VoiceTokenBucket(2, 5, nowMilliseconds);
             MuteRate = new VoiceTokenBucket(20, 256, nowMilliseconds);
             PingRate = new VoiceTokenBucket(1, 3, nowMilliseconds);
@@ -2349,6 +2499,7 @@ public sealed class ServerVoiceController : IDisposable
         public VoiceTokenBucket ByteRate { get; private set; }
         public VoiceTokenBucket NewSessionRate { get; }
         public VoiceTokenBucket ControlRate { get; }
+        public VoiceTokenBucket DirectorListenerRate { get; }
         public VoiceTokenBucket StateRate { get; }
         public VoiceTokenBucket MuteRate { get; }
         public VoiceTokenBucket PingRate { get; }
@@ -2443,4 +2594,5 @@ public sealed class ServerVoiceController : IDisposable
     private readonly record struct RelayRecipient(IServerPlayer Player, VoiceRelayKind RelayKind, string ChannelId, int Priority);
     private readonly record struct RelayGroup(VoiceRelayKind RelayKind, string ChannelId);
     private readonly record struct ActiveTalkerNotification(string ChannelId, string SenderUid, string SenderName, long LastPacketMilliseconds);
+    private readonly record struct DirectorVoiceListener(Vec3d Position, int Dimension, long ExpiresAtMilliseconds);
 }

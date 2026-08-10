@@ -66,6 +66,9 @@ public sealed class ServerVoiceConfigPacket
     [ProtoMember(15)]
     public string ServerInstanceId = string.Empty;
 
+    [ProtoMember(16)]
+    public bool EnableDirectorProximityCapture;
+
     public float GetRange(VoiceMode mode)
     {
         return mode switch

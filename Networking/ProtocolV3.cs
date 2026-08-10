@@ -215,6 +215,76 @@ public sealed class VoiceRelayFrameV3Packet
 
 }
 
+/// <summary>
+/// Client-to-server update for the active VS Director offscreen camera.
+/// Only privileged clients may activate a virtual proximity listener.
+/// </summary>
+[ProtoContract]
+public sealed class DirectorVoiceListenerUpdatePacket
+{
+    [ProtoMember(1)]
+    public bool Active;
+
+    [ProtoMember(2)]
+    public double X;
+
+    [ProtoMember(3)]
+    public double Y;
+
+    [ProtoMember(4)]
+    public double Z;
+
+    [ProtoMember(5)]
+    public int Dimension;
+}
+
+/// <summary>Server-to-client proximity-only relay for the active director listener.</summary>
+[ProtoContract]
+public sealed class DirectorVoiceRelayFrameV3Packet
+{
+    [ProtoMember(1)]
+    public string SpeakerUid = string.Empty;
+
+    [ProtoMember(2)]
+    public long SpeakerEntityId;
+
+    [ProtoMember(3)]
+    public int SessionId;
+
+    [ProtoMember(4)]
+    public ushort Sequence;
+
+    [ProtoMember(5)]
+    public VoiceMode Mode;
+
+    [ProtoMember(6)]
+    public byte[] Payload = Array.Empty<byte>();
+
+    [ProtoMember(7)]
+    public float X;
+
+    [ProtoMember(8)]
+    public float Y;
+
+    [ProtoMember(9)]
+    public float Z;
+
+    [ProtoMember(10)]
+    public int Dimension;
+
+    [ProtoMember(11)]
+    public int Codec;
+
+    [ProtoMember(12)]
+    public float MaxDistance;
+
+    [ProtoMember(13)]
+    public float ReferenceDistance;
+
+    [ProtoMember(14)]
+    public float RolloffFactor;
+}
+
 [ProtoContract]
 public sealed class ChannelCommandPacket
 {

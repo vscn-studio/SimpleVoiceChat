@@ -2,7 +2,7 @@ namespace SimpleVoiceChat.Config;
 
 public sealed class SimpleVoiceChatServerConfig
 {
-    private const int CurrentConfigVersion = 4;
+    private const int CurrentConfigVersion = 5;
 
     public int ConfigVersion { get; set; } = 1;
     public string ServerInstanceId { get; set; } = string.Empty;
@@ -35,6 +35,9 @@ public sealed class SimpleVoiceChatServerConfig
     public bool AllowContinuousTalk { get; set; } = true;
     public bool EnableChannels { get; set; } = true;
     public bool AllowPlayerChannelCreation { get; set; } = true;
+    public bool EnableDirectorProximityCapture { get; set; } = false;
+    public int MaxDirectorListeners { get; set; } = 1;
+    public int MaxDirectorStreamsPerListener { get; set; } = 6;
     public long NextChannelNumber { get; set; } = 1;
     public List<string> GloballyMutedPlayerUids { get; set; } = new();
     public List<string> ForceBlockedPlayerUids { get; set; } = new();
@@ -53,6 +56,10 @@ public sealed class SimpleVoiceChatServerConfig
         if (ConfigVersion < 4)
         {
             ConfigVersion = 4;
+        }
+        if (ConfigVersion < 5)
+        {
+            ConfigVersion = 5;
         }
         ConfigVersion = Math.Max(CurrentConfigVersion, ConfigVersion);
         if (!Guid.TryParse(ServerInstanceId, out Guid serverInstanceId) || serverInstanceId == Guid.Empty)
@@ -74,6 +81,8 @@ public sealed class SimpleVoiceChatServerConfig
         MaxProximityStreams = Math.Clamp(MaxProximityStreams, 1, MaxStreamsPerListener);
         MaxChannelTalkers = Math.Clamp(MaxChannelTalkers, 1, MaxStreamsPerListener);
         MaxChannelMembers = Math.Clamp(MaxChannelMembers, 2, 100);
+        MaxDirectorListeners = Math.Clamp(MaxDirectorListeners, 1, 8);
+        MaxDirectorStreamsPerListener = Math.Clamp(MaxDirectorStreamsPerListener, 1, MaxStreamsPerListener);
         MaxChannelsPerPlayer = Math.Clamp(MaxChannelsPerPlayer, 1, 8);
         MaxChannels = Math.Clamp(MaxChannels, 16, 512);
         ChannelMemberPageSize = Math.Clamp(ChannelMemberPageSize, 8, 50);

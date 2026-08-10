@@ -66,6 +66,32 @@ public sealed class ProtocolTests
         }
     }
 
+    [Fact]
+    public void DirectorRelayValidatorAcceptsOnlySpatialProximityFrames()
+    {
+        DirectorVoiceRelayFrameV3Packet packet = new()
+        {
+            SpeakerUid = "director-speaker",
+            SpeakerEntityId = 12,
+            SessionId = 3,
+            Sequence = 4,
+            Mode = VoiceMode.Talk,
+            Payload = new byte[200],
+            X = 1f,
+            Y = 2f,
+            Z = 3f,
+            Dimension = 0,
+            Codec = VoiceProtocol.CodecOpus,
+            MaxDistance = 18f,
+            ReferenceDistance = 3f,
+            RolloffFactor = 1.6f
+        };
+
+        Assert.True(VoiceProtocolValidation.IsValidDirectorRelayShape(packet));
+        packet.ReferenceDistance = 19f;
+        Assert.False(VoiceProtocolValidation.IsValidDirectorRelayShape(packet));
+    }
+
     private static VoiceFrameV3Packet ValidPacket(byte[] payload)
     {
         return new VoiceFrameV3Packet

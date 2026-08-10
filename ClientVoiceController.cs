@@ -1,6 +1,7 @@
 using SimpleVoiceChat.Audio;
 using SimpleVoiceChat.Config;
 using SimpleVoiceChat.Gui;
+using SimpleVoiceChat.Integration;
 using SimpleVoiceChat.Networking;
 using OpenTK.Audio.OpenAL;
 using Vintagestory.API.Client;
@@ -26,6 +27,7 @@ public sealed class ClientVoiceController : IDisposable
     private IClientNetworkChannel? voiceChannel;
     private OpenAlCaptureService? capture;
     private OpenAlPlaybackService? playback;
+    private DirectorVoiceIntegration? directorVoice;
     private VoiceRecordingService? recording;
     private VoiceTestRecordingBuffer? microphoneTest;
     private VoiceHud? hud;
@@ -136,6 +138,7 @@ public sealed class ClientVoiceController : IDisposable
         VoiceRecordingService recordingService = recording;
         playback.OutputFrameCaptured = samples => recordingService.AppendOutput(samples);
         playback.Initialize();
+        directorVoice = new DirectorVoiceIntegration(capi);
 
         hud = new VoiceHud(capi, BuildHudSnapshot, ShouldShowHud);
         capi.Gui.RegisterDialog(hud);
@@ -173,6 +176,7 @@ public sealed class ClientVoiceController : IDisposable
             .RegisterMessageType<ChannelMemberDeltaPacket>()
             .RegisterMessageType<ChannelMemberPagePacket>()
             .RegisterMessageType<TalkerStateDeltaPacket>()
+            .RegisterMessageType<DirectorVoiceListenerUpdatePacket>()
             .RegisterMessageType<VoiceFeedbackPacket>()
             .RegisterMessageType<VoiceDiagnosticsPacket>()
             .SetMessageHandler<ServerVoiceConfigPacket>(OnServerConfig)
@@ -187,9 +191,11 @@ public sealed class ClientVoiceController : IDisposable
         voiceChannel = capi.Network.RegisterUdpChannel(VoiceConstants.VoiceChannelName)
             .RegisterMessageType<VoiceFrameV3Packet>()
             .RegisterMessageType<VoiceRelayFrameV3Packet>()
+            .RegisterMessageType<DirectorVoiceRelayFrameV3Packet>()
             .RegisterMessageType<VoicePingPacket>()
             .RegisterMessageType<VoicePongPacket>()
             .SetMessageHandler<VoiceRelayFrameV3Packet>(OnVoiceRelayFrameV3)
+            .SetMessageHandler<DirectorVoiceRelayFrameV3Packet>(OnDirectorVoiceRelayFrameV3)
             .SetMessageHandler<VoicePongPacket>(OnVoicePong);
     }
 
@@ -545,7 +551,7 @@ public sealed class ClientVoiceController : IDisposable
         controlChannel.SendPacket(new VoiceHelloPacket
         {
             ProtocolVersion = VoiceProtocol.CurrentVersion,
-            ModVersion = "1.0.0",
+            ModVersion = "1.0.1",
             SupportedCodecs = new[] { VoiceProtocol.CodecOpus, VoiceProtocol.CodecImaAdpcm },
             Capabilities = (int)(VoiceCapability.ProtocolV3
                 | VoiceCapability.ChannelDeltas
@@ -1720,6 +1726,21 @@ public sealed class ClientVoiceController : IDisposable
         hud?.Refresh();
     }
 
+    private void OnDirectorVoiceRelayFrameV3(DirectorVoiceRelayFrameV3Packet packet)
+    {
+        if (!lifecycle.IsStarted
+            || !voiceHandshakeAccepted
+            || !serverConfig.Enabled
+            || !serverConfig.EnableDirectorProximityCapture
+            || globalMuted
+            || !VoiceProtocolValidation.IsValidDirectorRelayShape(packet))
+        {
+            return;
+        }
+
+        directorVoice?.Enqueue(packet);
+    }
+
     private void OnFastTick(float dt)
     {
         if (!lifecycle.IsStarted)
@@ -1823,6 +1844,7 @@ public sealed class ClientVoiceController : IDisposable
             SendHello();
         }
         UpdateVoiceProbe();
+        directorVoice?.UpdateListener(controlChannel);
         TryRecoverCapture();
         UpdatePendingInviteTimeout();
         SendState(force: false);
@@ -1909,6 +1931,7 @@ public sealed class ClientVoiceController : IDisposable
             return;
         }
         playback?.Update(serverConfig);
+        directorVoice?.Update(serverConfig);
         bool playbackActive = playback?.IsRecordingPlaybackActive == true;
         if (playbackActive != lastRecordingPlaybackActive)
         {
@@ -2091,6 +2114,12 @@ public sealed class ClientVoiceController : IDisposable
             if (!active)
             {
                 continue;
+            }
+
+            VoiceTransmitTarget transmitTarget = ResolveTransmitTarget(config.TransmitTarget, config.SelectedChannelId);
+            if (transmitTarget is VoiceTransmitTarget.Proximity or VoiceTransmitTarget.ProximityAndChannel)
+            {
+                directorVoice?.SubmitLocalFrame(captureBuffer, mode, serverConfig);
             }
 
             peakMicLevel = Math.Max(peakMicLevel, NormalizeVoiceLevel(stats.Rms, mode));
@@ -2426,6 +2455,8 @@ public sealed class ClientVoiceController : IDisposable
         voiceEncoder = null;
         playback?.Dispose();
         playback = null;
+        directorVoice?.Dispose();
+        directorVoice = null;
         recording?.Dispose();
         recording = null;
         microphoneTest = null;

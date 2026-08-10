@@ -4,15 +4,20 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+    <Version>1.0.1</Version>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <OutputPath>bin\$(Configuration)\Mods\mod</OutputPath>
     <VintageStoryPath Condition="'$(VintageStoryPath)' == '' and '$(VINTAGE_STORY)' != ''">$(VINTAGE_STORY)</VintageStoryPath>
-    <VintageStoryPath Condition="'$(VintageStoryPath)' == ''">E:\vintagestory\vs_client_linux-x64_1.22.2\Vintagestory</VintageStoryPath>
+    <VintageStoryPath Condition="'$(VintageStoryPath)' == ''">E:\vintagestory\Vintagestory</VintageStoryPath>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Concentus" Version="2.2.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\VS Director\VSDirector.csproj" Private="false" />
   </ItemGroup>
 
   <ItemGroup>

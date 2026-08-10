@@ -1,6 +1,6 @@
 # SimpleVoiceChat
 
-`SimpleVoiceChat 1.0.0` is a general-purpose voice chat mod for Vintage Story. It provides proximity voice, whisper/normal/shout modes, custom channels, audio processing, permission management, and capacity protection.
+`SimpleVoiceChat 1.0.1` is a general-purpose voice chat mod for Vintage Story. It provides proximity voice, whisper/normal/shout modes, custom channels, audio processing, permission management, and capacity protection.
 
 ## Voice
 
@@ -65,7 +65,7 @@ public int MaxChannelTalkers { get; set; } = 3;
 public bool EnableChannels { get; set; } = true;
 ```
 
-When a configuration older than version 4 is loaded, persistent channel names, members, permissions, locks, mutes, and bans are retained. Each channel receives a new `channel-<guid>` ID and obsolete channel type data is discarded.
+When a configuration older than version 5 is loaded, persistent channel names, members, permissions, locks, mutes, and bans are retained. Each channel receives a new `channel-<guid>` ID and obsolete channel type data is discarded.
 
 ## Integration
 
@@ -80,6 +80,22 @@ public interface IVoiceChannelProvider
 ```
 
 `VoiceChannelSnapshot` contains a channel ID, display name, owner, capacity limits, and members with roles. Externally managed channels are read-only for local membership and naming changes; server permission controls remain authoritative.
+
+### VS Director Proximity Capture
+
+When `VS Director 0.16.94` is installed with SimpleVoiceChat, a director client with the server `controlserver` privilege can record only the proximity voices around an active replay or live offscreen camera. Custom channels are never sent to the director audio path.
+
+The server owner must explicitly enable the feature in `SimpleVoiceChat.Server.json`:
+
+```json
+{
+  "EnableDirectorProximityCapture": true,
+  "MaxDirectorListeners": 1,
+  "MaxDirectorStreamsPerListener": 6
+}
+```
+
+The listener position expires after 750 ms unless refreshed by the active director client. Voice still obeys the configured whisper/talk/shout distance, local mute, global mute, moderation, stream limits, and egress budgets.
 
 ## Verification
 

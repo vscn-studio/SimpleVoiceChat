@@ -22,7 +22,8 @@ public static class PacketMapper
             ProtocolVersion = VoiceProtocol.CurrentVersion,
             MaxStreamsPerListener = config.MaxStreamsPerListener,
             AllowContinuousTalk = config.AllowContinuousTalk,
-            ServerInstanceId = config.ServerInstanceId
+            ServerInstanceId = config.ServerInstanceId,
+            EnableDirectorProximityCapture = config.EnableDirectorProximityCapture
         };
     }
 }

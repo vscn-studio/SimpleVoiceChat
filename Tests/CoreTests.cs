@@ -212,7 +212,7 @@ public sealed class CoreTests
         config.Normalize();
 
         PersistentVoiceChannelConfig channel = Assert.Single(config.PersistentChannels);
-        Assert.Equal(4, config.ConfigVersion);
+        Assert.Equal(5, config.ConfigVersion);
         Assert.Equal("channel-1", channel.Id);
         Assert.Equal(2, config.NextChannelNumber);
         Assert.NotEqual("legacy-general", channel.Id);
@@ -220,6 +220,19 @@ public sealed class CoreTests
         Assert.Equal(VoiceChannelRole.Owner, channel.Members["owner"]);
         Assert.Equal(VoiceChannelRole.Moderator, channel.Members["moderator"]);
         Assert.Equal(VoiceChannelRole.Member, channel.Members["member"]);
+    }
+
+    [Fact]
+    public void DirectorProximityCaptureConfigurationIsSentToClients()
+    {
+        SimpleVoiceChatServerConfig config = new()
+        {
+            EnableDirectorProximityCapture = true
+        };
+
+        ServerVoiceConfigPacket packet = PacketMapper.ToPacket(config);
+
+        Assert.True(packet.EnableDirectorProximityCapture);
     }
 
     [Fact]
