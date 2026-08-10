@@ -127,6 +127,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
 
     internal void SubmitLocalFrame(
         ReadOnlySpan<short> samples,
+        long timestampMilliseconds,
         VoiceMode mode,
         VoiceTransmitTarget transmitTarget,
         ServerVoiceConfigPacket serverConfig)
@@ -144,7 +145,6 @@ internal sealed class DirectorVoiceIntegration : IDisposable
             director,
             capi.World.Player.PlayerUID,
             capi.World.Player.PlayerName);
-        long timestamp = capi.World.ElapsedMilliseconds;
         if (!serverConfig.EnableDirectorProximityCapture
             || transmitTarget is not (VoiceTransmitTarget.Proximity or VoiceTransmitTarget.ProximityAndChannel))
         {
@@ -178,7 +178,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
                 range,
                 CalculateReferenceDistance(range),
                 CalculateRolloff(range)),
-            timestamp);
+            timestampMilliseconds);
     }
 
     public void Dispose()
@@ -246,6 +246,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
         float ReferenceDistance,
         float RolloffFactor,
         string SpeakerName,
+        long ArrivalMilliseconds,
         long TimestampMilliseconds);
 
     private sealed class DirectorVoiceStream : IDisposable
@@ -257,6 +258,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
         private int sessionId = -1;
         private DirectorVoiceFrameMetadata latestMetadata;
         private bool hasMetadata;
+        private readonly VoiceFrameSequenceTimeline timestampTimeline = new();
 
         internal long LastActivityMilliseconds { get; private set; }
 
@@ -271,6 +273,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
                 decoder?.Dispose();
                 decoder = VoiceCodecFactory.CreateDecoder(packet.Codec);
                 hasMetadata = false;
+                timestampTimeline.Reset();
             }
 
             DirectorVoiceFrameMetadata metadata = new(
@@ -282,6 +285,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
                 packet.ReferenceDistance,
                 packet.RolloffFactor,
                 packet.SpeakerName,
+                arrivalMilliseconds,
                 arrivalMilliseconds);
             metadataBySequence[packet.Sequence] = metadata;
             latestMetadata = metadata;
@@ -310,6 +314,12 @@ internal sealed class DirectorVoiceIntegration : IDisposable
             {
                 metadata = latestMetadata;
             }
+            metadata = metadata with
+            {
+                TimestampMilliseconds = timestampTimeline.Resolve(
+                    encoded.Sequence,
+                    metadata.ArrivalMilliseconds)
+            };
 
             samples = new short[VoiceConstants.SamplesPerFrame];
             VoiceDecoderSafety.DecodeOrSilence(decoder, encoded.Payload, samples, encoded.UseFec);

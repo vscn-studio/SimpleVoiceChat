@@ -86,6 +86,27 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void CaptureFrameClockUsesAudioBufferTimeInsteadOfTickTime()
+    {
+        CaptureFrameTimestampClock clock = new();
+
+        Assert.Equal(60L, clock.ResolveFrameEndTimestamp(100L, 960));
+        Assert.Equal(80L, clock.ResolveFrameEndTimestamp(100L, 640));
+        Assert.Equal(100L, clock.ResolveFrameEndTimestamp(100L, 320));
+        Assert.Equal(120L, clock.ResolveFrameEndTimestamp(125L, 320));
+    }
+
+    [Fact]
+    public void RelayFrameTimelineUsesSequenceWhenFramesShareAnArrivalTick()
+    {
+        VoiceFrameSequenceTimeline timeline = new();
+
+        Assert.Equal(500L, timeline.Resolve(120, 500L));
+        Assert.Equal(520L, timeline.Resolve(121, 500L));
+        Assert.Equal(560L, timeline.Resolve(123, 500L));
+    }
+
+    [Fact]
     public void ChannelPacketsHaveNoChannelTypeField()
     {
         Assert.Null(typeof(ChannelCommandPacket).GetProperty("Kind"));

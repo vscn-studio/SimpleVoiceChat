@@ -10,6 +10,7 @@ public sealed class OpenAlCaptureService : IDisposable
 
     private readonly ICoreClientAPI capi;
     private readonly SimpleVoiceChatClientConfig config;
+    private readonly CaptureFrameTimestampClock frameTimestampClock = new();
     private ALCaptureDevice captureDevice;
     private bool captureStarted;
     private bool disposed;
@@ -68,6 +69,7 @@ public sealed class OpenAlCaptureService : IDisposable
         {
             ALC.CaptureStart(captureDevice);
             captureStarted = true;
+            frameTimestampClock.Reset();
         }
         catch (Exception ex)
         {
@@ -91,10 +93,12 @@ public sealed class OpenAlCaptureService : IDisposable
             capi.Logger.Warning("SimpleVoiceChat: failed stopping capture: {0}", ex.Message);
         }
         captureStarted = false;
+        frameTimestampClock.Reset();
     }
 
-    public bool TryReadFrame(short[] buffer)
+    public bool TryReadFrame(short[] buffer, out long timestampMilliseconds)
     {
+        timestampMilliseconds = 0L;
         if (!IsAvailable || !captureStarted || buffer.Length < VoiceConstants.SamplesPerFrame)
         {
             return false;
@@ -109,6 +113,9 @@ public sealed class OpenAlCaptureService : IDisposable
             }
 
             ALC.CaptureSamples(captureDevice, buffer, VoiceConstants.SamplesPerFrame);
+            timestampMilliseconds = frameTimestampClock.ResolveFrameEndTimestamp(
+                capi.World.ElapsedMilliseconds,
+                available);
             return true;
         }
         catch (Exception ex)

@@ -2082,7 +2082,9 @@ public sealed class ClientVoiceController : IDisposable
             voiceActivationTriggered = false;
         }
 
-        while (processedFrames < MaxCaptureFramesPerTick && capture?.TryReadFrame(captureBuffer) == true)
+        while (processedFrames < MaxCaptureFramesPerTick
+            && capture is not null
+            && capture.TryReadFrame(captureBuffer, out long captureTimestampMilliseconds))
         {
             hadFrame = true;
             processedFrames++;
@@ -2117,7 +2119,12 @@ public sealed class ClientVoiceController : IDisposable
             }
 
             VoiceTransmitTarget transmitTarget = ResolveTransmitTarget(config.TransmitTarget, config.SelectedChannelId);
-            directorVoice?.SubmitLocalFrame(captureBuffer, mode, transmitTarget, serverConfig);
+            directorVoice?.SubmitLocalFrame(
+                captureBuffer,
+                captureTimestampMilliseconds,
+                mode,
+                transmitTarget,
+                serverConfig);
 
             peakMicLevel = Math.Max(peakMicLevel, NormalizeVoiceLevel(stats.Rms, mode));
             lastVoiceLevelMs = capi.World.ElapsedMilliseconds;
