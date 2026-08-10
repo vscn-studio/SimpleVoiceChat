@@ -2113,18 +2113,19 @@ public sealed class ClientVoiceController : IDisposable
                 continue;
             }
             bool active = stats.Active && (!requireVoiceActivation || activationDetected || voiceActivationHangoverFrames > 0);
-            if (!active)
-            {
-                continue;
-            }
-
             VoiceTransmitTarget transmitTarget = ResolveTransmitTarget(config.TransmitTarget, config.SelectedChannelId);
+            // Director records the local proximity microphone independently of
+            // VAD. VAD still controls network transmission below.
             directorVoice?.SubmitLocalFrame(
                 captureBuffer,
                 captureTimestampMilliseconds,
                 mode,
                 transmitTarget,
                 serverConfig);
+            if (!active)
+            {
+                continue;
+            }
 
             peakMicLevel = Math.Max(peakMicLevel, NormalizeVoiceLevel(stats.Rms, mode));
             lastVoiceLevelMs = capi.World.ElapsedMilliseconds;
