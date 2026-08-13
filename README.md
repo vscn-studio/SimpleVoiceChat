@@ -1,6 +1,6 @@
 # SimpleVoiceChat
 
-`SimpleVoiceChat 1.0.6` is a general-purpose voice chat mod for Vintage Story. It provides proximity voice, whisper/normal/shout modes, custom channels, audio processing, permission management, and capacity protection.
+`SimpleVoiceChat 1.0.14` is a general-purpose voice chat mod for Vintage Story. It provides proximity voice, whisper/normal/shout modes, custom channels, audio processing, permission management, and capacity protection.
 
 ## Voice
 
@@ -8,6 +8,21 @@
 - Players can choose proximity only, the selected channel only, or both targets.
 - Opus is preferred, with optional ADPCM fallback. Protocol V3 is required; V2 clients are rejected.
 - Client settings provide microphone selection, push-to-talk, continuous talk, gain, noise gate, noise suppression, echo cancellation, output volume, per-player volume, mute, jitter, occlusion, performance, and diagnostics.
+- Optional client-only speech-to-chat supports Alibaba Bailian Qwen-ASR, SiliconFlow, and Deepgram audio transcription. It is disabled by default. Choose the provider, then configure its API key, model, and endpoint in the Speech Recognition settings page. Hold `V` to recognize speech. Audio is sent directly from the client to the configured endpoint and is never handled by the SimpleVoiceChat server. Each provider keeps its own saved configuration when switching the provider menu.
+
+The default Bailian endpoint is the OpenAI-compatible Qwen-ASR endpoint:
+
+```text
+https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+```
+
+The default model is `qwen3-asr-flash`. Hold `V` while speaking and release it to send the recognized text to the active chat channel. The API key is stored in the local client configuration and should be treated as sensitive.
+
+For SiliconFlow, the default endpoint is `https://api.siliconflow.cn/v1/audio/transcriptions` and the default model is `FunAudioLLM/SenseVoiceSmall`. The client uploads the captured WAV as multipart form data (`file` plus `model`) using the SiliconFlow audio transcription API.
+
+For Deepgram, the default endpoint is `https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true` and the default model is `nova-3`. The client uploads the captured WAV as `audio/wav` with `Authorization: Token <API key>` and reads the transcript from the Deepgram listen response.
+
+The provider menu also includes offline Vosk and Whisper. For Vosk, enter the extracted model directory path and download models from <https://alphacephei.com/vosk/models>. For Whisper, enter the downloaded Whisper GGML `.bin` model path and use <https://huggingface.co/ggerganov/whisper.cpp/tree/main>. Local engines keep audio on the client and require no API key or server configuration.
 
 ## Channels
 
@@ -81,9 +96,9 @@ public interface IVoiceChannelProvider
 
 `VoiceChannelSnapshot` contains a channel ID, display name, owner, capacity limits, and members with roles. Externally managed channels are read-only for local membership and naming changes; server permission controls remain authoritative.
 
-### VS Director Proximity Capture
+### Optional VS Director Proximity Capture
 
-When `VS Director 0.16.99` is installed with SimpleVoiceChat, a director client with the server `controlserver` privilege can record only the proximity voices around an active replay or live offscreen camera. Custom channels are never sent to the director audio path. During replay recording without an active director camera, the recording player's position becomes the proximity listener, so local and nearby voices remain spatialized with the SimpleVoiceChat mode attenuation. The replay timeline creates one voice row per speaker, using the player name.
+The main SimpleVoiceChat package does not require VS Director. When VS Director is installed alongside SimpleVoiceChat, the integration is detected automatically at runtime and a director client with the server `controlserver` privilege can record only the proximity voices around an active replay or live offscreen camera. If VS Director is absent or its voice API is unavailable, SimpleVoiceChat continues without director capture. Custom channels are never sent to the director audio path. During replay recording without an active director camera, the recording player's position becomes the proximity listener, so local and nearby voices remain spatialized with the SimpleVoiceChat mode attenuation. The replay timeline creates one voice row per speaker, using the player name.
 
 The server owner must explicitly enable the feature in `SimpleVoiceChat.Server.json`:
 

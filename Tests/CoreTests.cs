@@ -268,13 +268,13 @@ public sealed class CoreTests
 
         existing.Normalize();
 
-        Assert.Equal(4, existing.ConfigVersion);
+        Assert.Equal(6, existing.ConfigVersion);
         Assert.True(existing.InitialSetupCompleted);
         Assert.True(existing.InitialSetupPromptShown);
 
         SimpleVoiceChatClientConfig firstInstall = new();
         firstInstall.Normalize();
-        Assert.Equal(4, firstInstall.ConfigVersion);
+        Assert.Equal(6, firstInstall.ConfigVersion);
         Assert.False(firstInstall.InitialSetupCompleted);
         Assert.False(firstInstall.InitialSetupPromptShown);
     }
@@ -294,6 +294,196 @@ public sealed class CoreTests
         Assert.True(config.PreferVoiceActivation);
         Assert.False(config.PreferContinuousTalk);
         Assert.True(config.VoiceActivationThreshold >= config.NoiseGate);
+    }
+
+    [Fact]
+    public void SpeechRecognitionDefaultsToDisabledAlibabaConfiguration()
+    {
+        SimpleVoiceChatClientConfig config = new();
+
+        config.Normalize();
+
+        Assert.False(config.EnableSpeechRecognition);
+        Assert.Equal(SimpleVoiceChatClientConfig.AlibabaSpeechRecognitionProvider, config.SpeechRecognitionProvider);
+        Assert.Equal("qwen3-asr-flash", config.SpeechRecognitionModel);
+        Assert.Equal("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", config.SpeechRecognitionEndpoint);
+    }
+
+    [Fact]
+    public void SpeechRecognitionCanSelectDeepgramConfiguration()
+    {
+        SimpleVoiceChatClientConfig config = new();
+
+        Assert.True(config.SelectSpeechRecognitionProvider(SimpleVoiceChatClientConfig.DeepgramSpeechRecognitionProvider));
+        Assert.Equal(SimpleVoiceChatClientConfig.DeepgramSpeechRecognitionModel, config.SpeechRecognitionModel);
+        Assert.Equal(SimpleVoiceChatClientConfig.DeepgramSpeechRecognitionEndpoint, config.SpeechRecognitionEndpoint);
+        Assert.Empty(config.SpeechRecognitionApiKey);
+    }
+
+    [Fact]
+    public void SpeechRecognitionPreservesConfigurationPerProvider()
+    {
+        SimpleVoiceChatClientConfig config = new()
+        {
+            SpeechRecognitionApiKey = "alibaba-key",
+            SpeechRecognitionModel = "alibaba-model",
+            SpeechRecognitionEndpoint = "https://alibaba.example/v1"
+        };
+        config.Normalize();
+
+        Assert.True(config.SelectSpeechRecognitionProvider(SimpleVoiceChatClientConfig.DeepgramSpeechRecognitionProvider));
+        config.SpeechRecognitionApiKey = "deepgram-key";
+        config.SpeechRecognitionModel = "nova-custom";
+        config.SpeechRecognitionEndpoint = "https://deepgram.example/v1/listen";
+        config.Normalize();
+
+        Assert.True(config.SelectSpeechRecognitionProvider(SimpleVoiceChatClientConfig.AlibabaSpeechRecognitionProvider));
+        Assert.Equal("alibaba-key", config.SpeechRecognitionApiKey);
+        Assert.Equal("alibaba-model", config.SpeechRecognitionModel);
+        Assert.Equal("https://alibaba.example/v1", config.SpeechRecognitionEndpoint);
+
+        Assert.True(config.SelectSpeechRecognitionProvider(SimpleVoiceChatClientConfig.DeepgramSpeechRecognitionProvider));
+        Assert.Equal("deepgram-key", config.SpeechRecognitionApiKey);
+        Assert.Equal("nova-custom", config.SpeechRecognitionModel);
+        Assert.Equal("https://deepgram.example/v1/listen", config.SpeechRecognitionEndpoint);
+    }
+
+    [Fact]
+    public void SpeechRecognitionProviderConfigurationSurvivesSerialization()
+    {
+        SimpleVoiceChatClientConfig config = new();
+        Assert.True(config.SelectSpeechRecognitionProvider(SimpleVoiceChatClientConfig.VoskSpeechRecognitionProvider));
+        config.SpeechRecognitionModel = @"C:\models\vosk-cn";
+        config.Normalize();
+
+        string json = JsonSerializer.Serialize(config);
+        SimpleVoiceChatClientConfig restored = JsonSerializer.Deserialize<SimpleVoiceChatClientConfig>(json)!;
+        restored.Normalize();
+
+        Assert.Equal(SimpleVoiceChatClientConfig.VoskSpeechRecognitionProvider, restored.SpeechRecognitionProvider);
+        Assert.Equal(@"C:\models\vosk-cn", restored.SpeechRecognitionModel);
+        Assert.True(restored.SelectSpeechRecognitionProvider(SimpleVoiceChatClientConfig.AlibabaSpeechRecognitionProvider));
+        Assert.True(restored.SelectSpeechRecognitionProvider(SimpleVoiceChatClientConfig.VoskSpeechRecognitionProvider));
+        Assert.Equal(@"C:\models\vosk-cn", restored.SpeechRecognitionModel);
+    }
+
+    [Theory]
+    [InlineData(SimpleVoiceChatClientConfig.VoskSpeechRecognitionProvider)]
+    [InlineData(SimpleVoiceChatClientConfig.WhisperSpeechRecognitionProvider)]
+    public void LocalSpeechProvidersUseModelPathsWithoutCloudEndpoint(string provider)
+    {
+        SimpleVoiceChatClientConfig config = new();
+
+        Assert.True(config.SelectSpeechRecognitionProvider(provider));
+        config.SpeechRecognitionModel = "C:/models/" + new string('x', 400);
+        config.Normalize();
+
+        Assert.Equal(provider, config.SpeechRecognitionProvider);
+        Assert.Equal(410, config.SpeechRecognitionModel.Length);
+        Assert.Empty(config.SpeechRecognitionEndpoint);
+    }
+
+    [Fact]
+    public void SpeechRecognitionBuildsPcmWavAndParsesAlibabaResponse()
+    {
+        byte[] wav = SpeechRecognition.SpeechRecognitionAudioBuffer.CreateWav(new short[] { 100, -200, 300 });
+        string request = SpeechRecognition.AlibabaSpeechRecognitionClient.CreateRequestJson(wav, "qwen3-asr-flash");
+        string response = "{\"choices\":[{\"message\":{\"content\":\"你好，世界。\"}}]}";
+
+        Assert.Equal("RIFF", Encoding.ASCII.GetString(wav, 0, 4));
+        Assert.Contains("data:audio/wav;base64,", request);
+        Assert.Equal("你好，世界。", SpeechRecognition.AlibabaSpeechRecognitionClient.ExtractText(response));
+    }
+
+    [Fact]
+    public void LocalSpeechRecognitionExtractsMonoPcmFromWav()
+    {
+        byte[] wav = SpeechRecognition.SpeechRecognitionAudioBuffer.CreateWav(new short[] { 100, -200, 300 });
+
+        Assert.Equal(new short[] { 100, -200, 300 }, SpeechRecognition.LocalSpeechRecognitionAudio.ExtractPcm16(wav));
+        Assert.Empty(SpeechRecognition.LocalSpeechRecognitionAudio.ExtractPcm16(Encoding.ASCII.GetBytes("not wav")));
+    }
+
+    [Fact]
+    public async Task SpeechRecognitionCanSelectSiliconFlowMultipartProvider()
+    {
+        SimpleVoiceChatClientConfig config = new();
+
+        Assert.True(config.SelectSpeechRecognitionProvider(SimpleVoiceChatClientConfig.SiliconFlowSpeechRecognitionProvider));
+        Assert.Equal("FunAudioLLM/SenseVoiceSmall", config.SpeechRecognitionModel);
+        Assert.Equal("https://api.siliconflow.cn/v1/audio/transcriptions", config.SpeechRecognitionEndpoint);
+
+        using MultipartFormDataContent content = SpeechRecognition.SiliconFlowSpeechRecognitionClient.CreateMultipartContent(
+            new byte[] { 1, 2, 3 },
+            config.SpeechRecognitionModel);
+        HttpContent[] parts = content.ToArray();
+        Assert.Equal(2, parts.Length);
+        HttpContent file = Assert.Single(parts, part => part.Headers.ContentDisposition?.Name?.Trim('"') == "file");
+        HttpContent model = Assert.Single(parts, part => part.Headers.ContentDisposition?.Name?.Trim('"') == "model");
+        Assert.Equal("speech.wav", file.Headers.ContentDisposition?.FileName?.Trim('"'));
+        Assert.Equal("audio/wav", file.Headers.ContentType?.MediaType);
+        Assert.Equal(new byte[] { 1, 2, 3 }, await file.ReadAsByteArrayAsync());
+        Assert.Equal("FunAudioLLM/SenseVoiceSmall", await model.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task DeepgramSpeechRecognitionBuildsWavRequestAndParsesTranscript()
+    {
+        byte[] wav = new byte[] { 1, 2, 3 };
+        using HttpContent content = SpeechRecognition.DeepgramSpeechRecognitionClient.CreateAudioContent(wav);
+        Assert.Equal("audio/wav", content.Headers.ContentType?.MediaType);
+        Assert.Equal(wav, await content.ReadAsByteArrayAsync());
+
+        Uri endpoint = SpeechRecognition.DeepgramSpeechRecognitionClient.CreateEndpoint(
+            new Uri("https://api.deepgram.com/v1/listen?smart_format=true&model=old"), "nova-3");
+        Assert.Contains("model=nova-3", endpoint.Query);
+        Assert.Contains("smart_format=true", endpoint.Query);
+
+        string response = "{\"results\":{\"channels\":[{\"alternatives\":[{\"transcript\":\"hello from Deepgram\"}]}]}}";
+        Assert.Equal("hello from Deepgram", SpeechRecognition.DeepgramSpeechRecognitionClient.ExtractText(response));
+    }
+
+    [Fact]
+    public void MainModDoesNotRequireVsDirector()
+    {
+        string path = Path.Combine(AppContext.BaseDirectory, "modinfo.json");
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
+        JsonElement dependencies = document.RootElement.GetProperty("dependencies");
+
+        Assert.Equal("1.0.14", document.RootElement.GetProperty("version").GetString());
+        Assert.True(dependencies.TryGetProperty("game", out _));
+        Assert.False(dependencies.TryGetProperty("vsdirector", out _));
+        Assert.DoesNotContain(
+            typeof(ClientVoiceController).Assembly.GetReferencedAssemblies(),
+            reference => string.Equals(reference.Name, "VSDirector", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void DirectorReflectionBridgeCanSubmitSpanBasedPcm()
+    {
+        Type integrationType = typeof(ClientVoiceController).Assembly
+            .GetType("SimpleVoiceChat.Integration.DirectorVoiceIntegration", throwOnError: true)!;
+        Type reflectionType = integrationType.GetNestedType(
+            "DirectorReflection",
+            System.Reflection.BindingFlags.NonPublic)!;
+        System.Reflection.MethodInfo factory = reflectionType.GetMethod(
+            "CreateSubmitDelegate",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        System.Reflection.MethodInfo submit = typeof(DirectorVoiceSourceStub).GetMethod(
+            nameof(DirectorVoiceSourceStub.SubmitPcm16))!;
+        var bridge = (Action<object, short[], int, object, long>)factory.Invoke(
+            null,
+            new object[] { typeof(DirectorVoiceSourceStub), typeof(DirectorSpatializationStub), submit })!;
+        var source = new DirectorVoiceSourceStub();
+        var spatialization = new DirectorSpatializationStub(18f);
+
+        bridge(source, new short[] { 12, -34 }, 16_000, spatialization, 42L);
+
+        Assert.Equal(new short[] { 12, -34 }, source.Samples);
+        Assert.Equal(16_000, source.SampleRate);
+        Assert.Equal(spatialization, source.Spatialization);
+        Assert.Equal(42L, source.TimestampMilliseconds);
+        Assert.Equal(1f, source.Volume);
     }
 
     [Fact]
@@ -376,5 +566,31 @@ public sealed class CoreTests
         Assert.DoesNotContain(string.Concat("c", "ivilization"), english, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(string.Concat("小", "队"), chinese, StringComparison.Ordinal);
         Assert.DoesNotContain(string.Concat("文", "明"), chinese, StringComparison.Ordinal);
+    }
+
+    private readonly record struct DirectorSpatializationStub(float MaxDistance);
+
+    private sealed class DirectorVoiceSourceStub
+    {
+        internal short[] Samples { get; private set; } = Array.Empty<short>();
+        internal int SampleRate { get; private set; }
+        internal DirectorSpatializationStub Spatialization { get; private set; }
+        internal long TimestampMilliseconds { get; private set; }
+        internal float Volume { get; private set; }
+
+        public int SubmitPcm16(
+            ReadOnlySpan<short> samples,
+            int sampleRate,
+            DirectorSpatializationStub spatialization,
+            long timestampMilliseconds,
+            float volume = 1f)
+        {
+            Samples = samples.ToArray();
+            SampleRate = sampleRate;
+            Spatialization = spatialization;
+            TimestampMilliseconds = timestampMilliseconds;
+            Volume = volume;
+            return 0;
+        }
     }
 }

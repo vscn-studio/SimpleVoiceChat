@@ -4,7 +4,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
-    <Version>1.0.13</Version>
+    <Version>1.0.14</Version>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <OutputPath>bin\$(Configuration)\Mods\mod</OutputPath>
@@ -14,10 +14,9 @@
 
   <ItemGroup>
     <PackageReference Include="Concentus" Version="2.2.2" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\VS Director\VSDirector.csproj" Private="false" />
+    <PackageReference Include="Vosk" Version="0.3.38" GeneratePathProperty="true" />
+    <PackageReference Include="Whisper.net" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -76,4 +75,37 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+
+  <Target Name="OrganizeNativeSpeechRecognitionLibraries" AfterTargets="Build">
+    <ItemGroup>
+      <WhisperNativeFile Include="$(TargetDir)runtimes\**\*" />
+      <VoskOutputNativeFile Include="$(TargetDir)lib*.dll;$(TargetDir)libvosk.so;$(TargetDir)libvosk.dylib" />
+      <VoskOutputNativeFile Remove="@(VoskOutputNativeFile)" Condition="!Exists('%(Identity)')" />
+      <LegacyVoskNativeFile Include="$(TargetDir)native\vosk\lib*.dll;$(TargetDir)native\vosk\libvosk.so;$(TargetDir)native\vosk\libvosk.dylib" />
+      <LegacyVoskNativeFile Remove="@(LegacyVoskNativeFile)" Condition="!Exists('%(Identity)')" />
+      <VoskPackageNativeFile Include="$(PkgVosk)\build\lib\**\*" />
+    </ItemGroup>
+
+    <Copy
+      SourceFiles="@(WhisperNativeFile)"
+      DestinationFiles="@(WhisperNativeFile->'$(TargetDir)native\runtimes\%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+      Condition="'@(WhisperNativeFile)' != ''" />
+    <Copy
+      SourceFiles="@(VoskPackageNativeFile)"
+      DestinationFiles="@(VoskPackageNativeFile->'$(TargetDir)native\vosk\%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+      Condition="'@(VoskPackageNativeFile)' != ''" />
+
+    <Delete Files="@(WhisperNativeFile);@(VoskOutputNativeFile);@(LegacyVoskNativeFile)" />
+    <RemoveDir Directories="$(TargetDir)runtimes" Condition="Exists('$(TargetDir)runtimes')" />
+
+    <ItemGroup>
+      <InvalidNestedDll Include="$(TargetDir)**\*.dll"
+                        Exclude="$(TargetDir)*.dll;$(TargetDir)native\**\*.dll" />
+    </ItemGroup>
+    <Error Condition="'@(InvalidNestedDll)' != ''"
+           Text="Managed DLLs must be in the mod root and unmanaged DLLs must be under native/. Invalid files: @(InvalidNestedDll)" />
+  </Target>
+
 </Project>
