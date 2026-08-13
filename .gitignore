@@ -1,34 +1,43 @@
-# Build output
-bin/
-obj/
+# Build and package output
+[Bb]in/
+[Oo]bj/
 artifacts/
+*.zip
+
+# Test and coverage output
+TestResults/
+coverage/
+coverage-*/
+*.coverage
+*.coveragexml
+*.trx
 
 # Local Vintage Story SDK/client dependency cache
 .vintagestory/
 
-# Packaged mod archives
-*.zip
-
-# IDE/editor files
+# IDE and editor state
 .vs/
 .vscode/
+.idea/
 *.user
 *.suo
 *.userosscache
 *.sln.docstates
 
-# Logs and test output
+# Logs and temporary files
 *.log
-TestResults/
-coverage/
-*.trx
+*.tmp
+*.bak
+*.orig
+*~
 
-# OS files
+# Operating-system metadata
 .DS_Store
 Thumbs.db
+Desktop.ini
+
+# Local planning and internal design notes
+.agents/
 Plan.md
 docs/UI-DESIGN.md
 docs/CAPACITY-REPORT.md
-docs/CAPACITY-REPORT.md
-docs/CAPACITY-REPORT.md
-/docs

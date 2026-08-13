@@ -415,12 +415,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
                     return null;
                 }
 
-                MethodInfo getModSystem = capi.ModLoader.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                    .FirstOrDefault(method => method.Name == "GetModSystem"
-                        && method.IsGenericMethodDefinition
-                        && method.GetParameters().Length == 0)
-                    ?? throw new MissingMethodException("Vintage Story GetModSystem<T>() is unavailable.");
-                object director = getModSystem.MakeGenericMethod(systemType).Invoke(capi.ModLoader, null)
+                object director = ResolveModSystem(capi.ModLoader, systemType)
                     ?? throw new InvalidOperationException("VS Director client system is unavailable.");
                 PropertyInfo voiceApiProperty = systemType.GetProperty("VoiceApi")
                     ?? throw new MissingMemberException(systemType.FullName, "VoiceApi");
@@ -483,6 +478,46 @@ internal sealed class DirectorVoiceIntegration : IDisposable
                 capi.Logger.Debug("SimpleVoiceChat: optional VS Director integration is unavailable: {0}", exception.Message);
                 return null;
             }
+        }
+
+        private static object? ResolveModSystem(object modLoader, Type systemType)
+        {
+            Type loaderType = modLoader.GetType();
+            MethodInfo? getModSystem = EnumerateLoaderContracts(loaderType)
+                .SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.Instance))
+                .FirstOrDefault(IsCompatibleGetModSystemMethod);
+            if (getModSystem is null)
+            {
+                throw new MissingMethodException("Vintage Story GetModSystem<T>(bool) is unavailable.");
+            }
+
+            object?[]? arguments = getModSystem.GetParameters().Length == 0
+                ? null
+                : new object?[] { true };
+            return getModSystem.MakeGenericMethod(systemType).Invoke(modLoader, arguments);
+        }
+
+        private static IEnumerable<Type> EnumerateLoaderContracts(Type loaderType)
+        {
+            yield return loaderType;
+            foreach (Type interfaceType in loaderType.GetInterfaces())
+            {
+                yield return interfaceType;
+            }
+        }
+
+        private static bool IsCompatibleGetModSystemMethod(MethodInfo method)
+        {
+            if (method.Name != "GetModSystem"
+                || !method.IsGenericMethodDefinition
+                || method.GetGenericArguments().Length != 1)
+            {
+                return false;
+            }
+
+            ParameterInfo[] parameters = method.GetParameters();
+            return parameters.Length == 0
+                || (parameters.Length == 1 && parameters[0].ParameterType == typeof(bool));
         }
 
         private static Action<object, short[], int, object, long> CreateSubmitDelegate(

@@ -4,11 +4,11 @@
 <th style="padding: 6px 8px; text-align: left;">Current Release</th>
 </tr></thead><tbody>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Mod name</td><td style="padding: 6px 8px; vertical-align: top;">SimpleVoiceChat</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Mod version</td><td style="padding: 6px 8px; vertical-align: top;"><code>1.0.0</code></td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Game version</td><td style="padding: 6px 8px; vertical-align: top;">Vintage Story <code>1.22.2</code></td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Mod version</td><td style="padding: 6px 8px; vertical-align: top;"><code>1.0.14</code></td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Game version</td><td style="padding: 6px 8px; vertical-align: top;">Vintage Story <code>1.22.3</code></td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Voice protocol</td><td style="padding: 6px 8px; vertical-align: top;">Protocol V3; Opus is the preferred codec, and the server configuration determines whether ADPCM fallback is allowed</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Installation scope</td><td style="padding: 6px 8px; vertical-align: top;">The same version must be installed on both the client and server</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Documentation verified</td><td style="padding: 6px 8px; vertical-align: top;"><code>2026-08-10</code></td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Documentation verified</td><td style="padding: 6px 8px; vertical-align: top;"><code>2026-08-13</code></td></tr>
 </tbody></table>
 <p>SimpleVoiceChat provides proximity voice chat, whisper/normal/shout modes, custom channels, per-player local volume and muting, recording, audio processing, permission management, and capacity safeguards. The server handles only authentication, routing, and forwarding; clients handle capture, playback, and local settings.</p>
 <div style="border-left: 4px solid #e03e2d; padding: 8px 12px; margin: 12px 0; background-color: #fff5f5;"><p style="color: #e03e2d; margin: 0;"><strong>Important:</strong> The current release uses protocol V3. The voice handshake may be rejected when the client and server versions do not match. Do not install multiple SimpleVoiceChat ZIP files at the same time.</p></div>
@@ -17,11 +17,12 @@
 <ol>
 <li>Shut down the Vintage Story client and server.</li>
 <li>Delete old SimpleVoiceChat ZIP files from the Mods directory, leaving only the version you intend to use.</li>
-<li>Place <code>SimpleVoiceChat-v1.0.0.zip</code> in the <code>Mods</code> directory on both the client and server.</li>
+<li>Place <code>SimpleVoiceChat_1.0.14.zip</code> unchanged in the <code>Mods</code> directory on both the client and server. Do not extract the mod archive.</li>
 <li>Start the server first, then start the client and join the world.</li>
 <li>On first use, the chat box prompts you to press <code>'</code> to open settings. The prompt itself does not open a window.</li>
 <li>Press <code>'</code> to open the initial setup wizard. On the welcome page, you can choose "Skip Initial Setup and Open Settings," select "Cancel" to close the wizard, or select "Confirm" to begin configuration.</li>
 </ol>
+<p>SimpleVoiceChat does not require Simple Voice Chat, VS Director, or <code>SimpleVoiceChat_VSDirectorIntegration</code>. This package provides the base voice features by itself; optional director capture activates automatically only when VS Director is also installed.</p>
 <p>The wizard configures the input device, output device, speaking method, microphone level test, noise gate, and voice-activation threshold in sequence. It appears as a centered dialog and does not cover the entire game viewport. Push-to-talk uses <code>N</code> by default. After you complete or skip the wizard, pressing <code>'</code> opens the main settings window.</p>
 
 <h2>2. Default Key Bindings</h2>
@@ -32,15 +33,16 @@
 <tr><td style="padding: 6px 8px; vertical-align: top;">Mute microphone</td><td style="padding: 6px 8px; vertical-align: top;"><code>Ctrl + -</code></td><td style="padding: 6px 8px; vertical-align: top;">Stops transmitting your microphone audio.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Deafen / Undeafen</td><td style="padding: 6px 8px; vertical-align: top;"><code>;</code></td><td style="padding: 6px 8px; vertical-align: top;">Stops or resumes playback of all remote voice audio.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Open voice window</td><td style="padding: 6px 8px; vertical-align: top;"><code>'</code></td><td style="padding: 6px 8px; vertical-align: top;">Opens the wizard on first use and the main settings window afterward.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Speech-to-Chat</td><td style="padding: 6px 8px; vertical-align: top;"><code>V</code></td><td style="padding: 6px 8px; vertical-align: top;">When enabled, hold to record and release to transcribe into the active chat channel.</td></tr>
 </tbody></table>
-<p>The default push-to-talk key is <code>N</code>; <code>Alt + N</code> is reserved for switching between push-to-talk and voice activation. To change a binding, use the Simple Voice Chat category in the game's key-binding settings. The initial setup wizard no longer includes a key-capture control.</p>
+<p>The default push-to-talk key is <code>N</code>; <code>Alt + N</code> is reserved for switching between push-to-talk and voice activation. To change a binding, use the Simple Voice Chat category in the game's key-binding settings. Neither the initial setup wizard nor the Speech Recognition page contains a key-capture control.</p>
 
 <h2>3. Speaking Methods and Voice Activation</h2>
 <p><strong>Push-to-talk:</strong> Transmits voice while you hold the assigned key (default: <code>N</code>).</p>
 <p><strong>Voice activation (open mic):</strong> The microphone continuously monitors input but begins transmitting only when the level exceeds the activation threshold. A single rectangular level meter in the wizard shows the live microphone level and includes two slider handles: the noise gate filters background noise, while the activation threshold determines when transmission begins. You can adjust both handles while speaking.</p>
 
 <h2>4. Main Window and Settings Page</h2>
-<p>The main window is a compact home page. <strong>Simple Voice Chat</strong> is centered at the top, with "Settings" and "Channels" below it. Players with the <code>controlserver</code> privilege also see "Administration." The bottom of the home page contains a row of square icon buttons and two quick-selection menus:</p>
+<p>The main window is a compact home page. <strong>Simple Voice Chat</strong> is centered at the top, with "Settings," "Speech Recognition," and "Channels" below it. Players with the <code>controlserver</code> privilege also see "Administration." The bottom of the home page contains a row of square icon buttons and two quick-selection menus:</p>
 <ul>
 <li>Microphone icon: enables or mutes the local microphone.</li>
 <li>Speaker icon: deafens or undeafens local voice playback.</li>
@@ -56,7 +58,20 @@
 <p>"Microphone Test" is a local-only test. It does not transmit to the server or write a recording file. Select "Start Recording" to begin, "Stop Recording" to finish, and then "Play Recording" or "Stop Playback" to check your speakers. Test audio is held in memory and is discarded when you leave the game.</p>
 <p>The switches below include Microphone Mute, Deafen, Adaptive Jitter Buffering, Occlusion/Propagation Correction, and Performance Mode. Noise suppression and echo cancellation settings are not currently shown in the interface. Occlusion cannot be disabled when the server enforces it.</p>
 
-<h2>5. Proximity Voice Chat</h2>
+<h2>5. Speech Recognition and Chat</h2>
+<p>Speech recognition is disabled by default and configured entirely on the player's client. Open Speech Recognition from the home page, enable the feature, choose a provider from the menu, and enter its API key, model, endpoint, or local model path. Each provider retains its own settings when you switch the menu. Hold <code>V</code> to record; release it to transcribe and send the result to the active chat channel.</p>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Provider</th><th style="padding: 6px 8px; text-align: left;">Type</th><th style="padding: 6px 8px; text-align: left;">Default model or path</th><th style="padding: 6px 8px; text-align: left;">Default endpoint</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Alibaba Bailian</td><td style="padding: 6px 8px; vertical-align: top;">Cloud</td><td style="padding: 6px 8px; vertical-align: top;"><code>qwen3-asr-flash</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions</code></td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">SiliconFlow</td><td style="padding: 6px 8px; vertical-align: top;">Cloud</td><td style="padding: 6px 8px; vertical-align: top;"><code>FunAudioLLM/SenseVoiceSmall</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>https://api.siliconflow.cn/v1/audio/transcriptions</code></td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Deepgram</td><td style="padding: 6px 8px; vertical-align: top;">Cloud</td><td style="padding: 6px 8px; vertical-align: top;"><code>nova-3</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>https://api.deepgram.com/v1/listen?model=nova-3&amp;smart_format=true</code></td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Vosk</td><td style="padding: 6px 8px; vertical-align: top;">Local</td><td style="padding: 6px 8px; vertical-align: top;">Extracted model directory</td><td style="padding: 6px 8px; vertical-align: top;">Not required</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Whisper</td><td style="padding: 6px 8px; vertical-align: top;">Local</td><td style="padding: 6px 8px; vertical-align: top;">Whisper.cpp GGML <code>.bin</code> model file</td><td style="padding: 6px 8px; vertical-align: top;">Not required</td></tr>
+</tbody></table>
+<p>Documentation and downloads: <a href="https://bailian.console.aliyun.com/cn-beijing?tab=doc#/doc/?type=model&amp;url=2989727">Alibaba Bailian</a>, <a href="https://api-docs.siliconflow.cn/docs/api/audio-transcriptions-post">SiliconFlow</a>, <a href="https://developers.deepgram.com/guides/fundamentals/make-your-first-api-request">Deepgram</a>, <a href="https://alphacephei.com/vosk/models">Vosk models</a>, and <a href="https://huggingface.co/ggerganov/whisper.cpp/tree/main">Whisper.cpp models</a>. The Open Download Page button appears on its own row beneath the local-model hint.</p>
+<p><strong>Vosk:</strong> completely extract the downloaded archive and select the directory containing folders such as <code>am</code> and <code>conf</code>. <strong>Whisper:</strong> select the actual GGML <code>.bin</code> model file, not its parent directory; extract it first if it was delivered in an archive. Normal absolute or relative Windows, Linux, and macOS paths are accepted when the game process can read them.</p>
+<div style="border-left: 4px solid #d69e2e; padding: 8px 12px; margin: 12px 0; background-color: #fffaf0;"><p style="margin: 0;"><strong>Privacy:</strong> cloud API keys are stored as plain text in local <code>SimpleVoiceChat.Client.json</code>; do not share that file. Cloud recordings travel directly from the client to the selected provider and do not pass through the SimpleVoiceChat server. Vosk and Whisper run locally, require no API key, and do not upload recognition audio to a provider.</p></div>
+
+<h2>6. Proximity Voice Chat</h2>
 <p>Proximity voice chat does not require channel membership. The default server ranges are:</p>
 <table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Mode</th><th style="padding: 6px 8px; text-align: left;">Default range</th><th style="padding: 6px 8px; text-align: left;">Use</th></tr></thead><tbody>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Whisper</td><td style="padding: 6px 8px; vertical-align: top;"><code>8</code> blocks</td><td style="padding: 6px 8px; vertical-align: top;">Private conversation at close range.</td></tr>
@@ -65,7 +80,7 @@
 </tbody></table>
 <p>Server administrators can change these ranges with <code>/svc setrange whisper|talk|shout &lt;blocks&gt;</code>. The server also imposes a maximum range.</p>
 
-<h2>6. Channel Page and Pagination</h2>
+<h2>7. Channel Page and Pagination</h2>
 <p>All players can view the channels they are authorized to see. Administrators can view every channel. Ordinary players cannot see Hidden channels unless they have already joined them. Open channels can be joined directly, Password channels prompt for a password, and Hidden channels require an invitation from a Channel Moderator or Owner.</p>
 <ol>
 <li>Select "Channels" on the home page.</li>
@@ -103,13 +118,13 @@
 </ul>
 <p>Ownership is never transferred to a random player when the Owner leaves. If no other members remain, the channel is removed after the Owner confirms leaving. Closing any dialog returns only to the previous window; windows underneath do not continue intercepting mouse input.</p>
 
-<h2>7. Player List and Recordings to File</h2>
+<h2>8. Player List and Recordings to File</h2>
 <p>The player icon at the bottom of the Channels page opens the player list. The list displays up to six players per page and supports searching by player name or ID. You must select "Search" to run a search; "Cancel" on the right restores the full player list. Each player card includes a local volume slider, mute icon, and settings gear. These volume and mute settings do not change server permissions.</p>
 <p>The record icon at the bottom of the home page controls recording to file. Select it, then choose "Record Input Only" or "Record Input and Output." Select the record icon again to stop and save a WAV file. Recordings are saved in:</p>
 <p><code>AppData\Roaming\VintagestoryData\ModData\SimpleVoiceChat</code></p>
 <p>"Microphone Test" is separate from recording to file. Test audio on the Settings page is kept only in memory for start/stop recording and playback checks; it does not create a file.</p>
 
-<h2>8. Administration Page and Privileges</h2>
+<h2>9. Administration Page and Privileges</h2>
 <p>Players who have the Vintage Story <code>controlserver</code> privilege and have completed the voice handshake see an "Administration" button at the top of the home page. The Administration page does not provide a channel-creation entry point. Channels are still created with "Create Channel" at the bottom of the Channels page or by using a server command. Administrators can view all channels and players and perform these server-authorized management actions:</p>
 <ul>
 <li>Channels: add or remove members; assign Listen Only, Member, or Channel Moderator roles; mute or unmute; ban or unban; lock or unlock; rename; and disband.</li>
@@ -118,7 +133,7 @@
 <p>When an administrator uses "Add Member" to put a player in a channel, the target joins as an ordinary Member and does not become the Channel Owner. The player who created the channel remains its Owner; server administrators perform management actions through their <code>controlserver</code> privilege.</p>
 <p>For channels managed by an external channel provider, the external system controls membership, roles, and names. These properties cannot be changed locally through this mod, and such channels cannot be left or disbanded locally. Administrators can still perform permitted lock, channel-mute, and ban actions.</p>
 
-<h2>9. Player Command Reference</h2>
+<h2>10. Player Command Reference</h2>
 <table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Command</th><th style="padding: 6px 8px; text-align: left;">Purpose</th></tr></thead><tbody>
 <tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc status</code></td><td style="padding: 6px 8px; vertical-align: top;">Shows a summary of the local voice mode, microphone, volume, key bindings, and diagnostics.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc volume &lt;0-200&gt;</code></td><td style="padding: 6px 8px; vertical-align: top;">Sets the overall local playback volume.</td></tr>
@@ -130,7 +145,7 @@
 <tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc diag</code></td><td style="padding: 6px 8px; vertical-align: top;">Requests voice-chat diagnostic information.</td></tr>
 </tbody></table>
 
-<h2>10. Server Administrator Commands</h2>
+<h2>11. Server Administrator Commands</h2>
 <p>The following commands require the <code>controlserver</code> privilege. Angle brackets indicate required arguments. Channel IDs use the <code>channel-number</code> format; select an ID on the Channels page to copy it, or look it up with <code>/svc channels</code>.</p>
 <table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Command</th><th style="padding: 6px 8px; text-align: left;">Purpose</th></tr></thead><tbody>
 <tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc status</code></td><td style="padding: 6px 8px; vertical-align: top;">Shows the server enable state, ranges, channel count, and server-wide moderation counts.</td></tr>
@@ -155,7 +170,7 @@
 <tr><td style="padding: 6px 8px; vertical-align: top;"><code>/svc reload</code></td><td style="padding: 6px 8px; vertical-align: top;">Reloads and normalizes the server configuration; retains the old configuration if reloading fails.</td></tr>
 </tbody></table>
 
-<h2>11. Capacity, Configuration, and Privacy</h2>
+<h2>12. Capacity, Configuration, and Privacy</h2>
 <table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Item</th><th style="padding: 6px 8px; text-align: left;">Default or location</th></tr></thead><tbody>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Channel members</td><td style="padding: 6px 8px; vertical-align: top;">Up to 100 members per channel.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Simultaneous channel speakers</td><td style="padding: 6px 8px; vertical-align: top;">Up to three by default; configurable on the server.</td></tr>
@@ -167,19 +182,26 @@
 </tbody></table>
 <p>The server forwards compressed voice frames and does not routinely decode, mix, or store voice payloads. This mod does not provide end-to-end encryption; transport protection depends on the underlying Vintage Story connection. Recording is an explicit player action and should be managed according to the server's and event's privacy policies.</p>
 
-<h2>12. Frequently Asked Questions</h2>
+<h3>Optional VS Director Integration</h3>
+<p>SimpleVoiceChat and VS Director can be installed independently. When both are present, this mod discovers the VS Director voice API at runtime. <code>SimpleVoiceChat_VSDirectorIntegration</code> is not required, and SimpleVoiceChat continues loading normally when VS Director is absent.</p>
+<p>The server owner must set <code>EnableDirectorProximityCapture: true</code> in <code>SimpleVoiceChat.Server.json</code>. The matching replay or offscreen voice-capture option must also be enabled in VS Director. Only proximity voices within the active director listener's whisper, talk, or shout range enter director tracks; custom-channel audio is never submitted through this path. Player-initiated recording and director capture can both preserve voice content.</p>
+
+<h2>13. Frequently Asked Questions</h2>
 <table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Symptom</th><th style="padding: 6px 8px; text-align: left;">Resolution</th></tr></thead><tbody>
 <tr><td style="padding: 6px 8px; vertical-align: top;">No settings window appears the first time I press <code>'</code></td><td style="padding: 6px 8px; vertical-align: top;">Check the chat prompt first. On first use, the key opens the wizard; it opens the main window only after you complete or skip the wizard.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Drop-down menus or search do not work</td><td style="padding: 6px 8px; vertical-align: top;">You must select "Search"; entering a single character does not refresh the list immediately. Only the topmost dialog is displayed. Update the client and server to the same version, then reopen the window.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">The seventh row is missing from a list</td><td style="padding: 6px 8px; vertical-align: top;">Channel and player lists display up to six rows per page. Use the paginator at the bottom to change pages.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Cannot join a channel</td><td style="padding: 6px 8px; vertical-align: top;">Check whether the channel is locked, the password is correct, you are banned, or you have reached the limit of eight channels per player.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Channel speaking slots are full</td><td style="padding: 6px 8px; vertical-align: top;">The channel has reached its simultaneous-speaker limit. Try again later. Listen Only and muted players cannot speak.</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Protocol V3 incompatibility message</td><td style="padding: 6px 8px; vertical-align: top;">Both the client and server must be updated to <code>1.0.0</code>, with the mod installed on both sides.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Protocol V3 incompatibility message</td><td style="padding: 6px 8px; vertical-align: top;">The client and server must both use compatible protocol V3 builds. Install <code>1.0.14</code> on both sides and remove older archives.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Microphone Test does not create a file</td><td style="padding: 6px 8px; vertical-align: top;">This is by design. "Microphone Test" on the Settings page records only in memory. To save a file, use the record icon on the home page.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Vosk or Whisper reports an invalid model path</td><td style="padding: 6px 8px; vertical-align: top;">Vosk requires the extracted model directory. Whisper requires the actual <code>.bin</code> model file. Confirm that the path uses the current platform's syntax and that the game can read it.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">The log says a native DLL is not in the mod root</td><td style="padding: 6px 8px; vertical-align: top;">Do not move Whisper or Vosk native libraries manually. The release package keeps them under <code>native/</code>. Remove manually extracted DLLs and reinstall the complete archive.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">VS Director replay or offscreen output has no voice</td><td style="padding: 6px 8px; vertical-align: top;">Enable <code>EnableDirectorProximityCapture</code> on the server, enable the matching capture option in VS Director, ensure the director player has <code>controlserver</code>, and check the log for "optional VS Director integration is unavailable." No separate integration mod is needed.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">The Owner leaves a channel</td><td style="padding: 6px 8px; vertical-align: top;">In a channel with multiple members, the Owner must transfer ownership to a current member or confirm deletion. Ownership is never transferred randomly. Both leaving and disbanding require confirmation.</td></tr>
 </tbody></table>
 
-<h2>13. Quick Permissions Reference</h2>
+<h2>14. Quick Permissions Reference</h2>
 <table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Question</th><th style="padding: 6px 8px; text-align: left;">Answer</th></tr></thead><tbody>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Can ordinary players create channels?</td><td style="padding: 6px 8px; vertical-align: top;"><strong>Yes, by default.</strong> Administrators can disable channel creation with <code>/svc channelallow off</code>.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Who is the Channel Owner?</td><td style="padding: 6px 8px; vertical-align: top;">The player who created the channel. An administrator who adds a member does not automatically become the Owner.</td></tr>

@@ -487,6 +487,25 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void DirectorReflectionResolvesModSystemWithOptionalInheritanceParameter()
+    {
+        Type integrationType = typeof(ClientVoiceController).Assembly
+            .GetType("SimpleVoiceChat.Integration.DirectorVoiceIntegration", throwOnError: true)!;
+        Type reflectionType = integrationType.GetNestedType(
+            "DirectorReflection",
+            System.Reflection.BindingFlags.NonPublic)!;
+        System.Reflection.MethodInfo resolver = reflectionType.GetMethod(
+            "ResolveModSystem",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var loader = new ModLoaderStub();
+
+        object? result = resolver.Invoke(null, new object[] { loader, typeof(DirectorModSystemStub) });
+
+        Assert.Same(loader.ModSystem, result);
+        Assert.True(loader.WithInheritance);
+    }
+
+    [Fact]
     public void VoiceFrameValidationAcceptsOnlyCurrentRelayKinds()
     {
         VoiceFrameV3Packet frame = new()
@@ -569,6 +588,25 @@ public sealed class CoreTests
     }
 
     private readonly record struct DirectorSpatializationStub(float MaxDistance);
+
+    private sealed class DirectorModSystemStub;
+
+    private interface IModLoaderStub
+    {
+        T GetModSystem<T>(bool withInheritance = true);
+    }
+
+    private sealed class ModLoaderStub : IModLoaderStub
+    {
+        internal DirectorModSystemStub ModSystem { get; } = new();
+        internal bool WithInheritance { get; private set; }
+
+        T IModLoaderStub.GetModSystem<T>(bool withInheritance)
+        {
+            WithInheritance = withInheritance;
+            return (T)(object)ModSystem;
+        }
+    }
 
     private sealed class DirectorVoiceSourceStub
     {
