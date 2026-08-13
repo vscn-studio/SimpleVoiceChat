@@ -36,6 +36,7 @@ public sealed class ServerVoiceController : IDisposable
     private VoiceSpatialIndex spatialIndex;
     private VoiceTokenBucket egressBudget;
     private readonly ListenerEgressBudget listenerEgressBudget;
+    private readonly ListenerEgressBudget directorEgressBudget;
     private long slowTickListenerId;
     private long spatialTickListenerId;
     private long lastChannelProviderSyncMs;
@@ -54,6 +55,7 @@ public sealed class ServerVoiceController : IDisposable
         spatialIndex = new VoiceSpatialIndex(config.SpatialCellSize);
         egressBudget = CreateEgressBudget(sapi.World.ElapsedMilliseconds);
         listenerEgressBudget = new ListenerEgressBudget(config.MaxListenerEgressKbps);
+        directorEgressBudget = new ListenerEgressBudget(config.MaxDirectorEgressKbps);
         RestorePersistentChannels();
     }
 
@@ -834,10 +836,19 @@ public sealed class ServerVoiceController : IDisposable
             return;
         }
 
+        bool captureRegion = packet.CaptureRegionActive
+            && double.IsFinite(packet.CaptureRegionCenterX)
+            && double.IsFinite(packet.CaptureRegionCenterZ)
+            && packet.CaptureRegionDimension is >= -1024 and <= 1024
+            && packet.CaptureRegionRadiusChunks is >= 0 and <= 16;
         directorListenersByUid[player.PlayerUID] = new DirectorVoiceListener(
             new Vec3d(packet.X, packet.Y, packet.Z),
             packet.Dimension,
-            now + 750L);
+            now + 750L,
+            captureRegion,
+            new Vec3d(packet.CaptureRegionCenterX, 0d, packet.CaptureRegionCenterZ),
+            packet.CaptureRegionDimension,
+            Math.Clamp(packet.CaptureRegionRadiusChunks, 0, 16));
     }
 
     private void OnChannelCommand(IServerPlayer fromPlayer, ChannelCommandPacket packet)
@@ -1605,9 +1616,14 @@ public sealed class ServerVoiceController : IDisposable
         Vec3d position,
         long now)
     {
-        if (!config.EnableDirectorProximityCapture
-            || frame.Target is not (VoiceTransmitTarget.Proximity or VoiceTransmitTarget.ProximityAndChannel)
-            || speaker.Entity is null)
+        if (!config.EnableDirectorProximityCapture || speaker.Entity is null)
+        {
+            return;
+        }
+
+        bool hasCaptureRegionListener = directorListenersByUid.Values.Any(listener => listener.CaptureRegionActive);
+        if (frame.Target is not (VoiceTransmitTarget.Proximity or VoiceTransmitTarget.ProximityAndChannel)
+            && !hasCaptureRegionListener)
         {
             return;
         }
@@ -1629,8 +1645,11 @@ public sealed class ServerVoiceController : IDisposable
                 directorStreamArbiter.RemovePlayer(listenerUid);
                 continue;
             }
+            int listenerDimension = listener.CaptureRegionActive
+                ? listener.CaptureRegionDimension
+                : listener.Dimension;
             if (listenerCount >= config.MaxDirectorListeners
-                || listener.Dimension != speakerDimension
+                || listenerDimension != speakerDimension
                 || listenerUid == speaker.PlayerUID
                 || !onlinePlayersByUid.TryGetValue(listenerUid, out IServerPlayer? target)
                 || !sessionsByUid.ContainsKey(listenerUid)
@@ -1641,10 +1660,17 @@ public sealed class ServerVoiceController : IDisposable
                 continue;
             }
 
+            bool inCaptureRegion = listener.CaptureRegionActive
+                && IsWithinCaptureRegion(
+                    position,
+                    speakerDimension,
+                    listener.CaptureRegionCenter,
+                    listener.CaptureRegionDimension,
+                    listener.CaptureRegionRadiusChunks);
             double distanceSquared = (position.X - listener.Position.X) * (position.X - listener.Position.X)
                 + (position.Y - listener.Position.Y) * (position.Y - listener.Position.Y)
                 + (position.Z - listener.Position.Z) * (position.Z - listener.Position.Z);
-            if (!double.IsFinite(distanceSquared) || distanceSquared > rangeSquared)
+            if (!inCaptureRegion && (!double.IsFinite(distanceSquared) || distanceSquared > rangeSquared))
             {
                 continue;
             }
@@ -1663,9 +1689,9 @@ public sealed class ServerVoiceController : IDisposable
             }
 
             int estimatedPacketBytes = frame.Payload.Length + 128;
-            if (!listenerEgressBudget.HasCapacity(listenerUid, estimatedPacketBytes, now)
+            if (!directorEgressBudget.HasCapacity(listenerUid, estimatedPacketBytes, now)
                 || egressBudget.Available(now) + 0.0001d < estimatedPacketBytes
-                || !listenerEgressBudget.TryConsume(listenerUid, estimatedPacketBytes, now)
+                || !directorEgressBudget.TryConsume(listenerUid, estimatedPacketBytes, now)
                 || !egressBudget.TryConsume(estimatedPacketBytes, now))
             {
                 metrics.DropBudget(now);
@@ -1700,6 +1726,21 @@ public sealed class ServerVoiceController : IDisposable
 
     private static float CalculateReferenceDistance(float range)
         => (float)Math.Max(3d, Math.Sqrt(Math.Max(range, 1f)) - 2d);
+
+    private static bool IsWithinCaptureRegion(
+        Vec3d position,
+        int dimension,
+        Vec3d center,
+        int centerDimension,
+        int radiusChunks)
+        => DirectorVoiceCaptureRegion.Contains(
+            position.X,
+            position.Z,
+            dimension,
+            center.X,
+            center.Z,
+            centerDimension,
+            radiusChunks);
 
     private void NotifyTalkerStarted(VoiceChannel channel, IServerPlayer speaker, long now)
     {
@@ -1962,6 +2003,7 @@ public sealed class ServerVoiceController : IDisposable
         spatialIndex = new VoiceSpatialIndex(config.SpatialCellSize);
         egressBudget = CreateEgressBudget(sapi.World.ElapsedMilliseconds);
         listenerEgressBudget.SetLimit(config.MaxListenerEgressKbps);
+        directorEgressBudget.SetLimit(config.MaxDirectorEgressKbps);
         StopAllTalkerNotifications();
         RestorePersistentChannels();
         RefreshOnlinePlayerSnapshot();
@@ -2413,6 +2455,7 @@ public sealed class ServerVoiceController : IDisposable
         activeTalkersByKey.Clear();
         channelProviderWarningMilliseconds.Clear();
         listenerEgressBudget.Clear();
+        directorEgressBudget.Clear();
         statesByUid.Clear();
         mutedByListenerUid.Clear();
         packetRates.Clear();
@@ -2595,5 +2638,12 @@ public sealed class ServerVoiceController : IDisposable
     private readonly record struct RelayRecipient(IServerPlayer Player, VoiceRelayKind RelayKind, string ChannelId, int Priority);
     private readonly record struct RelayGroup(VoiceRelayKind RelayKind, string ChannelId);
     private readonly record struct ActiveTalkerNotification(string ChannelId, string SenderUid, string SenderName, long LastPacketMilliseconds);
-    private readonly record struct DirectorVoiceListener(Vec3d Position, int Dimension, long ExpiresAtMilliseconds);
+    private readonly record struct DirectorVoiceListener(
+        Vec3d Position,
+        int Dimension,
+        long ExpiresAtMilliseconds,
+        bool CaptureRegionActive,
+        Vec3d CaptureRegionCenter,
+        int CaptureRegionDimension,
+        int CaptureRegionRadiusChunks);
 }

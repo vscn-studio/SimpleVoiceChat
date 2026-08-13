@@ -11,6 +11,30 @@ namespace SimpleVoiceChat.Tests;
 
 public sealed class CoreTests
 {
+    [Fact]
+    public void DirectorReplayCaptureRegionUsesChunkBoundaries()
+    {
+        Assert.True(DirectorVoiceCaptureRegion.Contains(159d, 159d, 0, 16d, 16d, 0, 4));
+        Assert.False(DirectorVoiceCaptureRegion.Contains(160d, 160d, 0, 16d, 16d, 0, 4));
+        Assert.False(DirectorVoiceCaptureRegion.Contains(16d, 16d, 1, 16d, 16d, 0, 4));
+    }
+
+    [Fact]
+    public void DirectorStreamLimitMigratesFromLegacyDefault()
+    {
+        SimpleVoiceChatServerConfig config = new()
+        {
+            ConfigVersion = 5,
+            MaxDirectorStreamsPerListener = 6
+        };
+
+        config.Normalize();
+
+        Assert.Equal(6, config.ConfigVersion);
+        Assert.Equal(32, config.MaxDirectorStreamsPerListener);
+        Assert.Equal(4096, config.MaxDirectorEgressKbps);
+    }
+
     [Theory]
     [InlineData("leave")]
     [InlineData("disband")]
@@ -233,7 +257,7 @@ public sealed class CoreTests
         config.Normalize();
 
         PersistentVoiceChannelConfig channel = Assert.Single(config.PersistentChannels);
-        Assert.Equal(5, config.ConfigVersion);
+        Assert.Equal(6, config.ConfigVersion);
         Assert.Equal("channel-1", channel.Id);
         Assert.Equal(2, config.NextChannelNumber);
         Assert.NotEqual("legacy-general", channel.Id);

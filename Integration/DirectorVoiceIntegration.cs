@@ -16,7 +16,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
     private const long ListenerUpdateIntervalMilliseconds = 100;
     private const long ReflectionRetryIntervalMilliseconds = 2_000;
     private const long StreamIdleMilliseconds = 2_000;
-    private const int MaximumDecodedFramesPerTick = 16;
+    private const int MaximumDecodedFramesPerTick = 128;
 
     private readonly ICoreClientAPI capi;
     private readonly bool directorModEnabled;
@@ -50,6 +50,8 @@ internal sealed class DirectorVoiceIntegration : IDisposable
 
         DirectorVoicePositionData position = default;
         bool active = director.TryGetActiveVoiceListener(out position);
+        DirectorVoiceCaptureRegionData region = default;
+        bool regionActive = director.TryGetReplayVoiceCaptureRegion(out region);
         if (!active && !listenerWasActive)
         {
             return;
@@ -61,7 +63,12 @@ internal sealed class DirectorVoiceIntegration : IDisposable
             X = active ? position.X : 0d,
             Y = active ? position.Y : 0d,
             Z = active ? position.Z : 0d,
-            Dimension = active ? position.Dimension : 0
+            Dimension = active ? position.Dimension : 0,
+            CaptureRegionActive = regionActive,
+            CaptureRegionCenterX = regionActive ? region.X : 0d,
+            CaptureRegionCenterZ = regionActive ? region.Z : 0d,
+            CaptureRegionDimension = regionActive ? region.Dimension : 0,
+            CaptureRegionRadiusChunks = regionActive ? region.RadiusChunks : 0
         });
         lastListenerUpdateMilliseconds = now;
         listenerWasActive = active;
@@ -147,20 +154,30 @@ internal sealed class DirectorVoiceIntegration : IDisposable
         var entity = capi.World.Player.Entity;
         int dimension = entity.Pos.Dimension;
         if (!serverConfig.EnableDirectorProximityCapture
-            || transmitTarget is not (VoiceTransmitTarget.Proximity or VoiceTransmitTarget.ProximityAndChannel)
             || !director.TryGetActiveVoiceListener(out DirectorVoicePositionData listenerPosition)
             || dimension != listenerPosition.Dimension)
         {
             return;
         }
 
-        double dx = entity.Pos.X - listenerPosition.X;
-        double dy = entity.Pos.Y - listenerPosition.Y;
-        double dz = entity.Pos.Z - listenerPosition.Z;
         float range = Math.Min(serverConfig.GetRange(mode), serverConfig.MaxRange);
-        if (dx * dx + dy * dy + dz * dz > range * range)
+        bool inReplayRegion = director.TryGetReplayVoiceCaptureRegion(out DirectorVoiceCaptureRegionData region)
+            && region.Dimension == dimension
+            && IsWithinRegion(entity.Pos.X, entity.Pos.Z, region);
+        if (!inReplayRegion
+            && transmitTarget is not (VoiceTransmitTarget.Proximity or VoiceTransmitTarget.ProximityAndChannel))
         {
             return;
+        }
+        if (!inReplayRegion)
+        {
+            double dx = entity.Pos.X - listenerPosition.X;
+            double dy = entity.Pos.Y - listenerPosition.Y;
+            double dz = entity.Pos.Z - listenerPosition.Z;
+            if (dx * dx + dy * dy + dz * dz > range * range)
+            {
+                return;
+            }
         }
 
         DirectorVoiceSource source = GetSource(capi.World.Player.PlayerUID, capi.World.Player.PlayerName);
@@ -175,12 +192,19 @@ internal sealed class DirectorVoiceIntegration : IDisposable
     internal bool CanCaptureLocalFrame(
         VoiceTransmitTarget transmitTarget,
         ServerVoiceConfigPacket serverConfig)
-        => !disposed
-            && TryGetReflection(out DirectorReflection director)
-            && serverConfig.EnableDirectorProximityCapture
-            && transmitTarget is (VoiceTransmitTarget.Proximity or VoiceTransmitTarget.ProximityAndChannel)
-            && director.IsCaptureEnabled
-            && director.TryGetActiveVoiceListener(out _);
+    {
+        if (disposed
+            || !serverConfig.EnableDirectorProximityCapture
+            || !TryGetReflection(out DirectorReflection director)
+            || !director.IsCaptureEnabled
+            || !director.TryGetActiveVoiceListener(out _))
+        {
+            return false;
+        }
+
+        return transmitTarget is (VoiceTransmitTarget.Proximity or VoiceTransmitTarget.ProximityAndChannel)
+            || director.TryGetReplayVoiceCaptureRegion(out _);
+    }
 
     public void Dispose()
     {
@@ -273,6 +297,22 @@ internal sealed class DirectorVoiceIntegration : IDisposable
 
     private readonly record struct DirectorVoicePositionData(double X, double Y, double Z, int Dimension);
 
+    private readonly record struct DirectorVoiceCaptureRegionData(
+        double X,
+        double Z,
+        int Dimension,
+        int RadiusChunks);
+
+    private static bool IsWithinRegion(double x, double z, DirectorVoiceCaptureRegionData region)
+        => DirectorVoiceCaptureRegion.Contains(
+            x,
+            z,
+            region.Dimension,
+            region.X,
+            region.Z,
+            region.Dimension,
+            region.RadiusChunks);
+
     private sealed class DirectorVoiceSource : IDisposable
     {
         private readonly DirectorReflection reflection;
@@ -310,6 +350,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
         private readonly object voiceApi;
         private readonly PropertyInfo captureEnabledProperty;
         private readonly MethodInfo tryGetListenerMethod;
+        private readonly MethodInfo? tryGetReplayRegionMethod;
         private readonly MethodInfo registerSpeakerMethod;
         private readonly MethodInfo disposeSourceMethod;
         private readonly Action<object, short[], int, object, long> submitPcm16;
@@ -324,6 +365,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
             object voiceApi,
             PropertyInfo captureEnabledProperty,
             MethodInfo tryGetListenerMethod,
+            MethodInfo? tryGetReplayRegionMethod,
             MethodInfo registerSpeakerMethod,
             MethodInfo disposeSourceMethod,
             Action<object, short[], int, object, long> submitPcm16,
@@ -337,6 +379,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
             this.voiceApi = voiceApi;
             this.captureEnabledProperty = captureEnabledProperty;
             this.tryGetListenerMethod = tryGetListenerMethod;
+            this.tryGetReplayRegionMethod = tryGetReplayRegionMethod;
             this.registerSpeakerMethod = registerSpeakerMethod;
             this.disposeSourceMethod = disposeSourceMethod;
             this.submitPcm16 = submitPcm16;
@@ -387,6 +430,40 @@ internal sealed class DirectorVoiceIntegration : IDisposable
             return true;
         }
 
+        internal bool TryGetReplayVoiceCaptureRegion(out DirectorVoiceCaptureRegionData region)
+        {
+            if (tryGetReplayRegionMethod is null)
+            {
+                region = default;
+                return false;
+            }
+
+            object?[] args = { null, 0 };
+            bool active = (bool)(tryGetReplayRegionMethod.Invoke(director, args) ?? false);
+            if (!active || args[0] is null)
+            {
+                region = default;
+                return false;
+            }
+
+            object value = args[0]!;
+            PropertyInfo? x = value.GetType().GetProperty("X");
+            PropertyInfo? z = value.GetType().GetProperty("Z");
+            PropertyInfo? dimension = value.GetType().GetProperty("Dimension");
+            if (x is null || z is null || dimension is null)
+            {
+                region = default;
+                return false;
+            }
+
+            region = new DirectorVoiceCaptureRegionData(
+                Convert.ToDouble(x.GetValue(value)),
+                Convert.ToDouble(z.GetValue(value)),
+                Convert.ToInt32(dimension.GetValue(value)),
+                Convert.ToInt32(args[1]));
+            return region.RadiusChunks >= 0;
+        }
+
         internal void SubmitPcm16(
             object source,
             short[] samples,
@@ -432,6 +509,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
                     ?? throw new MissingMemberException(voiceApiType.FullName, "IsCaptureEnabled");
                 MethodInfo tryGetListenerMethod = systemType.GetMethod("TryGetActiveVoiceListener")
                     ?? throw new MissingMethodException(systemType.FullName, "TryGetActiveVoiceListener");
+                MethodInfo? tryGetReplayRegionMethod = systemType.GetMethod("TryGetReplayVoiceCaptureRegion");
                 MethodInfo registerSpeakerMethod = voiceApiType.GetMethods()
                     .FirstOrDefault(method => method.Name == "RegisterSpeaker" && method.GetParameters().Length == 3)
                     ?? throw new MissingMethodException(voiceApiType.FullName, "RegisterSpeaker");
@@ -457,6 +535,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
                     voiceApi,
                     captureEnabledProperty,
                     tryGetListenerMethod,
+                    tryGetReplayRegionMethod,
                     registerSpeakerMethod,
                     disposeSourceMethod,
                     submitPcm16,

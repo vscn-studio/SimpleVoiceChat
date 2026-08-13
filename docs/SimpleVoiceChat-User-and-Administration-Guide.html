@@ -184,7 +184,8 @@
 
 <h3>Optional VS Director Integration</h3>
 <p>SimpleVoiceChat and VS Director can be installed independently. When both are present, this mod discovers the VS Director voice API at runtime. <code>SimpleVoiceChat_VSDirectorIntegration</code> is not required, and SimpleVoiceChat continues loading normally when VS Director is absent.</p>
-<p>The server owner must set <code>EnableDirectorProximityCapture: true</code> in <code>SimpleVoiceChat.Server.json</code>. The matching replay or offscreen voice-capture option must also be enabled in VS Director. Only proximity voices within the active director listener's whisper, talk, or shout range enter director tracks; custom-channel audio is never submitted through this path. Player-initiated recording and director capture can both preserve voice content.</p>
+<p>The server owner must set <code>EnableDirectorProximityCapture: true</code> in <code>SimpleVoiceChat.Server.json</code>. The matching replay or offscreen voice-capture option must also be enabled in VS Director. During replay-region capture, every voice packet from a speaker inside the active director listener's configured replay chunk region enters director tracks, including channel-targeted packets. Without an active replay region, director capture keeps the normal whisper/talk/shout range. Player-initiated recording and director capture can both preserve voice content.</p>
+<p>Replay-region capture uses the separate <code>MaxDirectorEgressKbps</code> budget (default <code>4096</code>) and up to 32 director streams per listener.</p>
 
 <h2>13. Frequently Asked Questions</h2>
 <table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Symptom</th><th style="padding: 6px 8px; text-align: left;">Resolution</th></tr></thead><tbody>

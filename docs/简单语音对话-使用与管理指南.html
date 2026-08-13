@@ -184,7 +184,8 @@
 
 <h3>可选 VS Director 集成</h3>
 <p>SimpleVoiceChat 和 VS Director 可以分别独立安装。两者同时存在时，本模组会在运行时发现 VS Director 的语音 API；不需要安装 <code>SimpleVoiceChat_VSDirectorIntegration</code>，SimpleVoiceChat 也不会因为缺少 VS Director 而停止加载。</p>
-<p>服务器所有者必须在 <code>SimpleVoiceChat.Server.json</code> 中设置 <code>EnableDirectorProximityCapture: true</code>。VS Director 自身也必须开启相应的回放或离屏语音捕获选项。只有活动导演监听位置附近、符合耳语/正常/大喊范围的接近度声音会进入导演音轨，自定义频道不会被提交到该路径。玩家主动录音和导演录制均可能保存语音内容。</p>
+<p>服务器所有者必须在 <code>SimpleVoiceChat.Server.json</code> 中设置 <code>EnableDirectorProximityCapture: true</code>。VS Director 自身也必须开启相应的回放或离屏语音捕获选项。回放区域捕获期间，位于活动导演监听器回放区块范围内的所有发言都会进入导演音轨，包括频道目标语音；没有活动回放区域时，导演捕获仍按耳语/正常/大喊距离工作。玩家主动录音和导演录制均可能保存语音内容。</p>
+<p>回放区域捕获使用独立的 <code>MaxDirectorEgressKbps</code> 带宽预算（默认 <code>4096</code>），每个监听器最多 32 条导演语音流。</p>
 
 <h2>十三、常见问题</h2>
 <table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">现象</th><th style="padding: 6px 8px; text-align: left;">处理</th></tr></thead><tbody>

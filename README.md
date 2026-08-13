@@ -91,11 +91,14 @@ SimpleVoiceChat 和 VS Director 可以独立安装。两者同时存在时，Sim
 {
   "EnableDirectorProximityCapture": true,
   "MaxDirectorListeners": 1,
-  "MaxDirectorStreamsPerListener": 6
+  "MaxDirectorStreamsPerListener": 32,
+  "MaxDirectorEgressKbps": 4096
 }
 ```
 
-VS Director 自身也必须启用对应的回放或离屏语音捕获设置。只有活动导演监听位置附近、符合耳语/正常/大喊距离的接近度声音会进入导演音轨；自定义频道音频不会进入该路径。
+VS Director 自身也必须启用对应的回放或离屏语音捕获设置。回放区域捕获期间，位于活动导演监听器回放区块范围内的所有发言都会进入导演音轨，包括频道目标语音；没有活动回放区域时，导演捕获仍按耳语/正常/大喊距离工作。
+
+区域捕获使用独立的 `MaxDirectorEgressKbps`（默认 4096）和最多 32 条导演语音流，不会被普通玩家监听器的带宽预算截断。
 
 SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到端加密。玩家主动录音或 VS Director 录制可能保存语音内容，应遵守服务器和参与者的隐私规则。
 
@@ -205,11 +208,12 @@ The server owner must explicitly enable capture in `SimpleVoiceChat.Server.json`
 {
   "EnableDirectorProximityCapture": true,
   "MaxDirectorListeners": 1,
-  "MaxDirectorStreamsPerListener": 6
+  "MaxDirectorStreamsPerListener": 32,
+  "MaxDirectorEgressKbps": 4096
 }
 ```
 
-The matching replay or offscreen voice option must also be enabled in VS Director. Only proximity voices inside the active director listener's whisper/talk/shout range enter director tracks. Custom-channel audio is excluded.
+The matching replay or offscreen voice option must also be enabled in VS Director. During replay-region capture, every speaker inside the active listener's replay chunk region enters director tracks, including channel-targeted audio. Without an active replay region, director capture keeps the normal whisper/talk/shout range.
 
 The server forwards compressed voice frames, and the mod does not provide end-to-end encryption. Player-initiated or VS Director recording can preserve voice content and should follow the server's and participants' privacy rules.
 

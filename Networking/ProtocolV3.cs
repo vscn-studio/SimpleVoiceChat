@@ -236,6 +236,22 @@ public sealed class DirectorVoiceListenerUpdatePacket
 
     [ProtoMember(5)]
     public int Dimension;
+
+    /// <summary>When true, the listener is recording a replay world region.</summary>
+    [ProtoMember(6)]
+    public bool CaptureRegionActive;
+
+    [ProtoMember(7)]
+    public double CaptureRegionCenterX;
+
+    [ProtoMember(8)]
+    public double CaptureRegionCenterZ;
+
+    [ProtoMember(9)]
+    public int CaptureRegionDimension;
+
+    [ProtoMember(10)]
+    public int CaptureRegionRadiusChunks;
 }
 
 /// <summary>Server-to-client proximity-only relay for the active director listener.</summary>

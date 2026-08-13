@@ -2,7 +2,7 @@ namespace SimpleVoiceChat.Config;
 
 public sealed class SimpleVoiceChatServerConfig
 {
-    private const int CurrentConfigVersion = 5;
+    private const int CurrentConfigVersion = 6;
 
     public int ConfigVersion { get; set; } = 1;
     public string ServerInstanceId { get; set; } = string.Empty;
@@ -23,6 +23,7 @@ public sealed class SimpleVoiceChatServerConfig
     public int MaxVoicePayloadBytes { get; set; } = VoiceConstants.MaxUdpPacketBytes - 64;
     public int MaxServerEgressKbps { get; set; } = 50_000;
     public int MaxListenerEgressKbps { get; set; } = 512;
+    public int MaxDirectorEgressKbps { get; set; } = 4_096;
     public int SpatialCellSize { get; set; } = 16;
     public int MaxStreamsPerListener { get; set; } = 8;
     public int MaxProximityStreams { get; set; } = 6;
@@ -37,7 +38,7 @@ public sealed class SimpleVoiceChatServerConfig
     public bool AllowPlayerChannelCreation { get; set; } = true;
     public bool EnableDirectorProximityCapture { get; set; } = false;
     public int MaxDirectorListeners { get; set; } = 1;
-    public int MaxDirectorStreamsPerListener { get; set; } = 6;
+    public int MaxDirectorStreamsPerListener { get; set; } = 32;
     public long NextChannelNumber { get; set; } = 1;
     public List<string> GloballyMutedPlayerUids { get; set; } = new();
     public List<string> ForceBlockedPlayerUids { get; set; } = new();
@@ -61,6 +62,14 @@ public sealed class SimpleVoiceChatServerConfig
         {
             ConfigVersion = 5;
         }
+        if (ConfigVersion < 6)
+        {
+            if (MaxDirectorStreamsPerListener == 6)
+            {
+                MaxDirectorStreamsPerListener = 32;
+            }
+            ConfigVersion = 6;
+        }
         ConfigVersion = Math.Max(CurrentConfigVersion, ConfigVersion);
         if (!Guid.TryParse(ServerInstanceId, out Guid serverInstanceId) || serverInstanceId == Guid.Empty)
         {
@@ -76,13 +85,14 @@ public sealed class SimpleVoiceChatServerConfig
         MaxVoicePayloadBytes = Math.Clamp(MaxVoicePayloadBytes, 1, VoiceConstants.MaxUdpPacketBytes - 32);
         MaxServerEgressKbps = Math.Clamp(MaxServerEgressKbps, 1_000, 100_000);
         MaxListenerEgressKbps = Math.Clamp(MaxListenerEgressKbps, 64, 2_048);
+        MaxDirectorEgressKbps = Math.Clamp(MaxDirectorEgressKbps, 512, 8_192);
         SpatialCellSize = Math.Clamp(SpatialCellSize, 4, 64);
         MaxStreamsPerListener = Math.Clamp(MaxStreamsPerListener, 1, 12);
         MaxProximityStreams = Math.Clamp(MaxProximityStreams, 1, MaxStreamsPerListener);
         MaxChannelTalkers = Math.Clamp(MaxChannelTalkers, 1, MaxStreamsPerListener);
         MaxChannelMembers = Math.Clamp(MaxChannelMembers, 2, 100);
         MaxDirectorListeners = Math.Clamp(MaxDirectorListeners, 1, 8);
-        MaxDirectorStreamsPerListener = Math.Clamp(MaxDirectorStreamsPerListener, 1, MaxStreamsPerListener);
+        MaxDirectorStreamsPerListener = Math.Clamp(MaxDirectorStreamsPerListener, 1, 64);
         MaxChannelsPerPlayer = Math.Clamp(MaxChannelsPerPlayer, 1, 8);
         MaxChannels = Math.Clamp(MaxChannels, 16, 512);
         ChannelMemberPageSize = Math.Clamp(ChannelMemberPageSize, 8, 50);
