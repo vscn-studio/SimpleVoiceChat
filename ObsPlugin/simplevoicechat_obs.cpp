@@ -1,6 +1,9 @@
 #include <obs-module.h>
 #include <obs-frontend-api.h>
+#include <util/bmem.h>
 #include <util/platform.h>
+
+#include "multitrack_export.h"
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -18,8 +21,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <memory>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 OBS_DECLARE_MODULE()
@@ -32,7 +37,7 @@ constexpr char PipePath[] = "\\\\.\\pipe\\simplevoicechat-audiobuses";
 #else
 constexpr char UnixSocketFileName[] = "simplevoicechat-audiobuses.sock";
 #endif
-constexpr uint8_t ProtocolVersion = 1;
+constexpr uint8_t ProtocolVersion = 2;
 constexpr uint8_t SessionMarkerBus = 0x7f;
 constexpr uint8_t SessionAcknowledgementMessage = 1;
 constexpr size_t FrameHeaderSize = 22;
@@ -60,6 +65,8 @@ std::atomic<TransportHandle> activeTransport = InvalidTransport;
 std::atomic<int64_t> recordingStartedUtcMilliseconds = 0;
 std::mutex sessionMutex;
 std::string mostRecentSessionId;
+std::unordered_map<std::string, SimpleVoiceChatRecordingSession> sessionsById;
+std::unique_ptr<SimpleVoiceChatMultiTrackExporter> multiTrackExporter;
 
 uint16_t read_u16(const uint8_t* bytes)
 {
@@ -72,6 +79,14 @@ uint32_t read_u32(const uint8_t* bytes)
         | (static_cast<uint32_t>(bytes[1]) << 8)
         | (static_cast<uint32_t>(bytes[2]) << 16)
         | (static_cast<uint32_t>(bytes[3]) << 24);
+}
+
+int64_t read_i64(const uint8_t* bytes)
+{
+    uint64_t value = 0;
+    for (size_t index = 0; index < 8; ++index)
+        value |= static_cast<uint64_t>(bytes[index]) << (index * 8);
+    return static_cast<int64_t>(value);
 }
 
 bool read_exact(TransportHandle transport, void* destination, size_t count)
@@ -142,6 +157,13 @@ int64_t utc_now_milliseconds()
 
 bool write_acknowledgement(const std::string& sessionId)
 {
+    const int64_t recordingStart = recordingStartedUtcMilliseconds.load();
+    {
+        std::lock_guard<std::mutex> lock(sessionMutex);
+        const auto session = sessionsById.find(sessionId);
+        if (session != sessionsById.end() && recordingStart > 0)
+            session->second.obsRecordingStartUtcUnixMilliseconds = recordingStart;
+    }
     std::lock_guard<std::mutex> lock(pipeWriteMutex);
     TransportHandle transport = activeTransport.load();
     if (transport == InvalidTransport || sessionId.empty() || sessionId.size() > 512)
@@ -156,7 +178,6 @@ bool write_acknowledgement(const std::string& sessionId)
     message[5] = SessionAcknowledgementMessage;
     const uint16_t idLength = static_cast<uint16_t>(sessionId.size());
     std::memcpy(message.data() + 6, &idLength, sizeof(idLength));
-    const int64_t recordingStart = recordingStartedUtcMilliseconds.load();
     const int64_t markerReceived = utc_now_milliseconds();
     std::memcpy(message.data() + 8, &recordingStart, sizeof(recordingStart));
     std::memcpy(message.data() + 16, &markerReceived, sizeof(markerReceived));
@@ -189,10 +210,31 @@ void frontend_event(enum obs_frontend_event event, void*)
 {
     if (event == OBS_FRONTEND_EVENT_RECORDING_STARTED) {
         recordingStartedUtcMilliseconds.store(utc_now_milliseconds());
-        std::lock_guard<std::mutex> lock(sessionMutex);
-        write_acknowledgement(mostRecentSessionId);
+        std::string sessionId;
+        {
+            std::lock_guard<std::mutex> lock(sessionMutex);
+            sessionId = mostRecentSessionId;
+        }
+        write_acknowledgement(sessionId);
     } else if (event == OBS_FRONTEND_EVENT_RECORDING_STOPPED) {
-        recordingStartedUtcMilliseconds.store(0);
+        const int64_t stoppedRecordingStart = recordingStartedUtcMilliseconds.exchange(0);
+        char* lastRecording = obs_frontend_get_last_recording();
+        const std::string sourceVideo = lastRecording == nullptr ? "" : lastRecording;
+        bfree(lastRecording);
+        if (sourceVideo.empty() || stoppedRecordingStart <= 0 || multiTrackExporter == nullptr)
+            return;
+        std::vector<SimpleVoiceChatRecordingSession> sessions;
+        {
+            std::lock_guard<std::mutex> lock(sessionMutex);
+            for (const auto& entry : sessionsById) {
+                if (entry.second.obsRecordingStartUtcUnixMilliseconds == stoppedRecordingStart
+                    && !entry.second.sessionDirectory.empty()) {
+                    sessions.push_back(entry.second);
+                }
+            }
+        }
+        for (const SimpleVoiceChatRecordingSession& session : sessions)
+            multiTrackExporter->enqueue(sourceVideo, session);
     }
 }
 
@@ -214,23 +256,39 @@ void output_frame(uint8_t bus, const std::vector<int16_t>& samples, uint32_t sam
     }
 }
 
-void consume_session_marker(TransportHandle transport)
+void consume_session_marker(TransportHandle transport, const uint8_t* header)
 {
     uint8_t markerTail[2]{};
     if (!read_exact(transport, markerTail, sizeof(markerTail)))
         return;
 
     const uint16_t idLength = read_u16(markerTail);
-    if (idLength > 512)
+    if (idLength == 0 || idLength > 512)
         return;
 
     std::string sessionId(idLength, '\0');
     if (idLength != 0 && !read_exact(transport, sessionId.data(), idLength))
         return;
 
+    uint8_t directoryTail[2]{};
+    if (!read_exact(transport, directoryTail, sizeof(directoryTail)))
+        return;
+    const uint16_t directoryLength = read_u16(directoryTail);
+    if (directoryLength == 0 || directoryLength > 8192)
+        return;
+    std::string sessionDirectory(directoryLength, '\0');
+    if (!read_exact(transport, sessionDirectory.data(), directoryLength))
+        return;
+
     {
         std::lock_guard<std::mutex> lock(sessionMutex);
         mostRecentSessionId = sessionId;
+        sessionsById[sessionId] = {
+            sessionId,
+            sessionDirectory,
+            read_i64(header + 14),
+            0,
+        };
     }
     write_acknowledgement(sessionId);
     blog(LOG_INFO, "SimpleVoiceChat OBS: recording session %s received", sessionId.c_str());
@@ -248,7 +306,7 @@ void consume_transport(TransportHandle transport)
 
         const uint8_t bus = header[5];
         if (bus == SessionMarkerBus) {
-            consume_session_marker(transport);
+            consume_session_marker(transport, header);
             continue;
         }
 
@@ -402,6 +460,7 @@ bool obs_module_load(void)
     obs_register_source(&sourceInfo);
     obs_frontend_add_event_callback(frontend_event, nullptr);
     running.store(true);
+    multiTrackExporter = std::make_unique<SimpleVoiceChatMultiTrackExporter>(running);
     pipeThread = std::thread(run_pipe);
     blog(LOG_INFO, "SimpleVoiceChat OBS: module loaded");
     return true;
@@ -414,4 +473,8 @@ void obs_module_unload(void)
     cancel_active_transport_read();
     if (pipeThread.joinable())
         pipeThread.join();
+    if (multiTrackExporter != nullptr) {
+        multiTrackExporter->stop();
+        multiTrackExporter.reset();
+    }
 }

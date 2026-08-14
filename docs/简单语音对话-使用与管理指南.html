@@ -136,7 +136,9 @@
 <p>单人游戏可测试相同流程，内置服务器使用同一配置；成功后只会写入 <code>local.wav</code>，因为没有远端玩家。单人模式的 Vintage Story 可能使用虚拟 UDP 端点；若一秒内没有 UDP 时钟回包，模组会自动通过可靠控制通道完成同样的三次时钟采样。多人时，必须在状态显示正在录制后让每名玩家说话，并点击停止录制，才会写入 <code>&lt;玩家UID&gt;.wav</code>、<code>session.core.json</code> 和 <code>session.json</code>。OBS 的 <code>SimpleVoiceChat Player Voice</code> 只录制混合玩家语音并回传时间点，不会自行启动多人分轨或生成玩家 WAV。</p>
 <h3>OBS 安装与自动对齐</h3>
 <p>将对应系统的插件包解压到 OBS 安装根目录：Windows 使用 <code>obs-plugins/64bit/simplevoicechat_obs.dll</code>；Linux 保留包内 <code>lib/.../obs-plugins</code> 路径；macOS 将 <code>PlugIns/simplevoicechat_obs.plugin</code> 放入 <code>OBS.app/Contents/PlugIns</code>。重启 OBS 后，在“来源”中添加一次 <code>SimpleVoiceChat Player Voice</code>，再在高级音频属性中把它分配到所需 OBS 音轨。麦克风、游戏、桌面和音乐继续使用 OBS 原有音源。</p>
-<p>多人分轨会话与 OBS 录制必须有重叠时间，启动先后不限。插件会回传 OBS 实际开始录制的 UTC 时间，会话目录写入 <code>obs-sync.json</code> 并更新 <code>session.json.obsAlignment</code>。剪辑导入逐玩家 WAV 时使用 <code>wavZeroMinusObsStartMilliseconds</code>，公式为 <code>obsTimeMs = wavTimeMs + wavZeroMinusObsStartMilliseconds</code>；该设计不会随着玩家数量占用更多 OBS 音轨。</p>
+<p>多人分轨会话与 OBS 录制必须有重叠时间，启动先后不限。插件会回传 OBS 实际开始录制的 UTC 时间，会话目录写入 <code>obs-sync.json</code> 并更新 <code>session.json.obsAlignment</code>。其中 <code>wavZeroMinusObsStartMilliseconds</code> 的公式为 <code>obsTimeMs = wavTimeMs + wavZeroMinusObsStartMilliseconds</code>。</p>
+<p>停止 OBS 录制后，插件会读取 OBS 实际写出的原视频，并等待本会话的 <code>session.json</code>、<code>obs-sync.json</code> 和逐玩家 WAV 最终落盘。完成后会在视频同目录自动生成 <code>&lt;视频名&gt;-&lt;会话ID&gt;-multitrack.mkv</code> 和同名 <code>.fcpxml</code>。MKV 保留 OBS 原视频和已有音频流，并新增每位玩家一条原始 PCM 音频流；FCPXML 引用原 OBS 视频及所有 WAV，按上述精确毫秒偏移放入独立音轨。会话目录中的 <code>obs-export.json</code> 会记录 <code>waiting</code>、<code>exporting</code>、<code>completed</code> 或 <code>failed</code>、路径和错误原因；完成前请保持 OBS 打开。</p>
+<p>DaVinci Resolve 使用“文件 &gt; 导入时间线 &gt; 导入 FCPXML”，选择自动生成的 <code>.fcpxml</code>。视频和每位玩家的音轨导入后已经同步，可直接分别调音、剪辑和分配字幕颜色。MKV 用于归档或多音轨播放；Resolve 的剪辑入口应使用 FCPXML。该设计不会随着玩家数量占用更多 OBS 音轨。</p>
 
 <h2>九、管理员页面与权限</h2>
 <p>拥有 Vintage Story <code>controlserver</code> 权限并完成语音握手的玩家，主页顶部会看到“管理员”按钮。管理员页面不创建频道入口；频道创建仍通过频道页底部“创建频道”，或使用服务器命令。管理员可以查看全部频道和玩家，并执行服务端再次鉴权的管理操作：</p>

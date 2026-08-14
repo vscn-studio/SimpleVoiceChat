@@ -15,7 +15,10 @@ public sealed class AudioBusPipeBridge : IDisposable
 {
     public const string PipeName = "simplevoicechat-audiobuses";
     public const string UnixSocketFileName = "simplevoicechat-audiobuses.sock";
-    private const byte ProtocolVersion = 1;
+    // Version 2 adds the absolute multi-track session directory to the marker.
+    // The OBS plugin uses it only after recording has stopped, when it can read
+    // the finalized WAV files and obs-sync.json without guessing a game path.
+    private const byte ProtocolVersion = 2;
     private const byte RecordingSessionMessage = 0x7F;
     private const byte SessionAcknowledgementMessage = 1;
 
@@ -216,20 +219,7 @@ public sealed class AudioBusPipeBridge : IDisposable
             return;
         }
 
-        byte[] id = System.Text.Encoding.UTF8.GetBytes(session.SessionId);
-        byte[] header = new byte[24 + id.Length];
-        header[0] = (byte)'S';
-        header[1] = (byte)'V';
-        header[2] = (byte)'C';
-        header[3] = (byte)'B';
-        header[4] = ProtocolVersion;
-        header[5] = RecordingSessionMessage;
-        BitConverter.TryWriteBytes(header.AsSpan(6, 8), session.StartClockMilliseconds);
-        BitConverter.TryWriteBytes(header.AsSpan(14, 8), session.StartUtcUnixMilliseconds);
-        BitConverter.TryWriteBytes(header.AsSpan(22, 2), (ushort)id.Length);
-        Buffer.BlockCopy(id, 0, header, 24, id.Length);
-        await stream.WriteAsync(header, token).ConfigureAwait(false);
-        await stream.FlushAsync(token).ConfigureAwait(false);
+        await WriteSessionMarkerAsync(stream, session, token).ConfigureAwait(false);
     }
 
     private async Task WriteFramesAsync(Stream stream, CancellationToken token)
@@ -268,8 +258,19 @@ public sealed class AudioBusPipeBridge : IDisposable
         {
             sessionsById[session.SessionId] = session;
         }
+        await WriteSessionMarkerAsync(stream, session, token).ConfigureAwait(false);
+    }
+
+    private static async Task WriteSessionMarkerAsync(Stream stream, AudioRecordingSession session, CancellationToken token)
+    {
         byte[] id = System.Text.Encoding.UTF8.GetBytes(session.SessionId);
-        byte[] header = new byte[24 + id.Length];
+        byte[] directory = System.Text.Encoding.UTF8.GetBytes(session.SessionDirectory ?? string.Empty);
+        if (id.Length == 0 || id.Length > ushort.MaxValue || directory.Length > ushort.MaxValue)
+        {
+            throw new InvalidDataException("The multi-track session marker is too large for the OBS IPC protocol.");
+        }
+
+        byte[] header = new byte[26 + id.Length + directory.Length];
         header[0] = (byte)'S';
         header[1] = (byte)'V';
         header[2] = (byte)'C';
@@ -280,6 +281,9 @@ public sealed class AudioBusPipeBridge : IDisposable
         BitConverter.TryWriteBytes(header.AsSpan(14, 8), session.StartUtcUnixMilliseconds);
         BitConverter.TryWriteBytes(header.AsSpan(22, 2), (ushort)id.Length);
         Buffer.BlockCopy(id, 0, header, 24, id.Length);
+        int directoryLengthOffset = 24 + id.Length;
+        BitConverter.TryWriteBytes(header.AsSpan(directoryLengthOffset, 2), (ushort)directory.Length);
+        Buffer.BlockCopy(directory, 0, header, directoryLengthOffset + 2, directory.Length);
         await stream.WriteAsync(header, token).ConfigureAwait(false);
         await stream.FlushAsync(token).ConfigureAwait(false);
     }

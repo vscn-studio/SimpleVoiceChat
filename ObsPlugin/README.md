@@ -28,8 +28,21 @@ Restart OBS. Add `SimpleVoiceChat Player Voice` once from the Sources menu,
 then assign it to the desired recording track in Advanced Audio Properties.
 The plugin and the game client must run as the same local user because their
 IPC endpoint is local. The multi-track session and OBS recording must overlap;
-either may start first. `obs-sync.json` in the session directory records the
-alignment formula used when importing individual WAV files into an editor.
+either may start first. On OBS recording stop, the plugin waits for the
+session's final WAV files and `obs-sync.json`, then automatically creates two
+files beside the OBS video:
+
+- `<video>-<session>-multitrack.mkv` keeps the OBS video and existing audio
+  streams and adds one unprocessed PCM stream per player.
+- `<video>-<session>-multitrack.fcpxml` references the original OBS video and
+  each player WAV at the exact offset in `obs-sync.json`.
+
+The session's `obs-export.json` reports `waiting`, `exporting`, `completed`,
+or `failed`, including output paths and a failure message. Keep OBS open until
+it reports `completed`. In DaVinci Resolve use **File > Import Timeline >
+Import FCPXML** and select the generated FCPXML; the imported timeline already
+contains a separate, synchronized player track. The MKV is an archive or
+multitrack playback artifact, not the recommended Resolve editing input.
 
 Build with an OBS Studio development environment, for example:
 
@@ -46,10 +59,11 @@ The IPC protocol is owned by the mod. Windows uses the
 `simplevoicechat-audiobuses` named pipe. Linux and macOS use
 `simplevoicechat-audiobuses.sock` in `XDG_RUNTIME_DIR` when available, else
 the process temporary directory. Normal frames have a 22-byte header:
-`SVCB`, protocol version 1, bus byte `0`, local monotonic timestamp (`Int64`),
+`SVCB`, protocol version 2, bus byte `0`, local monotonic timestamp (`Int64`),
 sample rate (`Int32`), sample count (`Int32`), then mono PCM16 samples. A
 `0x7F` bus byte indicates a recording-session marker: the continuation
-contains the server-clock WAV zero, UTC zero, UTF-8 ID length, and session ID.
+contains the server-clock WAV zero, UTC zero, UTF-8 ID length and session ID,
+then UTF-8 session-directory length and the absolute session directory.
 The plugin replies with an `SVCA` acknowledgement containing the actual OBS
 recording UTC start. The mod writes that acknowledgement to `obs-sync.json`
 and merges the resulting alignment offset into the session manifest.

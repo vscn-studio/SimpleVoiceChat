@@ -12,9 +12,18 @@ if(NOT TARGET OBS::frontend-api)
   find_package(obs-frontend-api CONFIG REQUIRED)
 endif()
 
-add_library(simplevoicechat_obs MODULE simplevoicechat_obs.cpp)
+find_package(FFmpeg REQUIRED COMPONENTS avcodec avformat avutil)
+
+add_library(simplevoicechat_obs MODULE simplevoicechat_obs.cpp multitrack_export.cpp)
 target_compile_features(simplevoicechat_obs PRIVATE cxx_std_20)
-target_link_libraries(simplevoicechat_obs PRIVATE OBS::libobs OBS::frontend-api)
+target_link_libraries(
+  simplevoicechat_obs
+  PRIVATE
+    OBS::libobs
+    OBS::frontend-api
+    FFmpeg::avcodec
+    FFmpeg::avformat
+    FFmpeg::avutil)
 set_target_properties(simplevoicechat_obs PROPERTIES PREFIX "")
 
 if(WIN32)
