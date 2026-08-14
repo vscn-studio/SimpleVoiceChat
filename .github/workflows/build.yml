@@ -1,10 +1,6 @@
 name: Build and package
 
 on:
-  push:
-  pull_request:
-  schedule:
-    - cron: "17 20 * * *"
   workflow_dispatch:
     inputs:
       mod_version:
