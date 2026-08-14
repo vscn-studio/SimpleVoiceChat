@@ -1,5 +1,6 @@
 #include <obs-module.h>
 #include <obs-frontend-api.h>
+#include <util/platform.h>
 
 #ifdef _WIN32
 #include <Windows.h>
