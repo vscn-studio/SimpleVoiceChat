@@ -1,17 +1,20 @@
 using System.IO.Pipes;
+using System.Net.Sockets;
+using System.Runtime.Versioning;
 using System.Text.Json;
 using System.Threading.Channels;
 
 namespace SimpleVoiceChat.Audio;
 
 /// <summary>
-/// Streams the fixed audio buses to a local OBS source/plugin over a named pipe.
+/// Streams the fixed audio buses to a local OBS source/plugin over local IPC.
 /// Frame format: ASCII SVCB, version byte, bus byte, timestamp Int64,
 /// sample-rate Int32, sample-count Int32, then little-endian PCM16 samples.
 /// </summary>
 public sealed class AudioBusPipeBridge : IDisposable
 {
     public const string PipeName = "simplevoicechat-audiobuses";
+    public const string UnixSocketFileName = "simplevoicechat-audiobuses.sock";
     private const byte ProtocolVersion = 1;
     private const byte RecordingSessionMessage = 0x7F;
     private const byte SessionAcknowledgementMessage = 1;
@@ -39,6 +42,25 @@ public sealed class AudioBusPipeBridge : IDisposable
         serverTask = Task.Run(() => RunAsync(cancellation.Token));
     }
 
+    /// <summary>Returns the Unix-domain-socket endpoint used outside Windows.</summary>
+    public static string GetUnixSocketPath()
+    {
+        string? runtimeDirectory = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
+        if (!string.IsNullOrWhiteSpace(runtimeDirectory) && Path.IsPathFullyQualified(runtimeDirectory))
+        {
+            string runtimePath = Path.Combine(runtimeDirectory, UnixSocketFileName);
+            if (System.Text.Encoding.UTF8.GetByteCount(runtimePath) <= 96)
+            {
+                return runtimePath;
+            }
+        }
+
+        string temporaryPath = Path.Combine(Path.GetTempPath(), UnixSocketFileName);
+        return System.Text.Encoding.UTF8.GetByteCount(temporaryPath) <= 96
+            ? temporaryPath
+            : Path.Combine("/tmp", UnixSocketFileName);
+    }
+
     private void OnRecordingSessionStarted(AudioRecordingSession session)
     {
         lock (sessionGate)
@@ -57,6 +79,17 @@ public sealed class AudioBusPipeBridge : IDisposable
     }
 
     private async Task RunAsync(CancellationToken token)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            await RunNamedPipeAsync(token).ConfigureAwait(false);
+            return;
+        }
+
+        await RunUnixSocketAsync(token).ConfigureAwait(false);
+    }
+
+    private async Task RunNamedPipeAsync(CancellationToken token)
     {
         while (!token.IsCancellationRequested)
         {
@@ -87,6 +120,81 @@ public sealed class AudioBusPipeBridge : IDisposable
                 catch (OperationCanceledException) when (token.IsCancellationRequested)
                 {
                     break;
+                }
+            }
+        }
+    }
+
+    private async Task RunUnixSocketAsync(CancellationToken token)
+    {
+        string socketPath = GetUnixSocketPath();
+        string? socketDirectory = Path.GetDirectoryName(socketPath);
+        if (string.IsNullOrWhiteSpace(socketDirectory))
+        {
+            return;
+        }
+
+        while (!token.IsCancellationRequested)
+        {
+            Socket? listener = null;
+            try
+            {
+                Directory.CreateDirectory(socketDirectory);
+                if (File.Exists(socketPath))
+                {
+                    File.Delete(socketPath);
+                }
+
+                listener = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+                listener.Bind(new UnixDomainSocketEndPoint(socketPath));
+                listener.Listen(1);
+                if (OperatingSystem.IsLinux())
+                {
+                    SetUnixSocketPermissions(socketPath);
+                }
+                else if (OperatingSystem.IsMacOS())
+                {
+                    SetUnixSocketPermissions(socketPath);
+                }
+
+                while (!token.IsCancellationRequested)
+                {
+                    using Socket client = await listener.AcceptAsync(token).ConfigureAwait(false);
+                    await using NetworkStream stream = new(client, ownsSocket: false);
+                    Task acknowledgements = ReadAcknowledgementsAsync(stream, token);
+                    await WritePendingSessionAsync(stream, token).ConfigureAwait(false);
+                    await WriteFramesAsync(stream, token).ConfigureAwait(false);
+                    await acknowledgements.ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                break;
+            }
+            catch
+            {
+                try
+                {
+                    await Task.Delay(250, token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    break;
+                }
+            }
+            finally
+            {
+                listener?.Dispose();
+                try
+                {
+                    if (File.Exists(socketPath))
+                    {
+                        File.Delete(socketPath);
+                    }
+                }
+                catch
+                {
+                    // A stale endpoint is retried on the next server loop.
                 }
             }
         }
@@ -252,6 +360,20 @@ public sealed class AudioBusPipeBridge : IDisposable
                 throw new EndOfStreamException();
             }
             offset += read;
+        }
+    }
+
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    private static void SetUnixSocketPermissions(string socketPath)
+    {
+        try
+        {
+            File.SetUnixFileMode(socketPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+        catch
+        {
+            // Creation still succeeds on platforms that do not expose Unix permissions.
         }
     }
 

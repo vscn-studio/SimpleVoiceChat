@@ -1,7 +1,7 @@
 # SimpleVoiceChat OBS source
 
-This is a Windows OBS Studio source plugin. It consumes the local named pipe
-created by the SimpleVoiceChat client and exposes one input source type:
+This is an OBS Studio source plugin for Windows, Linux, and macOS. It consumes
+the local IPC endpoint created by the SimpleVoiceChat client and exposes one input source type:
 `SimpleVoiceChat Player Voice`.
 
 Add one source instance and route it to the desired OBS track. It contains
@@ -9,6 +9,13 @@ only received player voice. Keep OBS microphone, game capture, desktop audio,
 and music as their own OBS sources. Individual player WAV files are written by
 the mod for editing and subtitles, so the OBS track count never grows with the
 number of speakers.
+
+The GitHub Actions workflow builds packages for Windows x64, Linux x86_64,
+macOS x86_64, and macOS arm64 against OBS Studio 32.0.4. The Windows package
+contains `obs-plugins/64bit/simplevoicechat_obs.dll`; the Linux package
+preserves OBS's installed `lib/.../obs-plugins` path; macOS packages contain
+the complete `PlugIns/simplevoicechat_obs.plugin` bundle for
+`OBS.app/Contents/PlugIns`.
 
 Build with an OBS Studio development environment, for example:
 
@@ -21,7 +28,10 @@ Install the generated module and its data directory using OBS's normal plugin
 layout. The current workspace does not include the OBS SDK, so the plugin
 source is not built by the mod project.
 
-The pipe protocol is owned by the mod. Normal frames have a 22-byte header:
+The IPC protocol is owned by the mod. Windows uses the
+`simplevoicechat-audiobuses` named pipe. Linux and macOS use
+`simplevoicechat-audiobuses.sock` in `XDG_RUNTIME_DIR` when available, else
+the process temporary directory. Normal frames have a 22-byte header:
 `SVCB`, protocol version 1, bus byte `0`, local monotonic timestamp (`Int64`),
 sample rate (`Int32`), sample count (`Int32`), then mono PCM16 samples. A
 `0x7F` bus byte indicates a recording-session marker: the continuation

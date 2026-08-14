@@ -31,11 +31,13 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Add plugin to OBS build
+      - name: Add plugin to OBS frontend build
         shell: pwsh
         run: |
-          Copy-Item -LiteralPath ObsPlugin -Destination obs-studio/plugins/simplevoicechat-obs -Recurse
-          Add-Content -LiteralPath obs-studio/plugins/CMakeLists.txt -Value "`nadd_obs_plugin(simplevoicechat-obs)`n"
+          # obs-frontend-api is created before frontend/plugins, but after the
+          # top-level plugins directory. Add this frontend API consumer here.
+          Copy-Item -LiteralPath ObsPlugin -Destination obs-studio/frontend/plugins/simplevoicechat-obs -Recurse
+          Add-Content -LiteralPath obs-studio/frontend/plugins/CMakeLists.txt -Value "`nadd_subdirectory(simplevoicechat-obs)`n"
 
       - name: Build against OBS Studio
         uses: ./obs-studio/.github/actions/build-obs
@@ -63,5 +65,130 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: simplevoicechat-obs-plugin-windows-x64
+          path: ${{ steps.package.outputs.package }}
+          if-no-files-found: error
+
+  linux:
+    name: Linux x86_64
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out OBS Studio
+        uses: actions/checkout@v4
+        with:
+          repository: obsproject/obs-studio
+          ref: ${{ env.OBS_REF }}
+          path: obs-studio
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Add plugin to OBS frontend build
+        shell: bash
+        run: |
+          cp -R ObsPlugin obs-studio/frontend/plugins/simplevoicechat-obs
+          printf '\nadd_subdirectory(simplevoicechat-obs)\n' >> obs-studio/frontend/plugins/CMakeLists.txt
+
+      - name: Build against OBS Studio
+        uses: ./obs-studio/.github/actions/build-obs
+        with:
+          target: x86_64
+          config: ${{ env.BUILD_CONFIG }}
+          workingDirectory: ${{ github.workspace }}/obs-studio
+
+      - name: Package plugin
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(jq -r '.version' modinfo.json)"
+          install_root="obs-studio/build_ubuntu/install/${BUILD_CONFIG}"
+          plugin="$(find "${install_root}" -type f -name 'simplevoicechat_obs.so*' -print -quit)"
+
+          if [[ -z "${plugin}" ]]; then
+            echo 'simplevoicechat_obs shared library was not installed by the OBS build' >&2
+            exit 1
+          fi
+
+          stage="artifacts/linux"
+          plugin_directory="$(dirname "${plugin}")"
+          relative_directory="${plugin_directory#${install_root}/}"
+          mkdir -p "${stage}/${relative_directory}"
+          find "${plugin_directory}" -maxdepth 1 \( -type f -o -type l \) -name 'simplevoicechat_obs.so*' -exec cp -a {} "${stage}/${relative_directory}/" \;
+          package="artifacts/simplevoicechat_obs_plugin_${version}_linux_x86_64.zip"
+          rm -f "${package}"
+          (
+            cd "${stage}"
+            zip -r "../$(basename "${package}")" .
+          )
+          echo "package=${package}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: simplevoicechat-obs-plugin-linux-x86_64
+          path: ${{ steps.package.outputs.package }}
+          if-no-files-found: error
+
+  macos:
+    name: macOS ${{ matrix.architecture }}
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [x86_64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out OBS Studio
+        uses: actions/checkout@v4
+        with:
+          repository: obsproject/obs-studio
+          ref: ${{ env.OBS_REF }}
+          path: obs-studio
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Add plugin to OBS frontend build
+        shell: bash
+        run: |
+          cp -R ObsPlugin obs-studio/frontend/plugins/simplevoicechat-obs
+          printf '\nadd_subdirectory(simplevoicechat-obs)\n' >> obs-studio/frontend/plugins/CMakeLists.txt
+
+      - name: Build against OBS Studio
+        uses: ./obs-studio/.github/actions/build-obs
+        with:
+          target: ${{ matrix.architecture }}
+          config: ${{ env.BUILD_CONFIG }}
+          workingDirectory: ${{ github.workspace }}/obs-studio
+
+      - name: Package plugin
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(jq -r '.version' modinfo.json)"
+          plugin="$(find obs-studio/build_macos -type d -name simplevoicechat_obs.plugin -print -quit)"
+
+          if [[ -z "${plugin}" ]]; then
+            echo 'simplevoicechat_obs.plugin was not produced by the OBS build' >&2
+            exit 1
+          fi
+
+          stage="artifacts/macos-${{ matrix.architecture }}/PlugIns"
+          mkdir -p "${stage}"
+          cp -R "${plugin}" "${stage}/$(basename "${plugin}")"
+          package="artifacts/simplevoicechat_obs_plugin_${version}_macos_${{ matrix.architecture }}.zip"
+          rm -f "${package}"
+          (
+            cd "$(dirname "${stage}")"
+            zip -r "../$(basename "${package}")" PlugIns
+          )
+          echo "package=${package}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: simplevoicechat-obs-plugin-macos-${{ matrix.architecture }}
           path: ${{ steps.package.outputs.package }}
           if-no-files-found: error
