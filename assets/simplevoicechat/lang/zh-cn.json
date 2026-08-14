@@ -489,7 +489,6 @@
   "simplevoicechat:speech-recognition-provider-alibaba": "阿里百炼",
   "simplevoicechat:speech-recognition-provider-siliconflow": "硅基流动",
   "simplevoicechat:speech-recognition-provider-deepgram": "Deepgram",
-  "simplevoicechat:speech-recognition-provider-vosk": "Vosk（本地）",
   "simplevoicechat:speech-recognition-provider-whisper": "Whisper（本地）",
   "simplevoicechat:label-speech-recognition-api-key": "API Key",
   "simplevoicechat:label-speech-recognition-model-path": "模型路径",
@@ -506,7 +505,6 @@
   "simplevoicechat:speech-recognition-error-cancelled": "语音识别请求已取消。",
   "simplevoicechat:speech-recognition-error-model-path": "本地模型路径不存在或无法访问。",
   "simplevoicechat:speech-recognition-error-audio": "当前录音格式不受支持。",
-  "simplevoicechat:speech-recognition-vosk-download": "请下载并解压 Vosk 模型，然后在上方填写模型文件夹路径。",
   "simplevoicechat:speech-recognition-whisper-download": "请下载 Whisper GGML 模型，然后在上方填写 .bin 文件路径。",
   "simplevoicechat:button-open-browser": "打开下载页面"
 }

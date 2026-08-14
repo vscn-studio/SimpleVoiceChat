@@ -5,7 +5,6 @@ public sealed class SimpleVoiceChatClientConfig
     public const string AlibabaSpeechRecognitionProvider = "alibaba";
     public const string SiliconFlowSpeechRecognitionProvider = "siliconflow";
     public const string DeepgramSpeechRecognitionProvider = "deepgram";
-    public const string VoskSpeechRecognitionProvider = "vosk";
     public const string WhisperSpeechRecognitionProvider = "whisper";
     public const string AlibabaSpeechRecognitionModel = "qwen3-asr-flash";
     public const string AlibabaSpeechRecognitionEndpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
@@ -70,7 +69,7 @@ public sealed class SimpleVoiceChatClientConfig
         SpeechRecognitionProviders ??= new Dictionary<string, SpeechRecognitionProviderConfig>(StringComparer.Ordinal);
         SpeechRecognitionProviders = SpeechRecognitionProviders
             .Where(pair => IsSpeechRecognitionProvider(pair.Key) && pair.Value != null)
-            .Take(5)
+            .Take(4)
             .ToDictionary(
                 pair => NormalizeSpeechRecognitionProvider(pair.Key),
                 pair => pair.Value.Normalize(),
@@ -204,7 +203,7 @@ public sealed class SimpleVoiceChatClientConfig
                 Model = DeepgramSpeechRecognitionModel,
                 Endpoint = DeepgramSpeechRecognitionEndpoint
             },
-            VoskSpeechRecognitionProvider or WhisperSpeechRecognitionProvider => new SpeechRecognitionProviderConfig(),
+            WhisperSpeechRecognitionProvider => new SpeechRecognitionProviderConfig(),
             _ => new SpeechRecognitionProviderConfig
             {
                 Model = AlibabaSpeechRecognitionModel,
@@ -219,7 +218,6 @@ public sealed class SimpleVoiceChatClientConfig
         return normalized is AlibabaSpeechRecognitionProvider
             or SiliconFlowSpeechRecognitionProvider
             or DeepgramSpeechRecognitionProvider
-            or VoskSpeechRecognitionProvider
             or WhisperSpeechRecognitionProvider;
     }
 
@@ -230,7 +228,6 @@ public sealed class SimpleVoiceChatClientConfig
         {
             SiliconFlowSpeechRecognitionProvider => SiliconFlowSpeechRecognitionProvider,
             DeepgramSpeechRecognitionProvider => DeepgramSpeechRecognitionProvider,
-            VoskSpeechRecognitionProvider => VoskSpeechRecognitionProvider,
             WhisperSpeechRecognitionProvider => WhisperSpeechRecognitionProvider,
             _ => AlibabaSpeechRecognitionProvider
         };

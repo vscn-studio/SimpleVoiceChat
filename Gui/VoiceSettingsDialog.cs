@@ -616,7 +616,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
             SimpleVoiceChatClientConfig.AlibabaSpeechRecognitionProvider,
             SimpleVoiceChatClientConfig.SiliconFlowSpeechRecognitionProvider,
             SimpleVoiceChatClientConfig.DeepgramSpeechRecognitionProvider,
-            SimpleVoiceChatClientConfig.VoskSpeechRecognitionProvider,
             SimpleVoiceChatClientConfig.WhisperSpeechRecognitionProvider
         };
         string[] providerNames =
@@ -624,7 +623,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
             SVCLang.Get("speech-recognition-provider-alibaba"),
             SVCLang.Get("speech-recognition-provider-siliconflow"),
             SVCLang.Get("speech-recognition-provider-deepgram"),
-            SVCLang.Get("speech-recognition-provider-vosk"),
             SVCLang.Get("speech-recognition-provider-whisper")
         };
         composer.AddVoiceDropDown(
@@ -635,8 +633,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             ElementBounds.Fixed(controlX, y, controlWidth, controlHeight),
             "speech-recognition-provider");
         y += 46;
-        bool localProvider = config.SpeechRecognitionProvider is
-            SimpleVoiceChatClientConfig.VoskSpeechRecognitionProvider or
+        bool localProvider = config.SpeechRecognitionProvider ==
             SimpleVoiceChatClientConfig.WhisperSpeechRecognitionProvider;
         if (!localProvider)
         {
@@ -681,25 +678,20 @@ public sealed class VoiceSettingsDialog : GuiDialog
         if (localProvider)
         {
             y += 66;
-            composer.AddStaticText(SVCLang.Get(config.SpeechRecognitionProvider == SimpleVoiceChatClientConfig.VoskSpeechRecognitionProvider
-                    ? "speech-recognition-vosk-download"
-                    : "speech-recognition-whisper-download"), detail,
+            composer.AddStaticText(SVCLang.Get("speech-recognition-whisper-download"), detail,
                 ElementBounds.Fixed(labelX, y, 820, 34));
             y += 42;
             AddFlatButton(composer, SVCLang.Get("button-open-browser"),
-                () => OpenSpeechModelDownloadLink(config.SpeechRecognitionProvider),
+                OpenWhisperModelDownloadLink,
                 ElementBounds.Fixed(labelX, y, 220, 34), "speech-recognition-download");
             return y + 52;
         }
         return y + 76;
     }
 
-    private bool OpenSpeechModelDownloadLink(string provider)
+    private bool OpenWhisperModelDownloadLink()
     {
-        string url = provider == SimpleVoiceChatClientConfig.VoskSpeechRecognitionProvider
-            ? "https://alphacephei.com/vosk/models"
-            : "https://huggingface.co/ggerganov/whisper.cpp/tree/main";
-        capi.Gui.OpenLink(url);
+        capi.Gui.OpenLink("https://huggingface.co/ggerganov/whisper.cpp/tree/main");
         return true;
     }
 

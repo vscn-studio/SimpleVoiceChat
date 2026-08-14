@@ -14,7 +14,6 @@
 
   <ItemGroup>
     <PackageReference Include="Concentus" Version="2.2.2" />
-    <PackageReference Include="Vosk" Version="0.3.38" GeneratePathProperty="true" />
     <PackageReference Include="Whisper.net" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
   </ItemGroup>
@@ -79,11 +78,6 @@
   <Target Name="OrganizeNativeSpeechRecognitionLibraries" AfterTargets="Build">
     <ItemGroup>
       <WhisperNativeFile Include="$(TargetDir)runtimes\**\*" />
-      <VoskOutputNativeFile Include="$(TargetDir)lib*.dll;$(TargetDir)libvosk.so;$(TargetDir)libvosk.dylib" />
-      <VoskOutputNativeFile Remove="@(VoskOutputNativeFile)" Condition="!Exists('%(Identity)')" />
-      <LegacyVoskNativeFile Include="$(TargetDir)native\vosk\lib*.dll;$(TargetDir)native\vosk\libvosk.so;$(TargetDir)native\vosk\libvosk.dylib" />
-      <LegacyVoskNativeFile Remove="@(LegacyVoskNativeFile)" Condition="!Exists('%(Identity)')" />
-      <VoskPackageNativeFile Include="$(PkgVosk)\build\lib\**\*" />
     </ItemGroup>
 
     <Copy
@@ -91,13 +85,7 @@
       DestinationFiles="@(WhisperNativeFile->'$(TargetDir)native\runtimes\%(RecursiveDir)%(Filename)%(Extension)')"
       SkipUnchangedFiles="true"
       Condition="'@(WhisperNativeFile)' != ''" />
-    <Copy
-      SourceFiles="@(VoskPackageNativeFile)"
-      DestinationFiles="@(VoskPackageNativeFile->'$(TargetDir)native\vosk\%(RecursiveDir)%(Filename)%(Extension)')"
-      SkipUnchangedFiles="true"
-      Condition="'@(VoskPackageNativeFile)' != ''" />
-
-    <Delete Files="@(WhisperNativeFile);@(VoskOutputNativeFile);@(LegacyVoskNativeFile)" />
+    <Delete Files="@(WhisperNativeFile)" />
     <RemoveDir Directories="$(TargetDir)runtimes" Condition="Exists('$(TargetDir)runtimes')" />
 
     <ItemGroup>

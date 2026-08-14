@@ -2682,7 +2682,6 @@ public sealed class ClientVoiceController : IDisposable
         {
             SimpleVoiceChatClientConfig.SiliconFlowSpeechRecognitionProvider => new SiliconFlowSpeechRecognitionClient(),
             SimpleVoiceChatClientConfig.DeepgramSpeechRecognitionProvider => new DeepgramSpeechRecognitionClient(),
-            SimpleVoiceChatClientConfig.VoskSpeechRecognitionProvider => new VoskSpeechRecognitionClient(),
             SimpleVoiceChatClientConfig.WhisperSpeechRecognitionProvider => new WhisperSpeechRecognitionClient(),
             _ => new AlibabaSpeechRecognitionClient()
         };

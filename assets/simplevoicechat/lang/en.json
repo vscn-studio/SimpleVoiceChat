@@ -489,7 +489,6 @@
   "simplevoicechat:speech-recognition-provider-alibaba": "Alibaba Bailian",
   "simplevoicechat:speech-recognition-provider-siliconflow": "SiliconFlow",
   "simplevoicechat:speech-recognition-provider-deepgram": "Deepgram",
-  "simplevoicechat:speech-recognition-provider-vosk": "Vosk (local)",
   "simplevoicechat:speech-recognition-provider-whisper": "Whisper (local)",
   "simplevoicechat:label-speech-recognition-api-key": "API Key",
   "simplevoicechat:label-speech-recognition-model-path": "Model path",
@@ -506,7 +505,6 @@
   "simplevoicechat:speech-recognition-error-cancelled": "The recognition request was cancelled."
   ,"simplevoicechat:speech-recognition-error-model-path": "The local model path does not exist or is not accessible."
   ,"simplevoicechat:speech-recognition-error-audio": "The captured audio format is not supported."
-  ,"simplevoicechat:speech-recognition-vosk-download": "Download a Vosk model, extract it, then enter the model folder path above.",
-  "simplevoicechat:speech-recognition-whisper-download": "Download a Whisper GGML model, then enter the .bin file path above.",
+  ,"simplevoicechat:speech-recognition-whisper-download": "Download a Whisper GGML model, then enter the .bin file path above.",
   "simplevoicechat:button-open-browser": "Open download page"
 }

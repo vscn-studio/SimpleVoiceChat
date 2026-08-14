@@ -55,7 +55,6 @@ SimpleVoiceChat 不依赖 Simple Voice Chat、VS Director 或 `SimpleVoiceChat_V
 | 阿里百炼 | 云端 | `qwen3-asr-flash` | `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions` |
 | 硅基流动 | 云端 | `FunAudioLLM/SenseVoiceSmall` | `https://api.siliconflow.cn/v1/audio/transcriptions` |
 | Deepgram | 云端 | `nova-3` | `https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true` |
-| Vosk | 本地 | 解压后的模型文件夹路径 | 无 |
 | Whisper | 本地 | Whisper.cpp GGML `.bin` 模型文件路径 | 无 |
 
 相关文档与模型下载：
@@ -63,12 +62,11 @@ SimpleVoiceChat 不依赖 Simple Voice Chat、VS Director 或 `SimpleVoiceChat_V
 - [阿里百炼语音识别文档](https://bailian.console.aliyun.com/cn-beijing?tab=doc#/doc/?type=model&url=2989727)
 - [SiliconFlow Audio Transcriptions API](https://api-docs.siliconflow.cn/docs/api/audio-transcriptions-post)
 - [Deepgram API 入门](https://developers.deepgram.com/guides/fundamentals/make-your-first-api-request)
-- [Vosk 模型](https://alphacephei.com/vosk/models)
 - [Whisper.cpp 模型](https://huggingface.co/ggerganov/whisper.cpp/tree/main)
 
-Vosk 下载得到的压缩包必须先完整解压，然后填写包含 `am`、`conf` 等内容的模型目录。Whisper 页面通常直接提供模型文件；填写实际 `.bin` 文件路径，而不是文件夹。如果浏览器下载的是压缩包，也要先解压。模型可放在任意玩家有读取权限的位置，Windows、Linux 和 macOS 均使用本平台正常路径格式。
+Whisper 页面通常直接提供模型文件；填写实际 `.bin` 文件路径，而不是文件夹。如果浏览器下载的是压缩包，也要先解压。模型可放在任意玩家有读取权限的位置，Windows、Linux 和 macOS 均使用本平台正常路径格式。
 
-云端服务的 API Key 以明文保存在玩家本机的 `SimpleVoiceChat.Client.json` 中，请勿分享该文件。云端识别会把本次录音直接发送给所选服务商；SimpleVoiceChat 服务端不会代理或保存该请求。Vosk 和 Whisper 在本机运行，无需 API Key，也不会将识别音频发送给识别服务商。
+云端服务的 API Key 以明文保存在玩家本机的 `SimpleVoiceChat.Client.json` 中，请勿分享该文件。云端识别会把本次录音直接发送给所选服务商；SimpleVoiceChat 服务端不会代理或保存该请求。Whisper 在本机运行，无需 API Key，也不会将识别音频发送给识别服务商。
 
 ### 频道和录音
 
@@ -205,7 +203,6 @@ Open SimpleVoiceChat settings, select Speech Recognition, choose a provider, and
 | Alibaba Bailian | Cloud | `qwen3-asr-flash` | `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions` |
 | SiliconFlow | Cloud | `FunAudioLLM/SenseVoiceSmall` | `https://api.siliconflow.cn/v1/audio/transcriptions` |
 | Deepgram | Cloud | `nova-3` | `https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true` |
-| Vosk | Local | Extracted model directory | None |
 | Whisper | Local | Whisper.cpp GGML `.bin` model file | None |
 
 Documentation and model downloads:
@@ -213,12 +210,11 @@ Documentation and model downloads:
 - [Alibaba Bailian speech recognition](https://bailian.console.aliyun.com/cn-beijing?tab=doc#/doc/?type=model&url=2989727)
 - [SiliconFlow Audio Transcriptions API](https://api-docs.siliconflow.cn/docs/api/audio-transcriptions-post)
 - [Deepgram API guide](https://developers.deepgram.com/guides/fundamentals/make-your-first-api-request)
-- [Vosk models](https://alphacephei.com/vosk/models)
 - [Whisper.cpp models](https://huggingface.co/ggerganov/whisper.cpp/tree/main)
 
-Extract the complete Vosk archive and select the model directory containing folders such as `am` and `conf`. Whisper downloads are normally model files; select the actual `.bin` file, not its parent directory. Extract it first if it was distributed in an archive. Models may be stored in any readable location using normal Windows, Linux, or macOS path syntax.
+Whisper downloads are normally model files; select the actual `.bin` file, not its parent directory. Extract it first if it was distributed in an archive. Models may be stored in any readable location using normal Windows, Linux, or macOS path syntax.
 
-Cloud API keys are stored as plain text in the local `SimpleVoiceChat.Client.json`; do not share that file. Cloud recognition sends each captured recording directly to the selected provider. The SimpleVoiceChat server neither proxies nor stores those requests. Vosk and Whisper run locally, require no API key, and do not upload recognition audio to a provider.
+Cloud API keys are stored as plain text in the local `SimpleVoiceChat.Client.json`; do not share that file. Cloud recognition sends each captured recording directly to the selected provider. The SimpleVoiceChat server neither proxies nor stores those requests. Whisper runs locally, requires no API key, and does not upload recognition audio to a provider.
 
 ### Channels and Recording
 
@@ -312,4 +308,4 @@ dotnet test Tests\SimpleVoiceChat.Tests.csproj
 dotnet build SimpleVoiceChat.csproj -c Release
 ```
 
-Release output is written to `bin\Release\Mods\mod`. Unmanaged Whisper and Vosk libraries must remain under `native/`; Vintage Story rejects unmanaged DLLs placed in the mod root.
+Release output is written to `bin\Release\Mods\mod`. Unmanaged Whisper libraries must remain under `native/`; Vintage Story rejects unmanaged DLLs placed in the mod root.

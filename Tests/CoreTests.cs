@@ -451,26 +451,25 @@ public sealed class CoreTests
     public void SpeechRecognitionProviderConfigurationSurvivesSerialization()
     {
         SimpleVoiceChatClientConfig config = new();
-        Assert.True(config.SelectSpeechRecognitionProvider(SimpleVoiceChatClientConfig.VoskSpeechRecognitionProvider));
-        config.SpeechRecognitionModel = @"C:\models\vosk-cn";
+        Assert.True(config.SelectSpeechRecognitionProvider(SimpleVoiceChatClientConfig.WhisperSpeechRecognitionProvider));
+        config.SpeechRecognitionModel = @"C:\models\ggml-base.bin";
         config.Normalize();
 
         string json = JsonSerializer.Serialize(config);
         SimpleVoiceChatClientConfig restored = JsonSerializer.Deserialize<SimpleVoiceChatClientConfig>(json)!;
         restored.Normalize();
 
-        Assert.Equal(SimpleVoiceChatClientConfig.VoskSpeechRecognitionProvider, restored.SpeechRecognitionProvider);
-        Assert.Equal(@"C:\models\vosk-cn", restored.SpeechRecognitionModel);
+        Assert.Equal(SimpleVoiceChatClientConfig.WhisperSpeechRecognitionProvider, restored.SpeechRecognitionProvider);
+        Assert.Equal(@"C:\models\ggml-base.bin", restored.SpeechRecognitionModel);
         Assert.True(restored.SelectSpeechRecognitionProvider(SimpleVoiceChatClientConfig.AlibabaSpeechRecognitionProvider));
-        Assert.True(restored.SelectSpeechRecognitionProvider(SimpleVoiceChatClientConfig.VoskSpeechRecognitionProvider));
-        Assert.Equal(@"C:\models\vosk-cn", restored.SpeechRecognitionModel);
+        Assert.True(restored.SelectSpeechRecognitionProvider(SimpleVoiceChatClientConfig.WhisperSpeechRecognitionProvider));
+        Assert.Equal(@"C:\models\ggml-base.bin", restored.SpeechRecognitionModel);
     }
 
-    [Theory]
-    [InlineData(SimpleVoiceChatClientConfig.VoskSpeechRecognitionProvider)]
-    [InlineData(SimpleVoiceChatClientConfig.WhisperSpeechRecognitionProvider)]
-    public void LocalSpeechProvidersUseModelPathsWithoutCloudEndpoint(string provider)
+    [Fact]
+    public void WhisperSpeechProviderUsesModelPathWithoutCloudEndpoint()
     {
+        const string provider = SimpleVoiceChatClientConfig.WhisperSpeechRecognitionProvider;
         SimpleVoiceChatClientConfig config = new();
 
         Assert.True(config.SelectSpeechRecognitionProvider(provider));
