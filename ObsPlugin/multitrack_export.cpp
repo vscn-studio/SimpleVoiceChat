@@ -2,10 +2,12 @@
 
 #include <obs-module.h>
 
+extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/error.h>
 #include <libavutil/mathematics.h>
+}
 
 #include <algorithm>
 #include <chrono>
