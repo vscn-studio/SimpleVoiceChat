@@ -123,4 +123,68 @@ public static class VoiceProtocolValidation
             _ => false
         };
     }
+
+    public static bool IsValidRecorderParticipantState(
+        RecorderParticipantStatePacket? packet,
+        int expectedConnectionEpoch)
+    {
+        return packet != null
+            && packet.ConnectionEpoch == expectedConnectionEpoch
+            && packet.ClockSampleCount is >= 0 and <= 64
+            && double.IsFinite(packet.BestRoundTripMilliseconds)
+            && packet.BestRoundTripMilliseconds is >= 0d and <= 10_000d
+            && packet.ClientUtcUnixMilliseconds > 0;
+    }
+
+    public static bool IsValidRecorderUploadShape(
+        RecorderUploadFramePacket? packet,
+        int negotiatedCodec,
+        int expectedConnectionEpoch)
+    {
+        if (packet == null
+            || packet.ConnectionEpoch != expectedConnectionEpoch
+            || packet.VoiceSessionId <= 0
+            || string.IsNullOrWhiteSpace(packet.RecordingSessionId)
+            || packet.RecordingSessionId.Length > VoiceProtocol.MaxControlStringLength
+            || packet.Payload == null
+            || packet.Payload.Length == 0
+            || packet.Payload.Length > 200
+            || packet.CaptureServerTimestampMilliseconds < 0)
+        {
+            return false;
+        }
+
+        return negotiatedCodec switch
+        {
+            VoiceProtocol.CodecImaAdpcm => packet.Payload.Length == VoiceProtocol.ImaAdpcmPayloadBytes,
+            VoiceProtocol.CodecOpus => true,
+            _ => false
+        };
+    }
+
+    public static bool IsSafeRecorderSessionId(string? sessionId)
+    {
+        return !string.IsNullOrWhiteSpace(sessionId)
+            && sessionId.Length <= VoiceProtocol.MaxControlStringLength
+            && sessionId.StartsWith("multitrack-", StringComparison.Ordinal)
+            && sessionId.IndexOfAny(new[] { '/', '\\' }) < 0
+            && !sessionId.Contains("..", StringComparison.Ordinal)
+            && !Path.IsPathRooted(sessionId);
+    }
+
+    public static bool IsSafeRecorderFileName(string? fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName)
+            || fileName.Length > VoiceProtocol.MaxControlStringLength
+            || !string.Equals(fileName, Path.GetFileName(fileName), StringComparison.Ordinal)
+            || fileName.IndexOfAny(new[] { '/', '\\' }) >= 0
+            || fileName.Contains("..", StringComparison.Ordinal)
+            || fileName.Any(character => character < 32 || "<>:\"|?*".Contains(character)))
+        {
+            return false;
+        }
+
+        return Path.GetExtension(fileName).Equals(".wav", StringComparison.OrdinalIgnoreCase)
+            || fileName is "session.core.json" or "recording-state.json";
+    }
 }

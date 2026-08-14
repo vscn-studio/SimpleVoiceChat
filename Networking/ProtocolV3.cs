@@ -4,12 +4,13 @@ namespace SimpleVoiceChat.Networking;
 
 public static class VoiceProtocol
 {
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 5;
     public const string GeneratedChannelIdPrefix = "channel-";
     public const int CodecImaAdpcm = 1;
     public const int CodecOpus = 2;
     public const int ImaAdpcmPayloadBytes = 164;
     public const int MaxControlStringLength = 128;
+    public const int MaxRecorderFileChunkBytes = 64 * 1024;
 
     public static bool IsCompatible(int version) => version == CurrentVersion;
 }
@@ -52,7 +53,9 @@ public enum VoiceCapability
     AdaptiveJitter = 1 << 2,
     Opus = 1 << 3,
     Diagnostics = 1 << 4,
-    ChannelMemberPaging = 1 << 5
+    ChannelMemberPaging = 1 << 5,
+    ProtocolV5 = 1 << 6,
+    ServerHostedRecording = 1 << 7
 }
 
 public enum ChannelMemberDeltaKind
@@ -118,6 +121,9 @@ public sealed class VoiceWelcomePacket
 
     [ProtoMember(13)]
     public bool EnableRecorderCapture;
+
+    [ProtoMember(14)]
+    public string RuntimeInstanceId = string.Empty;
 }
 
 [ProtoContract]
@@ -274,6 +280,74 @@ public sealed class RecorderVoiceTimelinePacket
 
     [ProtoMember(7)]
     public long EndServerTimestampMilliseconds;
+}
+
+[ProtoContract]
+public sealed class RecorderParticipantStatePacket
+{
+    [ProtoMember(1)] public int ConnectionEpoch;
+    [ProtoMember(2)] public bool ClockReady;
+    [ProtoMember(3)] public int ClockSampleCount;
+    [ProtoMember(4)] public double BestRoundTripMilliseconds;
+    [ProtoMember(5)] public long ClientUtcUnixMilliseconds;
+}
+
+[ProtoContract]
+public sealed class RecorderCaptureStatePacket
+{
+    [ProtoMember(1)] public bool Active;
+    [ProtoMember(2)] public string RecordingSessionId = string.Empty;
+    [ProtoMember(3)] public long StartServerTimestampMilliseconds;
+    [ProtoMember(4)] public long StartUtcUnixMilliseconds;
+    [ProtoMember(5)] public string OwnerUid = string.Empty;
+    [ProtoMember(6)] public string OwnerName = string.Empty;
+}
+
+[ProtoContract]
+public sealed class RecorderUploadFramePacket
+{
+    [ProtoMember(1)] public string RecordingSessionId = string.Empty;
+    [ProtoMember(2)] public int ConnectionEpoch;
+    [ProtoMember(3)] public int VoiceSessionId;
+    [ProtoMember(4)] public ushort Sequence;
+    [ProtoMember(5)] public byte[] Payload = Array.Empty<byte>();
+    [ProtoMember(6)] public long CaptureServerTimestampMilliseconds;
+}
+
+[ProtoContract]
+public sealed class RecorderSessionStatusPacket
+{
+    [ProtoMember(1)] public bool Active;
+    [ProtoMember(2)] public string RecordingSessionId = string.Empty;
+    [ProtoMember(3)] public int ReadyParticipants;
+    [ProtoMember(4)] public int TotalParticipants;
+    [ProtoMember(5)] public int TrackCount;
+    [ProtoMember(6)] public long PacketCount;
+    [ProtoMember(7)] public long MissingPackets;
+    [ProtoMember(8)] public long FallbackTimestampFrames;
+    [ProtoMember(9)] public long StoredPcmBytes;
+    [ProtoMember(10)] public bool OwnerConnected;
+    [ProtoMember(11)] public string HostedState = string.Empty;
+}
+
+[ProtoContract]
+public sealed class RecorderFileRequestPacket
+{
+    [ProtoMember(1)] public string RecordingSessionId = string.Empty;
+}
+
+[ProtoContract]
+public sealed class RecorderFileChunkPacket
+{
+    [ProtoMember(1)] public string RecordingSessionId = string.Empty;
+    [ProtoMember(2)] public string RelativeFileName = string.Empty;
+    [ProtoMember(3)] public long Offset;
+    [ProtoMember(4)] public long FileLength;
+    [ProtoMember(5)] public long TotalTransferBytes;
+    [ProtoMember(6)] public byte[] Data = Array.Empty<byte>();
+    [ProtoMember(7)] public bool FileCompleted;
+    [ProtoMember(8)] public bool TransferCompleted;
+    [ProtoMember(9)] public string Error = string.Empty;
 }
 
 [ProtoContract]

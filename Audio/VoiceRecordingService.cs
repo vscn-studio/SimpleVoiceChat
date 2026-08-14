@@ -90,9 +90,11 @@ public sealed class VoiceTestRecordingBuffer
 }
 
 /// <summary>
-/// Streams local microphone and playback samples into a PCM WAV file. The
-/// input+output mode stores input on the left channel and playback on the
-/// right channel so the two sources remain distinguishable when replayed.
+/// Streams local microphone and playback samples into a PCM WAV file. A
+/// hosted multi-track session only creates the OBS marker directory; its
+/// authoritative speaker WAV files are written by the server and downloaded
+/// after finalization. The input+output mode stores input on the left channel
+/// and playback on the right channel so the two sources remain distinguishable.
 /// </summary>
 public sealed class VoiceRecordingService : IDisposable
 {
@@ -121,6 +123,7 @@ public sealed class VoiceRecordingService : IDisposable
     private string localPlayerUid = string.Empty;
     private string localPlayerName = string.Empty;
     private bool multiTrackActive;
+    private bool serverHostedMultiTrack;
     private bool disposed;
 
     public VoiceRecordingService(ICoreClientAPI capi)
@@ -196,7 +199,8 @@ public sealed class VoiceRecordingService : IDisposable
         long startServerTimestampMilliseconds,
         long startUtcUnixMilliseconds,
         double clockOffsetMilliseconds,
-        out string error)
+        out string error,
+        bool hostedMultiTrack = false)
     {
         lock (gate)
         {
@@ -220,6 +224,7 @@ public sealed class VoiceRecordingService : IDisposable
                 sessionClockStarted = mode == VoiceRecordingMode.MultiTrack;
                 if (mode == VoiceRecordingMode.MultiTrack)
                 {
+                    serverHostedMultiTrack = hostedMultiTrack;
                     sessionId = string.IsNullOrWhiteSpace(requestedSessionId)
                         ? $"multitrack-{DateTime.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}"
                         : SanitizeFileName(requestedSessionId);
@@ -275,7 +280,9 @@ public sealed class VoiceRecordingService : IDisposable
                         sessionSampleFrames,
                         (endTimestampMilliseconds - sessionStartMilliseconds) * VoiceConstants.SampleRate / 1000L);
                 }
-                bool saved = StopMultiTrack(out path);
+                bool saved = serverHostedMultiTrack
+                    ? StopHostedMultiTrack(out path)
+                    : StopMultiTrack(out path);
                 CloseActiveRecording(deleteEmpty: true);
                 return saved;
             }
@@ -309,6 +316,10 @@ public sealed class VoiceRecordingService : IDisposable
 
             if (activeMode == VoiceRecordingMode.MultiTrack)
             {
+                if (serverHostedMultiTrack)
+                {
+                    return;
+                }
                 AppendMultiTrack("local", localPlayerUid, localPlayerName, samples, timestampMilliseconds);
                 return;
             }
@@ -373,6 +384,11 @@ public sealed class VoiceRecordingService : IDisposable
                 return;
             }
 
+            if (serverHostedMultiTrack)
+            {
+                return;
+            }
+
             AppendMultiTrack(speakerUid, speakerUid, speakerName ?? speakerUid, samples, timestampMilliseconds);
         }
     }
@@ -421,6 +437,7 @@ public sealed class VoiceRecordingService : IDisposable
             sessionClockOffsetMilliseconds = 0d;
             sessionSampleFrames = 0;
             sessionClockStarted = false;
+            serverHostedMultiTrack = false;
             activeMode = default;
             multiTrackActive = false;
             return;
@@ -567,6 +584,67 @@ public sealed class VoiceRecordingService : IDisposable
         lastRecordingMode = VoiceRecordingMode.MultiTrack;
         path = manifestPath;
         return true;
+    }
+
+    private bool StopHostedMultiTrack(out string path)
+    {
+        path = sessionPath;
+        return !string.IsNullOrWhiteSpace(path) && Directory.Exists(path);
+    }
+
+    public bool StartHostedMultiTrack(
+        string requestedSessionId,
+        long startServerTimestampMilliseconds,
+        long startUtcUnixMilliseconds,
+        double clockOffsetMilliseconds,
+        out string error)
+    {
+        return Start(
+            VoiceRecordingMode.MultiTrack,
+            requestedSessionId,
+            startServerTimestampMilliseconds,
+            startUtcUnixMilliseconds,
+            clockOffsetMilliseconds,
+            out error,
+            hostedMultiTrack: true);
+    }
+
+    public string GetSessionDirectory(string requestedSessionId)
+    {
+        string safe = SanitizeFileName(requestedSessionId);
+        if (!string.Equals(safe, requestedSessionId, StringComparison.Ordinal)
+            || safe.Contains(Path.DirectorySeparatorChar)
+            || safe.Contains(Path.AltDirectorySeparatorChar)
+            || safe.Contains("..", StringComparison.Ordinal))
+        {
+            return string.Empty;
+        }
+        string path = Path.GetFullPath(Path.Combine(directoryPath, safe));
+        string prefix = directoryPath.EndsWith(Path.DirectorySeparatorChar)
+            ? directoryPath
+            : directoryPath + Path.DirectorySeparatorChar;
+        return path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? path : string.Empty;
+    }
+
+    public bool CompleteHostedDownload(string requestedSessionId)
+    {
+        lock (gate)
+        {
+            string path = GetSessionDirectory(requestedSessionId);
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(Path.Combine(path, "session.core.json")))
+            {
+                return false;
+            }
+            MultiTrackSessionManifest.Merge(path);
+            string manifestPath = Path.Combine(path, "session.json");
+            if (!File.Exists(manifestPath))
+            {
+                return false;
+            }
+            lastRecordingPath = manifestPath;
+            lastRecordingMode = VoiceRecordingMode.MultiTrack;
+            return true;
+        }
     }
 
     public void RefreshMultiTrackManifest(string completedSessionPath)

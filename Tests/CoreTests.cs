@@ -30,7 +30,7 @@ public sealed class CoreTests
 
         config.Normalize();
 
-        Assert.Equal(7, config.ConfigVersion);
+        Assert.Equal(8, config.ConfigVersion);
         Assert.Equal(32, config.MaxDirectorStreamsPerListener);
         Assert.Equal(4096, config.MaxDirectorEgressKbps);
     }
@@ -46,10 +46,11 @@ public sealed class CoreTests
     }
 
     [Fact]
-    public void ProtocolVersionFourRejectsOlderVersions()
+    public void ProtocolVersionFiveRejectsOlderVersions()
     {
-        Assert.Equal(4, VoiceProtocol.CurrentVersion);
-        Assert.True(VoiceProtocol.IsCompatible(4));
+        Assert.Equal(5, VoiceProtocol.CurrentVersion);
+        Assert.True(VoiceProtocol.IsCompatible(5));
+        Assert.False(VoiceProtocol.IsCompatible(4));
         Assert.False(VoiceProtocol.IsCompatible(2));
         Assert.False(VoiceProtocol.IsCompatible(3));
     }
@@ -295,7 +296,7 @@ public sealed class CoreTests
         config.Normalize();
 
         PersistentVoiceChannelConfig channel = Assert.Single(config.PersistentChannels);
-        Assert.Equal(7, config.ConfigVersion);
+        Assert.Equal(8, config.ConfigVersion);
         Assert.Equal("channel-1", channel.Id);
         Assert.Equal(2, config.NextChannelNumber);
         Assert.NotEqual("legacy-general", channel.Id);
@@ -337,6 +338,145 @@ public sealed class CoreTests
         ListenerEgressBudget budget = new(4_096);
 
         Assert.True(budget.HasCapacity("recorder", 400_000, 0));
+    }
+
+    [Fact]
+    public void HostedRecorderUsesPortableNameUidTrackNamesAndPadsTracks()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"simplevoicechat-hosted-{Guid.NewGuid():N}");
+        try
+        {
+            Assert.Equal("Alice-uid-1.wav", ServerHostedRecordingService.BuildTrackFileName("Alice", "uid-1"));
+            Assert.DoesNotContain(':', ServerHostedRecordingService.BuildTrackFileName("A:B", "uid/2"));
+
+            using ServerHostedRecordingService service = new(root, checkpointSeconds: 1);
+            Assert.True(service.Start("multitrack-test", "owner", "Owner", 1_000L, 2_000L, out string startError), startError);
+            using IVoiceEncoder encoder = VoiceCodecFactory.CreateEncoder(VoiceProtocol.CodecImaAdpcm);
+            short[] samples = Enumerable.Repeat((short)1000, VoiceConstants.SamplesPerFrame).ToArray();
+            byte[] payload = encoder.Encode(samples);
+            service.Append("alice", "Alice", 1, 1, 1, VoiceProtocol.CodecImaAdpcm, payload, 1_000L, 1_000L);
+            service.Append("alice", "Alice", 2, 1, 1, VoiceProtocol.CodecImaAdpcm, payload, 1_020L, 1_020L);
+            service.Append("bob", "Bob", 1, 1, 1, VoiceProtocol.CodecImaAdpcm, payload, 1_040L, 1_040L);
+
+            Assert.True(service.Stop(1_060L, "test", out HostedRecordingSessionResult result, out string stopError), stopError);
+            Assert.Equal(2, result.TrackCount);
+            Assert.Equal(0, result.MissingPackets);
+            Assert.True(File.Exists(Path.Combine(result.Directory, "Alice-alice.wav")));
+            Assert.True(File.Exists(Path.Combine(result.Directory, "Bob-bob.wav")));
+            Assert.Equal(
+                new FileInfo(Path.Combine(result.Directory, "Alice-alice.wav")).Length,
+                new FileInfo(Path.Combine(result.Directory, "Bob-bob.wav")).Length);
+            Assert.True(File.Exists(Path.Combine(result.Directory, "session.core.json")));
+            Assert.True(File.Exists(Path.Combine(result.Directory, "recording-state.json")));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void HostedRecorderDownloadRejectsTraversalAndAcceptsFinalChunk()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"simplevoicechat-download-{Guid.NewGuid():N}");
+        try
+        {
+            using RecorderFileDownloadService download = new(root);
+            Assert.True(download.Begin("multitrack-test", out string beginError), beginError);
+            RecorderFileChunkPacket invalid = new()
+            {
+                RecordingSessionId = "multitrack-test",
+                RelativeFileName = "..\\outside.wav",
+                FileLength = 1,
+                TotalTransferBytes = 1,
+                Data = new byte[] { 1 },
+                FileCompleted = true,
+                TransferCompleted = true
+            };
+            Assert.False(download.Accept(invalid, out _));
+            Assert.True(download.IsFailed);
+
+            using RecorderFileDownloadService validDownload = new(root);
+            Assert.True(validDownload.Begin("multitrack-valid", out string validBeginError), validBeginError);
+            RecorderFileChunkPacket valid = new()
+            {
+                RecordingSessionId = "multitrack-valid",
+                RelativeFileName = "recording-state.json",
+                FileLength = 1,
+                TotalTransferBytes = 1,
+                Data = new byte[] { (byte)'x' },
+                FileCompleted = true,
+                TransferCompleted = true
+            };
+            Assert.True(validDownload.Accept(valid, out string validError), validError);
+            Assert.Equal((byte)'x', File.ReadAllBytes(Path.Combine(root, "multitrack-valid", "recording-state.json"))[0]);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void HostedRecorderRepairsInterruptedSessionOnServerRestart()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"simplevoicechat-recovery-{Guid.NewGuid():N}");
+        string sessionId = "multitrack-crash-test";
+        string directory = Path.Combine(root, sessionId);
+        try
+        {
+            Directory.CreateDirectory(directory);
+            string wavPath = Path.Combine(directory, "Alice-uid.wav");
+            using (FileStream stream = File.Create(wavPath))
+            using (BinaryWriter writer = new(stream))
+            {
+                writer.Write(Encoding.ASCII.GetBytes("RIFF"));
+                writer.Write(0);
+                writer.Write(Encoding.ASCII.GetBytes("WAVEfmt "));
+                writer.Write(16);
+                writer.Write((short)1);
+                writer.Write((short)1);
+                writer.Write(VoiceConstants.SampleRate);
+                writer.Write(VoiceConstants.SampleRate * sizeof(short));
+                writer.Write((short)sizeof(short));
+                writer.Write((short)16);
+                writer.Write(Encoding.ASCII.GetBytes("data"));
+                writer.Write(0);
+                for (int i = 0; i < VoiceConstants.SamplesPerFrame; i++) writer.Write((short)123);
+            }
+            HostedRecordingState state = new()
+            {
+                Status = "active",
+                SessionId = sessionId,
+                OwnerUid = "owner",
+                OwnerName = "Owner",
+                StartServerTimestampMilliseconds = 1_000L,
+                StartUtcUnixMilliseconds = 2_000L,
+                Tracks = new List<HostedTrackState>
+                {
+                    new() { SpeakerUid = "uid", SpeakerName = "Alice", FileName = "Alice-uid.wav" }
+                }
+            };
+            File.WriteAllText(
+                Path.Combine(directory, ServerHostedRecordingService.StateFileName),
+                JsonSerializer.Serialize(state));
+
+            using ServerHostedRecordingService service = new(root);
+
+            HostedRecordingState recovered = JsonSerializer.Deserialize<HostedRecordingState>(
+                File.ReadAllText(Path.Combine(directory, ServerHostedRecordingService.StateFileName)))!;
+            Assert.Equal("recovered", recovered.Status);
+            Assert.Equal(VoiceConstants.SamplesPerFrame, recovered.SampleFrames);
+            Assert.True(File.Exists(Path.Combine(directory, "session.core.json")));
+            using FileStream repaired = File.OpenRead(wavPath);
+            repaired.Seek(40, SeekOrigin.Begin);
+            using BinaryReader reader = new(repaired);
+            Assert.Equal(VoiceConstants.SamplesPerFrame * sizeof(short), reader.ReadInt32());
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]
@@ -548,7 +688,7 @@ public sealed class CoreTests
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
         JsonElement dependencies = document.RootElement.GetProperty("dependencies");
 
-        Assert.Equal("1.1.0", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("1.2.0", document.RootElement.GetProperty("version").GetString());
         Assert.True(dependencies.TryGetProperty("game", out _));
         Assert.False(dependencies.TryGetProperty("vsdirector", out _));
         Assert.DoesNotContain(

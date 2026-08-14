@@ -933,14 +933,20 @@ public sealed class VoiceSettingsDialog : GuiDialog
                 : controller.CanStartMultiTrackRecording
                     ? SVCLang.Get("multitrack-status-ready", controller.RecorderClockRoundTripMilliseconds.ToString("0"))
                     : SVCLang.Get("multitrack-status-waiting", controller.RecorderClockSampleCount);
+        if (controller.RecorderStatus is { } recorderStatus)
+        {
+            status += $"\n{SVCLang.Get("multitrack-status-participants", recorderStatus.ReadyParticipants, recorderStatus.TotalParticipants, recorderStatus.TrackCount, recorderStatus.MissingPackets)}";
+        }
         composer.AddStaticText(SVCLang.Get("multitrack-settings-description"), label,
             ElementBounds.Fixed(x + 24, y + 58, width - 48, 44));
-        composer.AddStaticText(status, label, ElementBounds.Fixed(x + 24, y + 112, width - 48, 28));
-        bool active = controller.IsRecording && controller.RecordingMode == VoiceRecordingMode.MultiTrack || controller.IsMultiTrackStartPending;
+        composer.AddStaticText(status, label, ElementBounds.Fixed(x + 24, y + 112, width - 48, 48));
+        bool active = controller.IsRecording && controller.RecordingMode == VoiceRecordingMode.MultiTrack
+            || controller.IsMultiTrackStartPending
+            || controller.RecorderStatus?.Active == true;
         AddFlatButton(composer,
             active ? SVCLang.Get("button-recording-stop") : SVCLang.Get("button-recording-start"),
             () => active ? controller.StopRecordingFromSettings() : controller.StartRecordingFromSettings(VoiceRecordingMode.MultiTrack),
-            ElementBounds.Fixed(x + 24, y + 164, 220, 40),
+            ElementBounds.Fixed(x + 24, y + 174, 220, 40),
             "multitrack-toggle");
         composer.GetButton("multitrack-toggle").Enabled = active || controller.HasServerControl;
     }

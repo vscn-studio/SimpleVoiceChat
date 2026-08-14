@@ -1,8 +1,8 @@
 # SimpleVoiceChat / 简单语音对话
 
-SimpleVoiceChat `1.1.0` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, local recording, moderation, optional speech-to-chat, and optional VS Director capture.
+SimpleVoiceChat `1.2.0` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, server-hosted multi-track recording, moderation, optional speech-to-chat, and optional VS Director capture.
 
-SimpleVoiceChat `1.1.0` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、本地录音、管理功能、可选语音转文字聊天以及可选 VS Director 录制集成。
+SimpleVoiceChat `1.2.0` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、服务器托管多人分轨录音、管理功能、可选语音转文字聊天以及可选 VS Director 录制集成。
 
 - [中文说明](#中文说明)
 - [English](#english)
@@ -17,8 +17,8 @@ SimpleVoiceChat `1.1.0` 是适用于 Vintage Story `1.22.3` 的客户端/服务�
 - 可将声音发送到接近度范围、当前频道或两者。
 - 自定义频道支持开放、密码和隐藏可见性，以及所有者、主持人、成员、只听和封禁角色。
 - 支持按键说话、语音触发通话（自由麦）、输入/输出设备选择、增益、噪声门、玩家单独音量与静音。
-- 首选 Opus 编码；服务器可选择是否允许 ADPCM 回退。客户端和服务器必须使用协议 V4 兼容版本。
-- 可在本机进行麦克风试听，并主动保存仅输入、输入+输出或多人分轨 WAV 录音。
+- 首选 Opus 编码；服务器可选择是否允许 ADPCM 回退。客户端和服务器必须使用协议 V5 兼容版本。
+- 可在本机进行麦克风试听，并主动保存仅输入或输入+输出 WAV；多人分轨由服务器权威托管。
 - 语音识别默认关闭，完全由玩家在客户端配置，不经过 SimpleVoiceChat 服务端。
 - VS Director 是可选集成，不是前置模组，也不需要单独的集成模组。
 
@@ -26,7 +26,7 @@ SimpleVoiceChat `1.1.0` 是适用于 Vintage Story `1.22.3` 的客户端/服务�
 
 1. 关闭 Vintage Story 客户端和服务器。
 2. 删除 `Mods` 目录中的旧版 SimpleVoiceChat 压缩包，避免同时加载多个版本。
-3. 将 `SimpleVoiceChat-v1.1.0.zip` 原样放入客户端和服务器的 `Mods` 目录，不要解压模组包。
+3. 将 `SimpleVoiceChat-v1.2.0.zip` 原样放入客户端和服务器的 `Mods` 目录，不要解压模组包。
 4. 启动服务器，然后启动客户端。首次按 `'` 会打开设置向导。
 
 SimpleVoiceChat 不依赖 Simple Voice Chat、VS Director 或 `SimpleVoiceChat_VSDirectorIntegration` 等其他模组。单独安装即可使用基本语音功能。
@@ -103,7 +103,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 
 ### OBS 与多人分轨录制
 
-录音模式提供“仅输入”、“输入+输出”和“多人分轨”。“多人分轨”会在 `%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat` 创建一个会话目录：每位说话人各有一个单声道 WAV，`session.json` 包含共同起始时钟、采样率、长度和玩家身份。所有 WAV 都补齐到同一时间轴，可直接分别调音和生成按玩家颜色区分的字幕。
+录音模式提供“仅输入”、“输入+输出”和“多人分轨”。多人分轨的权威 WAV 和 `session.core.json` 由服务器写入服务器数据目录的 `ModData/SimpleVoiceChat/Recordings`；管理员客户端只保存 OBS 标记和下载缓存。每位说话人各有一条 `玩家名-UID.wav`，所有 WAV 都补齐到服务器统一时间轴。下载完成后客户端把 `obs-sync.json` 合并为 `session.json`。
 
 #### 服务器端启用
 
@@ -112,22 +112,24 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 ```json
 {
   "EnableRecorderCapture": true,
-  "MaxRecorderListeners": 1,
-  "MaxRecorderEgressKbps": 4096
+  "RecorderCheckpointSeconds": 5,
+  "MaxRecorderSessionMinutes": 360,
+  "MaxRecorderClockSkewMilliseconds": 2000,
+  "MaxRecorderDownloadKbps": 8192
 }
 ```
 
-保存后，以拥有 `controlserver` 的管理员执行 `/svc reload`，或重启服务器。`EnableRecorderCapture` 必须为 `true`，否则客户端不会显示可用的多人分轨录制。`MaxRecorderListeners` 是可接收录制转发的管理员监听端上限，不是参与说话的玩家数量；当前一场录制只允许一名管理员拥有会话，因此保持 `1`。`MaxRecorderEgressKbps` 是每个录制管理员接收压缩语音转发的带宽预算，不限制 WAV 文件大小；允许范围为 `512-8192`，默认且推荐 `4096`。它还受到服务器总出口 `MaxServerEgressKbps` 的共同约束。
+保存后，以拥有 `controlserver` 的管理员执行 `/svc reload`，或重启服务器。开始前所有已握手参与者必须报告至少三个稳定的 NTP 风格时钟样本，并通过 UTC 偏差检查；状态窗口会显示就绪人数、音轨数和缺失帧。录制帧通过可靠控制通道上传，服务器解码并持续 checkpoint WAV 和 `recording-state.json`。录音管理员崩溃、断开或重连都不会停止会话；任意在线管理员都可以停止。服务器重启会修复活动会话的 WAV 头、补齐轨道并标记为 `recovered`。
 
-多人分轨是管理员专用功能：录音客户端必须拥有 `controlserver`。按 `Ctrl + F9` 会直接打开多人分轨设置，即使主设置页原本关闭；等待至少三个 UDP 往返时钟样本后点击“开始录制”。开始后窗口保持打开，状态会变为“正在按服务器时间锚点录制逐玩家音轨”，同一位置会显示“停止录制”按钮。服务器随后创建一个 1.5 秒后的统一起点。每个逐玩家 WAV 都按该服务器单调时钟写入，早于起点的帧会被丢弃、空档会补静音，因此网络到达顺序不会造成轨道位移。管理员也可使用 `/svc recording start|stop|status`，开始和结束都会记入 `/svc audit`。录音监听会保存语音，请仅在全部参与者知情且服务器规则允许时使用。
+多人分轨是管理员专用功能：录音客户端必须拥有 `controlserver`。按 `Ctrl + F9` 打开设置，等待参与者状态就绪后点击开始。管理员也可使用 `/svc recording start|stop|status|list|download <session-id>`。停止时服务器先完成最终写盘，再发送结束时间线和文件分块；客户端收到全部 WAV、`session.core.json` 和 `recording-state.json` 后才生成 `session.json`。不要在服务器完成前手工导出。16 kHz 单声道 PCM 每位玩家约占 115 MB/小时；请预留服务器磁盘和下载带宽。
 
-单人游戏也可测试该流程：单人世界的内置服务器同样需要上述配置，成功的会话只会写入 `local.wav`，因为此时没有远端玩家。单人模式的 Vintage Story UDP 端点可能是虚拟连接；若一秒内未收到 UDP 时钟回包，模组会自动改用可靠控制通道完成同样的三次时钟采样。多人游戏中，让每位玩家在录制状态出现后说一句话，停止录制后才会出现 `<玩家UID>.wav`、`session.core.json` 和 `session.json`。未进入“录制逐玩家音轨”状态，或录制期间没有任何语音样本时，不会创建 `multitrack-*` 目录。OBS 的 `SimpleVoiceChat Player Voice` 只负责录下混合的玩家语音；逐玩家 WAV 始终由模组写入，不会占用 OBS 的固定音轨数。
+单人游戏也可测试该流程；单人客户端的上传仍由内置服务器托管。玩家必须实际发送语音才会生成对应的 `玩家名-UID.wav`；没有任何语音帧时会话不会提供可下载 WAV。网络中断会在清单中记录连接事件和序列缺口，无法凭空恢复断线期间从未上传的音频，但不会造成其他音轨位移。OBS 的 `SimpleVoiceChat Player Voice` 仍只提供一条混合总线，不会增加 OBS 固定音轨数。
 
 #### OBS 安装与同步
 
 解压与系统匹配的插件包到 OBS 安装根目录：Windows 会得到 `obs-plugins/64bit/simplevoicechat_obs.dll`；Linux 保留包内的 `lib/.../obs-plugins` 路径；macOS 将 `PlugIns/simplevoicechat_obs.plugin` 放入 `OBS.app/Contents/PlugIns`。重启 OBS 后，在“来源”中添加一次 `SimpleVoiceChat Player Voice`，并在高级音频属性中把它分配给所需的 OBS 音轨。麦克风、游戏、桌面音频和音乐仍由 OBS 自己分别采集。
 
-模组对本机 OBS 插件提供唯一的 PCM 总线：`PlayerVoice`。Windows 通过命名管道 `simplevoicechat-audiobuses` 输出 16 kHz 单声道 PCM16 帧；Linux 和 macOS 使用同名协议的本地 Unix socket，优先位于 `XDG_RUNTIME_DIR`，否则使用当前临时目录。多人分轨会话和 OBS 录制必须有重叠时间；二者启动先后不限。插件会回传实际 OBS 录制 UTC 起点，模组将其写入会话目录的 `obs-sync.json` 并合并到 `session.json` 的 `obsAlignment`。其中 `wavZeroMinusObsStartMilliseconds` 的公式是 `obsTimeMs = wavTimeMs + wavZeroMinusObsStartMilliseconds`。
+模组对本机 OBS 插件提供唯一的 PCM 总线：`PlayerVoice`。Windows 通过命名管道 `simplevoicechat-audiobuses` 输出 16 kHz 单声道 PCM16 帧；Linux 和 macOS 使用同名协议的本地 Unix socket，优先位于 `XDG_RUNTIME_DIR`，否则使用当前临时目录。服务器与 OBS 主机必须使用 NTP 保持 UTC 接近；多人分轨会话和 OBS 录制必须有重叠时间，启动先后不限。插件会回传实际 OBS 录制 UTC 起点，模组将其写入会话目录的 `obs-sync.json` 并合并到 `session.json` 的 `obsAlignment`。服务器崩溃后的 `recovered` 会话可用 `/svc recording list` 查看，再用 `/svc recording download <session-id>` 拉回管理员客户端。
 
 停止 OBS 录制后，插件会取得 OBS 实际写出的原视频文件，并等待该会话的 `session.json`、`obs-sync.json` 和所有 WAV 完成。随后自动在原视频同目录生成 `<视频名>-<会话ID>-multitrack.mkv` 与同名 `.fcpxml`：MKV 保留 OBS 的原视频和原有音频流，并增加每位玩家一条原始 PCM 音频流；FCPXML 直接引用原 OBS 视频和逐玩家 WAV，以 `obs-sync.json` 的精确毫秒偏移创建独立音轨。会话目录的 `obs-export.json` 记录 `waiting`、`exporting`、`completed` 或 `failed` 状态、输出路径和错误原因。完成前请保持 OBS 打开。
 
@@ -165,8 +167,8 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 - Transmit to proximity, the selected custom channel, or both.
 - Open, password-protected, and hidden channels with Owner, Moderator, Member, Listen Only, and Banned roles.
 - Push-to-talk, voice activation, input/output device selection, gain, noise gate, per-player volume, and local mute.
-- Opus is preferred; the server may optionally allow ADPCM fallback. Compatible V4 builds are required on both sides.
-- In-memory microphone testing plus input-only, input-and-output, and administrator multi-track WAV recording.
+- Opus is preferred; the server may optionally allow ADPCM fallback. Compatible V5 builds are required on both sides.
+- In-memory microphone testing plus input-only, input-and-output, and server-hosted administrator multi-track WAV recording.
 - Optional client-side speech-to-chat, disabled by default and never processed by the SimpleVoiceChat server.
 - Optional runtime VS Director integration without a hard dependency or a separate integration mod.
 
@@ -174,7 +176,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 
 1. Stop the Vintage Story client and server.
 2. Remove older SimpleVoiceChat archives from each `Mods` directory so that only one version can load.
-3. Place `SimpleVoiceChat-v1.1.0.zip` unchanged in the client and server `Mods` directories. Do not extract the mod archive.
+3. Place `SimpleVoiceChat-v1.2.0.zip` unchanged in the client and server `Mods` directories. Do not extract the mod archive.
 4. Start the server and client. Press `'` to open the first-run setup wizard.
 
 SimpleVoiceChat does not require Simple Voice Chat, VS Director, or `SimpleVoiceChat_VSDirectorIntegration`. The base voice features work with this package alone.
@@ -220,7 +222,7 @@ Cloud API keys are stored as plain text in the local `SimpleVoiceChat.Client.jso
 
 Channels use stable `channel-number` IDs. Ordinary players may create channels by default, although the server can disable that permission. Channel owners manage members, roles, locking, and lifecycle; server administrators use the `controlserver` privilege for server-wide actions.
 
-The home-page recording button offers Input Only, Input+Output, and Multi-track speakers. Input+Output stores the microphone and received playback as separate stereo channels. On Windows, the default location is:
+The home-page recording button offers Input Only, Input+Output, and Multi-track speakers. Input+Output stores the microphone and received playback as separate stereo channels. Multi-track WAV files are authoritative on the server under `ModData/SimpleVoiceChat/Recordings`; the client keeps only an OBS marker and a download cache. On Windows, the default local cache is:
 
 ```text
 %APPDATA%\VintagestoryData\ModData\SimpleVoiceChat
@@ -237,22 +239,24 @@ Start the server once so Vintage Story creates the configuration, then edit the 
 ```json
 {
   "EnableRecorderCapture": true,
-  "MaxRecorderListeners": 1,
-  "MaxRecorderEgressKbps": 4096
+  "RecorderCheckpointSeconds": 5,
+  "MaxRecorderSessionMinutes": 360,
+  "MaxRecorderClockSkewMilliseconds": 2000,
+  "MaxRecorderDownloadKbps": 8192
 }
 ```
 
-Save the file, then run `/svc reload` as an administrator with `controlserver`, or restart the server. `EnableRecorderCapture` must be `true`; otherwise clients cannot start multi-track recording. `MaxRecorderListeners` limits recording-admin relay recipients, not the number of speakers. One recording session currently has one administrator owner, so leave it at `1`. `MaxRecorderEgressKbps` is the per-recording-admin budget for relayed compressed voice, not a WAV-file size limit. Its allowed range is `512-8192`; `4096` is the default and recommended value. It remains subject to the server-wide `MaxServerEgressKbps` budget.
+Save the file, then run `/svc reload` as an administrator with `controlserver`, or restart the server. Before start, every handshaken participant must report at least three stable NTP-style clock samples and pass the UTC skew check. The panel reports ready participants, tracks, and missing frames. Encoded frames travel over the reliable control channel; the server decodes them and checkpoints WAV files plus `recording-state.json`. An administrator crash, disconnect, or reconnect does not stop the session, and any online administrator can stop it. A server restart repairs WAV headers, pads tracks, and marks an interrupted session `recovered`.
 
-Multi-track recording is administrator-only and requires the recording client to have `controlserver`. `Ctrl + F9` opens the multi-track panel even when the main settings page is closed. Wait for three UDP clock samples, then start recording. The panel remains open while synchronization and recording run, shows the active recording status, and provides the Stop recording button. The server creates a shared start point 1.5 seconds in the future on its monotonic clock. Every speaker receives a separately padded mono WAV in one session directory; `session.json` preserves the shared timeline and speaker identities. `/svc recording start|stop|status` provides the same server-managed control path, and the start/stop events are retained by `/svc audit`.
+Multi-track recording is administrator-only and requires `controlserver`. `Ctrl + F9` opens the panel; start only after the participant status is ready. Administrators can also use `/svc recording start|stop|status|list|download <session-id>`. The server finalizes files before sending the end timeline and chunks. The client creates `session.json` only after all WAV files, `session.core.json`, and `recording-state.json` arrive. Do not export before that point. 16 kHz mono PCM uses about 115 MB per player-hour; reserve server disk and download bandwidth.
 
-Single-player worlds can test the same workflow because their integrated server uses the same configuration. A successful single-player session produces only `local.wav`; remote-player WAV files require another player to send voice after the recording status becomes active. Vintage Story may use a virtual UDP endpoint for single-player worlds; if it does not reply to a clock probe within one second, the mod automatically completes the same three clock samples through the reliable control channel. The `multitrack-*` directory, `session.core.json`, and `session.json` are written only after audio arrives and recording stops. OBS `SimpleVoiceChat Player Voice` records one mixed player-voice source and returns an OBS timing marker; it neither starts a multi-track session nor writes individual player WAV files.
+Single-player worlds use the same server-hosted workflow. A speaker must actually transmit voice to create a `PlayerName-UID.wav`; a session with no uploaded audio has no downloadable WAV. Disconnects are recorded as connection events and sequence gaps. Audio that never reached the server cannot be reconstructed, but other tracks remain aligned. OBS `SimpleVoiceChat Player Voice` still exposes one mixed player-voice bus and never increases the fixed OBS track count.
 
 #### Install and synchronize with OBS
 
 Extract the platform-matched plugin package to the OBS installation root: Windows produces `obs-plugins/64bit/simplevoicechat_obs.dll`; Linux keeps the package's `lib/.../obs-plugins` path; macOS places `PlugIns/simplevoicechat_obs.plugin` in `OBS.app/Contents/PlugIns`. Restart OBS, add `SimpleVoiceChat Player Voice` once under Sources, then assign it to the desired OBS track in Advanced Audio Properties. Keep microphone, game audio, desktop audio, and music on their normal OBS sources.
 
-The OBS plugin exposes exactly one `PlayerVoice` source through local IPC. Windows uses the `simplevoicechat-audiobuses` named pipe; Linux and macOS use the same-protocol Unix socket, preferring `XDG_RUNTIME_DIR` and otherwise the current temporary directory. The multi-track session and OBS recording must overlap, in either start order. The plugin returns the actual OBS recording UTC start; the mod writes `obs-sync.json` and `session.json.obsAlignment`. `wavZeroMinusObsStartMilliseconds` follows `obsTimeMs = wavTimeMs + wavZeroMinusObsStartMilliseconds`.
+The OBS plugin exposes exactly one `PlayerVoice` source through local IPC. Windows uses the `simplevoicechat-audiobuses` named pipe; Linux and macOS use the same-protocol Unix socket, preferring `XDG_RUNTIME_DIR` and otherwise the current temporary directory. The server and OBS host should use NTP so their UTC clocks remain close. The multi-track session and OBS recording must overlap, in either start order. The plugin returns the actual OBS recording UTC start; the mod writes `obs-sync.json` and `session.json.obsAlignment`. Recovered sessions can be listed with `/svc recording list` and downloaded with `/svc recording download <session-id>`.
 
 After OBS stops recording, the plugin obtains the final OBS video file and waits for the session's finalized `session.json`, `obs-sync.json`, and player WAV files. It then creates `<video>-<session>-multitrack.mkv` and a matching `.fcpxml` beside the OBS video. The MKV retains the OBS video and existing audio streams and adds one raw PCM stream per player. The FCPXML references the original OBS video and every WAV, placing each on an independent synchronized track from the exact `obs-sync.json` offset. `obs-export.json` in the session directory records `waiting`, `exporting`, `completed`, or `failed`, output paths, and an error if applicable. Keep OBS running until the status becomes `completed`.
 

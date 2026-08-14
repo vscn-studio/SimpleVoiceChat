@@ -24,7 +24,7 @@ extern "C" {
 namespace {
 
 namespace fs = std::filesystem;
-constexpr int64_t ExportWaitMilliseconds = 10 * 60 * 1000;
+constexpr int64_t ExportWaitMilliseconds = 30 * 60 * 1000;
 constexpr int64_t ExportPollMilliseconds = 500;
 
 struct TimeValue {
