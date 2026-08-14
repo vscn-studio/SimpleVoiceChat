@@ -69,6 +69,9 @@ public sealed class ServerVoiceConfigPacket
     [ProtoMember(16)]
     public bool EnableDirectorProximityCapture;
 
+    [ProtoMember(17)]
+    public bool EnableRecorderCapture;
+
     public float GetRange(VoiceMode mode)
     {
         return mode switch

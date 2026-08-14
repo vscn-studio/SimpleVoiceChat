@@ -4,7 +4,7 @@ namespace SimpleVoiceChat.Networking;
 
 public static class VoiceProtocol
 {
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
     public const string GeneratedChannelIdPrefix = "channel-";
     public const int CodecImaAdpcm = 1;
     public const int CodecOpus = 2;
@@ -47,7 +47,7 @@ public enum VoiceChannelVisibility
 public enum VoiceCapability
 {
     None = 0,
-    ProtocolV3 = 1 << 0,
+    ProtocolV4 = 1 << 0,
     ChannelDeltas = 1 << 1,
     AdaptiveJitter = 1 << 2,
     Opus = 1 << 3,
@@ -115,6 +115,9 @@ public sealed class VoiceWelcomePacket
 
     [ProtoMember(12)]
     public string ServerInstanceId = string.Empty;
+
+    [ProtoMember(13)]
+    public bool EnableRecorderCapture;
 }
 
 [ProtoContract]
@@ -125,6 +128,9 @@ public sealed class VoicePingPacket
 
     [ProtoMember(2)]
     public int Nonce;
+
+    [ProtoMember(3)]
+    public long ClientSendTimestampMilliseconds;
 }
 
 [ProtoContract]
@@ -135,6 +141,12 @@ public sealed class VoicePongPacket
 
     [ProtoMember(2)]
     public int Nonce;
+
+    [ProtoMember(3)]
+    public long ClientSendTimestampMilliseconds;
+
+    [ProtoMember(4)]
+    public long ServerTimestampMilliseconds;
 }
 
 [ProtoContract]
@@ -166,6 +178,10 @@ public sealed class VoiceFrameV3Packet
 
     [ProtoMember(9)]
     public byte[] Payload = Array.Empty<byte>();
+
+    /// <summary>Capture time expressed on the server monotonic clock.</summary>
+    [ProtoMember(10)]
+    public long CaptureServerTimestampMilliseconds;
 }
 
 [ProtoContract]
@@ -213,6 +229,65 @@ public sealed class VoiceRelayFrameV3Packet
     [ProtoMember(14)]
     public int Codec;
 
+    /// <summary>Stable player identity used by the local multi-track recorder.</summary>
+    [ProtoMember(15)]
+    public string SenderUid = string.Empty;
+
+    [ProtoMember(16)]
+    public long CaptureServerTimestampMilliseconds;
+
+}
+
+[ProtoContract]
+public sealed class RecorderVoiceListenerPacket
+{
+    [ProtoMember(1)]
+    public bool Active;
+
+    [ProtoMember(2)]
+    public long ClientTimestampMilliseconds;
+
+    [ProtoMember(3)]
+    public string SessionId = string.Empty;
+}
+
+[ProtoContract]
+public sealed class RecorderVoiceTimelinePacket
+{
+    [ProtoMember(1)]
+    public bool Active;
+
+    [ProtoMember(2)]
+    public long ServerTimestampMilliseconds;
+
+    [ProtoMember(3)]
+    public long ClientTimestampMilliseconds;
+
+    [ProtoMember(4)]
+    public string SessionId = string.Empty;
+
+    [ProtoMember(5)]
+    public long StartServerTimestampMilliseconds;
+
+    [ProtoMember(6)]
+    public long StartUtcUnixMilliseconds;
+
+    [ProtoMember(7)]
+    public long EndServerTimestampMilliseconds;
+}
+
+[ProtoContract]
+public sealed class RecorderVoiceRelayFrameV3Packet
+{
+    [ProtoMember(1)] public string SpeakerUid = string.Empty;
+    [ProtoMember(2)] public long SpeakerEntityId;
+    [ProtoMember(3)] public int SessionId;
+    [ProtoMember(4)] public ushort Sequence;
+    [ProtoMember(5)] public byte[] Payload = Array.Empty<byte>();
+    [ProtoMember(6)] public int Codec;
+    [ProtoMember(7)] public string SpeakerName = string.Empty;
+    [ProtoMember(8)] public long ServerTimestampMilliseconds;
+    [ProtoMember(9)] public long CaptureServerTimestampMilliseconds;
 }
 
 /// <summary>

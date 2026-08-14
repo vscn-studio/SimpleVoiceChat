@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using Vintagestory.API.Client;
 
 namespace SimpleVoiceChat.Audio;
@@ -6,7 +7,8 @@ namespace SimpleVoiceChat.Audio;
 public enum VoiceRecordingMode
 {
     InputOnly,
-    InputAndOutput
+    InputAndOutput,
+    MultiTrack
 }
 
 /// <summary>
@@ -105,12 +107,28 @@ public sealed class VoiceRecordingService : IDisposable
     private int[]? outputAccumulator;
     private int outputFrameCount;
     private string lastRecordingPath = string.Empty;
+    private VoiceRecordingMode? lastRecordingMode;
+    private string sessionPath = string.Empty;
+    private string sessionId = string.Empty;
+    private long sessionStartUtcUnixMilliseconds;
+    private long sessionStartMilliseconds;
+    private long sessionEndMilliseconds;
+    private long sessionClientStartMilliseconds;
+    private double sessionClockOffsetMilliseconds;
+    private long sessionSampleFrames;
+    private bool sessionClockStarted;
+    private readonly Dictionary<string, MultiTrackWriter> multiTrackWriters = new(StringComparer.Ordinal);
+    private string localPlayerUid = string.Empty;
+    private string localPlayerName = string.Empty;
+    private bool multiTrackActive;
     private bool disposed;
 
     public VoiceRecordingService(ICoreClientAPI capi)
     {
         directoryPath = capi.GetOrCreateDataPath(Path.Combine("ModData", "SimpleVoiceChat"));
         Directory.CreateDirectory(directoryPath);
+        localPlayerUid = capi.World.Player?.PlayerUID ?? string.Empty;
+        localPlayerName = capi.World.Player?.PlayerName ?? string.Empty;
     }
 
     public string DirectoryPath => directoryPath;
@@ -121,7 +139,7 @@ public sealed class VoiceRecordingService : IDisposable
         {
             lock (gate)
             {
-                return writer != null;
+                return writer != null || multiTrackActive;
             }
         }
     }
@@ -132,7 +150,7 @@ public sealed class VoiceRecordingService : IDisposable
         {
             lock (gate)
             {
-                return writer == null ? null : activeMode;
+                return writer == null && !multiTrackActive ? null : activeMode;
             }
         }
     }
@@ -150,7 +168,35 @@ public sealed class VoiceRecordingService : IDisposable
 
     public bool HasRecording => File.Exists(LastRecordingPath);
 
+    public AudioRecordingSession? ActiveMultiTrackSession
+    {
+        get
+        {
+            lock (gate)
+            {
+                return multiTrackActive
+                    ? new AudioRecordingSession(sessionId, sessionStartMilliseconds, sessionStartUtcUnixMilliseconds, sessionPath)
+                    : null;
+            }
+        }
+    }
+
+    public bool CanPlayLastRecording => lastRecordingMode != VoiceRecordingMode.MultiTrack
+        && Path.GetExtension(LastRecordingPath).Equals(".wav", StringComparison.OrdinalIgnoreCase);
+
     public bool Start(VoiceRecordingMode mode, out string error)
+        => Start(mode, 0L, out error);
+
+    public bool Start(VoiceRecordingMode mode, long startTimestampMilliseconds, out string error)
+        => Start(mode, string.Empty, startTimestampMilliseconds, 0L, 0d, out error);
+
+    public bool Start(
+        VoiceRecordingMode mode,
+        string requestedSessionId,
+        long startServerTimestampMilliseconds,
+        long startUtcUnixMilliseconds,
+        double clockOffsetMilliseconds,
+        out string error)
     {
         lock (gate)
         {
@@ -166,6 +212,26 @@ public sealed class VoiceRecordingService : IDisposable
             {
                 Directory.CreateDirectory(directoryPath);
                 activeMode = mode;
+                sessionStartMilliseconds = Math.Max(0L, startServerTimestampMilliseconds);
+                sessionEndMilliseconds = 0L;
+                sessionClockOffsetMilliseconds = clockOffsetMilliseconds;
+                sessionClientStartMilliseconds = Math.Max(0L, (long)Math.Round(sessionStartMilliseconds - clockOffsetMilliseconds));
+                sessionSampleFrames = 0;
+                sessionClockStarted = mode == VoiceRecordingMode.MultiTrack;
+                if (mode == VoiceRecordingMode.MultiTrack)
+                {
+                    sessionId = string.IsNullOrWhiteSpace(requestedSessionId)
+                        ? $"multitrack-{DateTime.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}"
+                        : SanitizeFileName(requestedSessionId);
+                    sessionPath = Path.Combine(directoryPath, sessionId);
+                    sessionStartUtcUnixMilliseconds = startUtcUnixMilliseconds > 0
+                        ? startUtcUnixMilliseconds
+                        : DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    Directory.CreateDirectory(sessionPath);
+                    lastRecordingPath = string.Empty;
+                    multiTrackActive = true;
+                    return true;
+                }
                 activePath = CreateRecordingPath();
                 fileStream = new FileStream(activePath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read);
                 writer = new BinaryWriter(fileStream, Encoding.UTF8, leaveOpen: true);
@@ -188,13 +254,30 @@ public sealed class VoiceRecordingService : IDisposable
     }
 
     public bool Stop(out string path)
+        => Stop(0L, out path);
+
+    public bool Stop(long endTimestampMilliseconds, out string path)
     {
         lock (gate)
         {
             path = string.Empty;
-            if (writer == null)
+            if (writer == null && !multiTrackActive)
             {
                 return false;
+            }
+
+            if (activeMode == VoiceRecordingMode.MultiTrack)
+            {
+                if (sessionClockStarted && endTimestampMilliseconds >= sessionStartMilliseconds)
+                {
+                    sessionEndMilliseconds = endTimestampMilliseconds;
+                    sessionSampleFrames = Math.Max(
+                        sessionSampleFrames,
+                        (endTimestampMilliseconds - sessionStartMilliseconds) * VoiceConstants.SampleRate / 1000L);
+                }
+                bool saved = StopMultiTrack(out path);
+                CloseActiveRecording(deleteEmpty: true);
+                return saved;
             }
 
             bool hasSamples = sampleFrames > 0;
@@ -206,25 +289,36 @@ public sealed class VoiceRecordingService : IDisposable
             }
 
             lastRecordingPath = completedPath;
+            lastRecordingMode = activeMode;
             path = completedPath;
             return true;
         }
     }
 
     public void AppendInput(ReadOnlySpan<short> samples)
+        => AppendInput(samples, 0L);
+
+    public void AppendInput(ReadOnlySpan<short> samples, long timestampMilliseconds)
     {
         lock (gate)
         {
-            if (writer == null || samples.IsEmpty)
+            if ((!multiTrackActive && writer == null) || samples.IsEmpty)
             {
+                return;
+            }
+
+            if (activeMode == VoiceRecordingMode.MultiTrack)
+            {
+                AppendMultiTrack("local", localPlayerUid, localPlayerName, samples, timestampMilliseconds);
                 return;
             }
 
             if (activeMode == VoiceRecordingMode.InputOnly)
             {
+                BinaryWriter activeWriter = writer!;
                 for (int i = 0; i < samples.Length; i++)
                 {
-                    writer.Write(samples[i]);
+                    activeWriter.Write(samples[i]);
                 }
                 dataBytes += samples.Length * sizeof(short);
                 sampleFrames += samples.Length;
@@ -234,13 +328,14 @@ public sealed class VoiceRecordingService : IDisposable
             int[] accumulator = outputAccumulator ??= new int[VoiceConstants.SamplesPerFrame];
             int count = Math.Min(samples.Length, accumulator.Length);
             int outputCount = outputFrameCount;
+            BinaryWriter outputWriter = writer!;
             for (int i = 0; i < samples.Length; i++)
             {
                 short output = i < count && outputCount > 0
                     ? (short)Math.Clamp(accumulator[i] / outputCount, short.MinValue, short.MaxValue)
                     : (short)0;
-                writer.Write(samples[i]);
-                writer.Write(output);
+                outputWriter.Write(samples[i]);
+                outputWriter.Write(output);
             }
             dataBytes += samples.Length * sizeof(short) * 2L;
             sampleFrames += samples.Length;
@@ -265,6 +360,20 @@ public sealed class VoiceRecordingService : IDisposable
                 accumulator[i] = Math.Clamp(accumulator[i] + samples[i], int.MinValue + 1, int.MaxValue);
             }
             outputFrameCount++;
+        }
+    }
+
+    /// <summary>Appends a decoded remote speaker frame to the active multi-track session.</summary>
+    public void AppendRemote(string speakerUid, string? speakerName, ReadOnlySpan<short> samples, long timestampMilliseconds)
+    {
+        lock (gate)
+        {
+            if (activeMode != VoiceRecordingMode.MultiTrack || string.IsNullOrWhiteSpace(speakerUid) || samples.IsEmpty)
+            {
+                return;
+            }
+
+            AppendMultiTrack(speakerUid, speakerUid, speakerName ?? speakerUid, samples, timestampMilliseconds);
         }
     }
 
@@ -296,6 +405,27 @@ public sealed class VoiceRecordingService : IDisposable
 
     private void CloseActiveRecording(bool deleteEmpty)
     {
+        if (activeMode == VoiceRecordingMode.MultiTrack)
+        {
+            foreach (MultiTrackWriter track in multiTrackWriters.Values)
+            {
+                track.Dispose();
+            }
+            multiTrackWriters.Clear();
+            sessionPath = string.Empty;
+            sessionId = string.Empty;
+            sessionStartUtcUnixMilliseconds = 0;
+            sessionStartMilliseconds = 0;
+            sessionEndMilliseconds = 0;
+            sessionClientStartMilliseconds = 0;
+            sessionClockOffsetMilliseconds = 0d;
+            sessionSampleFrames = 0;
+            sessionClockStarted = false;
+            activeMode = default;
+            multiTrackActive = false;
+            return;
+        }
+
         if (writer == null || fileStream == null)
         {
             writer = null;
@@ -348,6 +478,174 @@ public sealed class VoiceRecordingService : IDisposable
             catch
             {
             }
+        }
+    }
+
+    private void AppendMultiTrack(
+        string key,
+        string speakerUid,
+        string speakerName,
+        ReadOnlySpan<short> samples,
+        long timestampMilliseconds)
+    {
+        long timestamp = Math.Max(0L, timestampMilliseconds);
+        if (!sessionClockStarted)
+        {
+            sessionStartMilliseconds = timestamp;
+            sessionClockStarted = true;
+        }
+        // A server-scheduled session has a shared zero. Frames decoded before
+        // that zero belong to the pre-roll and must not be compressed to 0ms.
+        if (timestamp < sessionStartMilliseconds)
+        {
+            return;
+        }
+        long targetFrame = Math.Max(0L, timestamp - sessionStartMilliseconds) * VoiceConstants.SampleRate / 1000L;
+        MultiTrackWriter track = GetMultiTrackWriter(key, speakerUid, speakerName);
+        if (!track.TryWriteAt(targetFrame, samples))
+        {
+            return;
+        }
+        sessionSampleFrames = Math.Max(sessionSampleFrames, targetFrame + samples.Length);
+    }
+
+    private MultiTrackWriter GetMultiTrackWriter(string key, string speakerUid, string speakerName)
+    {
+        if (multiTrackWriters.TryGetValue(key, out MultiTrackWriter? existing))
+        {
+            return existing;
+        }
+
+        string safeKey = SanitizeFileName(key);
+        string path = Path.Combine(sessionPath, $"{safeKey}.wav");
+        MultiTrackWriter created = new(path, speakerUid, speakerName);
+        multiTrackWriters[key] = created;
+        return created;
+    }
+
+    private bool StopMultiTrack(out string path)
+    {
+        path = string.Empty;
+        if (string.IsNullOrWhiteSpace(sessionPath) || multiTrackWriters.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (MultiTrackWriter track in multiTrackWriters.Values)
+        {
+            track.PadTo(sessionSampleFrames);
+            track.Complete();
+        }
+
+        var manifest = new
+        {
+            sessionId,
+            timeline = new
+            {
+                serverStartMilliseconds = sessionStartMilliseconds,
+                serverEndMilliseconds = sessionEndMilliseconds,
+                clientStartMilliseconds = sessionClientStartMilliseconds,
+                clientMinusServerMilliseconds = -sessionClockOffsetMilliseconds,
+                utcStartUnixMilliseconds = sessionStartUtcUnixMilliseconds
+            },
+            startUtcUnixMilliseconds = sessionStartUtcUnixMilliseconds,
+            sampleRate = VoiceConstants.SampleRate,
+            frameMilliseconds = VoiceConstants.FrameMilliseconds,
+            sampleFrames = sessionSampleFrames,
+            tracks = multiTrackWriters.Values.Select(track => new
+            {
+                uid = track.SpeakerUid,
+                name = track.SpeakerName,
+                file = Path.GetFileName(track.Path)
+            }).ToArray()
+        };
+        string manifestPath = Path.Combine(sessionPath, "session.json");
+        string corePath = Path.Combine(sessionPath, "session.core.json");
+        File.WriteAllText(corePath, JsonSerializer.Serialize(manifest, JsonOptions));
+        MultiTrackSessionManifest.Merge(sessionPath);
+        lastRecordingPath = manifestPath;
+        lastRecordingMode = VoiceRecordingMode.MultiTrack;
+        path = manifestPath;
+        return true;
+    }
+
+    public void RefreshMultiTrackManifest(string completedSessionPath)
+    {
+        if (!string.IsNullOrWhiteSpace(completedSessionPath))
+        {
+            MultiTrackSessionManifest.Merge(completedSessionPath);
+        }
+    }
+
+    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+
+    private static string SanitizeFileName(string value)
+    {
+        string result = string.IsNullOrWhiteSpace(value) ? "speaker" : value;
+        foreach (char invalid in Path.GetInvalidFileNameChars())
+        {
+            result = result.Replace(invalid, '_');
+        }
+        return result.Length > 80 ? result[..80] : result;
+    }
+
+    private sealed class MultiTrackWriter : IDisposable
+    {
+        private readonly FileStream stream;
+        private readonly BinaryWriter writer;
+        private long sampleFrames;
+        private bool completed;
+
+        internal MultiTrackWriter(string path, string speakerUid, string speakerName)
+        {
+            Path = path;
+            SpeakerUid = speakerUid;
+            SpeakerName = speakerName;
+            stream = new FileStream(path, FileMode.Create, FileAccess.ReadWrite, FileShare.Read);
+            writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
+            WriteHeader(writer, 1);
+        }
+
+        internal string Path { get; }
+        internal string SpeakerUid { get; }
+        internal string SpeakerName { get; }
+
+        internal void PadTo(long target)
+        {
+            while (sampleFrames < target)
+            {
+                int count = (int)Math.Min(VoiceConstants.SamplesPerFrame, target - sampleFrames);
+                for (int i = 0; i < count; i++) writer.Write((short)0);
+                sampleFrames += count;
+            }
+        }
+
+        internal bool TryWriteAt(long targetFrame, ReadOnlySpan<short> samples)
+        {
+            if (targetFrame < sampleFrames)
+            {
+                return false;
+            }
+
+            PadTo(targetFrame);
+            foreach (short sample in samples) writer.Write(sample);
+            sampleFrames += samples.Length;
+            return true;
+        }
+
+        internal void Complete()
+        {
+            if (completed) return;
+            PatchHeader(writer, stream, sampleFrames * sizeof(short));
+            writer.Flush();
+            completed = true;
+        }
+
+        public void Dispose()
+        {
+            if (!completed) Complete();
+            writer.Dispose();
+            stream.Dispose();
         }
     }
 

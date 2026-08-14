@@ -4,20 +4,20 @@
 <th style="padding: 6px 8px; text-align: left;">当前版本口径</th>
 </tr></thead><tbody>
 <tr><td style="padding: 6px 8px; vertical-align: top;">模组名称</td><td style="padding: 6px 8px; vertical-align: top;">SimpleVoiceChat（简单语音对话）</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">模组版本</td><td style="padding: 6px 8px; vertical-align: top;"><code>1.0.14</code></td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">模组版本</td><td style="padding: 6px 8px; vertical-align: top;"><code>1.1.0</code></td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">游戏版本</td><td style="padding: 6px 8px; vertical-align: top;">Vintage Story <code>1.22.3</code></td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">语音协议</td><td style="padding: 6px 8px; vertical-align: top;">协议 V3；Opus 为首选编码，是否允许 ADPCM 回退由服务器配置决定</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">语音协议</td><td style="padding: 6px 8px; vertical-align: top;">协议 V4；Opus 为首选编码，是否允许 ADPCM 回退由服务器配置决定</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">安装范围</td><td style="padding: 6px 8px; vertical-align: top;">客户端和服务器均需安装同一版本</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">文档核对日期</td><td style="padding: 6px 8px; vertical-align: top;"><code>2026-08-13</code></td></tr>
 </tbody></table>
 <p>SimpleVoiceChat 提供接近度语音、耳语/正常/大喊模式、自定义频道、玩家本地音量与静音、录音、音频处理、权限管理和容量保护。服务器只负责鉴权、路由和转发，客户端负责采集、播放及本地设置。</p>
-<div style="border-left: 4px solid #e03e2d; padding: 8px 12px; margin: 12px 0; background-color: #fff5f5;"><p style="color: #e03e2d; margin: 0;"><strong>重要：</strong> 当前发行包使用协议 V3。客户端与服务器版本不一致时，语音握手可能被拒绝；请不要同时放置多个 SimpleVoiceChat 压缩包。</p></div>
+<div style="border-left: 4px solid #e03e2d; padding: 8px 12px; margin: 12px 0; background-color: #fff5f5;"><p style="color: #e03e2d; margin: 0;"><strong>重要：</strong> 当前发行包使用协议 V4。客户端与服务器版本不一致时，语音握手可能被拒绝；请不要同时放置多个 SimpleVoiceChat 压缩包。</p></div>
 
 <h2>一、安装与首次进入</h2>
 <ol>
 <li>关闭 Vintage Story 客户端和服务器。</li>
 <li>删除 Mods 目录中旧的 SimpleVoiceChat 压缩包，只保留目标版本。</li>
-<li>将 <code>SimpleVoiceChat_1.0.14.zip</code> 原样放入客户端和服务器的 <code>Mods</code> 目录，不要解压模组包。</li>
+<li>将 <code>SimpleVoiceChat-v1.1.0.zip</code> 原样放入客户端和服务器的 <code>Mods</code> 目录，不要解压模组包。</li>
 <li>先启动服务器，再启动客户端并进入世界。</li>
 <li>第一次使用时，聊天框会提示按 <code>'</code> 进入设置。该提示不会直接打开窗口。</li>
 <li>按 <code>'</code> 打开首次设置向导。欢迎页可以选择“跳过初始设置，进入设置窗口”，也可以按“取消”关闭或按“确认”开始配置。</li>
@@ -33,6 +33,7 @@
 <tr><td style="padding: 6px 8px; vertical-align: top;">麦克风静音</td><td style="padding: 6px 8px; vertical-align: top;"><code>Ctrl + -</code></td><td style="padding: 6px 8px; vertical-align: top;">停止发送自己的麦克风。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">拒听/恢复收听</td><td style="padding: 6px 8px; vertical-align: top;"><code>;</code></td><td style="padding: 6px 8px; vertical-align: top;">停止或恢复播放全部远端语音。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">打开语音窗口</td><td style="padding: 6px 8px; vertical-align: top;"><code>'</code></td><td style="padding: 6px 8px; vertical-align: top;">首次使用打开向导，之后打开主设置窗口。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">多人分轨设置</td><td style="padding: 6px 8px; vertical-align: top;"><code>Ctrl + F9</code></td><td style="padding: 6px 8px; vertical-align: top;">打开管理员的多人分轨录制设置。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">语音转文字聊天</td><td style="padding: 6px 8px; vertical-align: top;"><code>V</code></td><td style="padding: 6px 8px; vertical-align: top;">功能启用后按住录音，松开识别并发送到当前聊天频道。</td></tr>
 </tbody></table>
 <p>默认按住说话键为 <code>N</code>，<code>Alt + N</code> 保留为按键触发/自由麦模式切换。需要修改按键时，请在游戏按键设置中的 Simple Voice Chat 分类修改；首次设置向导和语音识别页面均不提供按键捕获控件。</p>
@@ -120,9 +121,11 @@
 
 <h2>八、玩家列表与实际录音</h2>
 <p>频道页底部的玩家图标打开玩家列表。玩家列表每页最多显示 6 名玩家，支持按玩家名称或 ID 搜索，搜索必须点击“搜索”，右侧“取消”恢复全部玩家。每名玩家卡片包含本地音量滑块、静音图标和设置齿轮；设置和静音不会改变服务器权限。</p>
-<p>主页底部的录音图标才是实际录音功能。点击后选择“仅录制输入”或“录制输入与输出”，再次点击录音图标停止并保存 WAV 文件。录音保存到：</p>
+<p>主页底部的录音图标才是实际录音功能。点击后选择“仅输入”“输入+输出”或“多人分轨”，再次点击录音图标停止并保存 WAV 文件。录音保存到：</p>
 <p><code>AppData\Roaming\VintagestoryData\ModData\SimpleVoiceChat</code></p>
 <p>“麦克风测试”与实际录音不同：设置页测试音频只保存在内存中，用于开始/停止录制和播放检查，不生成文件。</p>
+<p>多人分轨要求录音者拥有 <code>controlserver</code>，且 <code>SimpleVoiceChat.Server.json</code> 启用 <code>EnableRecorderCapture: true</code>。按 <code>Ctrl + F9</code> 后等待三个 UDP 时钟样本，再开始录制；服务器会创建一个未来的统一单调时钟锚点。每名玩家在同一会话目录中各有一条补齐静音的单声道 WAV，<code>session.json</code> 保存共同时间线。管理员也可使用 <code>/svc recording start|stop|status</code>，开始和结束均会写入 <code>/svc audit</code>。</p>
+<p>可选 OBS 插件只增加一个 <code>SimpleVoiceChat Player Voice</code> 源；麦克风、游戏、桌面和音乐仍使用 OBS 原有音源与轨道。插件会回传 OBS 实际开始录制的 UTC 时间，会话目录写入 <code>obs-sync.json</code> 并更新 <code>session.json.obsAlignment</code>；<code>wavZeroMinusObsStartMilliseconds</code> 即 WAV 与视频的自动对齐偏移。</p>
 
 <h2>九、管理员页面与权限</h2>
 <p>拥有 Vintage Story <code>controlserver</code> 权限并完成语音握手的玩家，主页顶部会看到“管理员”按钮。管理员页面不创建频道入口；频道创建仍通过频道页底部“创建频道”，或使用服务器命令。管理员可以查看全部频道和玩家，并执行服务端再次鉴权的管理操作：</p>
@@ -194,7 +197,7 @@
 <tr><td style="padding: 6px 8px; vertical-align: top;">列表看不到第七行</td><td style="padding: 6px 8px; vertical-align: top;">频道和玩家列表每页最多 6 行，使用底部分页器切换。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">频道无法加入</td><td style="padding: 6px 8px; vertical-align: top;">检查频道是否锁定、密码是否正确、是否被封禁、是否达到每人 8 个频道上限。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">频道发言席位已满</td><td style="padding: 6px 8px; vertical-align: top;">频道同时发言人数达到上限，稍后重试；只听角色和禁言玩家不能发言。</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">提示协议 V3 不兼容</td><td style="padding: 6px 8px; vertical-align: top;">客户端和服务器必须都使用兼容的协议 V3 版本；建议双方均安装 <code>1.0.14</code>，并删除旧压缩包。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">提示协议 V4 不兼容</td><td style="padding: 6px 8px; vertical-align: top;">客户端和服务器必须都使用兼容的协议 V4 版本；建议双方均安装 <code>1.1.0</code>，并删除旧压缩包。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">麦克风测试没有文件</td><td style="padding: 6px 8px; vertical-align: top;">这是设计行为。设置页“麦克风测试”只在内存中录制；需要保存文件时使用主页录音图标。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Vosk 或 Whisper 提示模型路径错误</td><td style="padding: 6px 8px; vertical-align: top;">Vosk 必须填写解压后的模型目录；Whisper 必须填写实际 <code>.bin</code> 模型文件。确认路径属于当前平台且游戏有读取权限。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">日志提示原生 DLL 不在模组根目录</td><td style="padding: 6px 8px; vertical-align: top;">不要手工移动 Whisper/Vosk 原生库。发布包已将它们放在 <code>native/</code> 下；删除手工拆出的 DLL，并重新安装完整压缩包。</td></tr>

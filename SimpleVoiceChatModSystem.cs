@@ -1,4 +1,5 @@
 using SimpleVoiceChat.Config;
+using SimpleVoiceChat.Audio;
 using SimpleVoiceChat.Integration;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
@@ -12,6 +13,10 @@ public sealed class SimpleVoiceChatModSystem : ModSystem
     private ServerVoiceController? serverController;
     private readonly List<IVoiceChannelProvider> channelProviders = new();
     private readonly HashSet<string> channelProviderIds = new(StringComparer.OrdinalIgnoreCase);
+    private AudioBusMixer? clientAudioBuses;
+
+    /// <summary>Returns the player-voice mixer when the client is running.</summary>
+    public AudioBusMixer? ClientAudioBuses => clientAudioBuses;
 
     public bool RegisterVoiceChannelProvider(IVoiceChannelProvider provider)
     {
@@ -47,6 +52,7 @@ public sealed class SimpleVoiceChatModSystem : ModSystem
         SimpleVoiceChatClientConfig config = LoadClientConfig(api);
         clientController = new ClientVoiceController(api, config);
         clientController.Start();
+        clientAudioBuses = clientController.AudioBuses;
     }
 
     public override void StartServerSide(ICoreServerAPI api)
@@ -60,6 +66,7 @@ public sealed class SimpleVoiceChatModSystem : ModSystem
     {
         clientController?.Dispose();
         clientController = null;
+        clientAudioBuses = null;
         serverController?.Dispose();
         serverController = null;
         base.Dispose();

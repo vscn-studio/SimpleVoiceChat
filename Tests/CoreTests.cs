@@ -30,7 +30,7 @@ public sealed class CoreTests
 
         config.Normalize();
 
-        Assert.Equal(6, config.ConfigVersion);
+        Assert.Equal(7, config.ConfigVersion);
         Assert.Equal(32, config.MaxDirectorStreamsPerListener);
         Assert.Equal(4096, config.MaxDirectorEgressKbps);
     }
@@ -46,12 +46,12 @@ public sealed class CoreTests
     }
 
     [Fact]
-    public void ProtocolVersionThreeRejectsVersionTwo()
+    public void ProtocolVersionFourRejectsOlderVersions()
     {
-        Assert.Equal(3, VoiceProtocol.CurrentVersion);
-        Assert.True(VoiceProtocol.IsCompatible(3));
+        Assert.Equal(4, VoiceProtocol.CurrentVersion);
+        Assert.True(VoiceProtocol.IsCompatible(4));
         Assert.False(VoiceProtocol.IsCompatible(2));
-        Assert.False(VoiceProtocol.IsCompatible(4));
+        Assert.False(VoiceProtocol.IsCompatible(3));
     }
 
     [Fact]
@@ -128,6 +128,44 @@ public sealed class CoreTests
         Assert.Equal(500L, timeline.Resolve(120, 500L));
         Assert.Equal(520L, timeline.Resolve(121, 500L));
         Assert.Equal(560L, timeline.Resolve(123, 500L));
+    }
+
+    [Fact]
+    public void ServerClockEstimatorBecomesStableAfterThreeConsistentSamples()
+    {
+        ServerClockEstimator clock = new();
+
+        clock.AddSample(1_000L, 1_070L, 1_040L);
+        clock.AddSample(2_000L, 2_070L, 2_040L);
+        clock.AddSample(3_000L, 3_070L, 3_040L);
+
+        Assert.True(clock.IsStable);
+        Assert.Equal(3, clock.SampleCount);
+        Assert.Equal(40d, clock.BestRoundTripMilliseconds);
+        Assert.Equal(50d, clock.OffsetMilliseconds);
+    }
+
+    [Fact]
+    public void ServerClockEstimatorConvertsBetweenClientAndServerClockDomains()
+    {
+        ServerClockEstimator clock = new();
+        clock.AddSample(100L, 170L, 140L);
+
+        Assert.Equal(250L, clock.ToServerTime(200L));
+        Assert.Equal(150L, clock.ToClientTime(200L));
+    }
+
+    [Fact]
+    public void ServerClockEstimatorRejectsInvalidAndExcessiveRoundTrips()
+    {
+        ServerClockEstimator clock = new();
+
+        clock.AddSample(100L, 150L, 10_101L);
+        clock.AddSample(100L, 150L, 99L);
+
+        Assert.False(clock.HasEstimate);
+        Assert.Equal(0, clock.SampleCount);
+        Assert.True(double.IsPositiveInfinity(clock.BestRoundTripMilliseconds));
     }
 
     [Fact]
@@ -257,7 +295,7 @@ public sealed class CoreTests
         config.Normalize();
 
         PersistentVoiceChannelConfig channel = Assert.Single(config.PersistentChannels);
-        Assert.Equal(6, config.ConfigVersion);
+        Assert.Equal(7, config.ConfigVersion);
         Assert.Equal("channel-1", channel.Id);
         Assert.Equal(2, config.NextChannelNumber);
         Assert.NotEqual("legacy-general", channel.Id);
@@ -278,6 +316,35 @@ public sealed class CoreTests
         ServerVoiceConfigPacket packet = PacketMapper.ToPacket(config);
 
         Assert.True(packet.EnableDirectorProximityCapture);
+    }
+
+    [Fact]
+    public void RecorderCaptureConfigurationIsSentToClients()
+    {
+        SimpleVoiceChatServerConfig config = new()
+        {
+            EnableRecorderCapture = true
+        };
+
+        ServerVoiceConfigPacket packet = PacketMapper.ToPacket(config);
+
+        Assert.True(packet.EnableRecorderCapture);
+    }
+
+    [Fact]
+    public void AudioBusMixerEmitsPlayerVoiceWithMixedSamples()
+    {
+        using AudioBusMixer mixer = new(4);
+        List<AudioBusFrame> frames = new();
+        mixer.FrameReady += frames.Add;
+
+        mixer.Submit(AudioBusKind.PlayerVoice, new short[] { 100, 200, 300, 400 });
+        mixer.Submit(AudioBusKind.PlayerVoice, new short[] { 50, -100, 50, -500 });
+        mixer.Flush(123L);
+
+        AudioBusFrame voice = Assert.Single(frames);
+        Assert.Equal(123L, voice.TimestampMilliseconds);
+        Assert.Equal(new short[] { 150, 100, 350, -100 }, voice.Samples);
     }
 
     [Fact]
@@ -474,7 +541,7 @@ public sealed class CoreTests
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
         JsonElement dependencies = document.RootElement.GetProperty("dependencies");
 
-        Assert.Equal("1.0.14", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("1.1.0", document.RootElement.GetProperty("version").GetString());
         Assert.True(dependencies.TryGetProperty("game", out _));
         Assert.False(dependencies.TryGetProperty("vsdirector", out _));
         Assert.DoesNotContain(

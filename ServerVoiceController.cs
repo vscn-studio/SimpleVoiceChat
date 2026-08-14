@@ -23,6 +23,8 @@ public sealed class ServerVoiceController : IDisposable
     private readonly Dictionary<string, IServerPlayer> onlinePlayersByUid = new(StringComparer.Ordinal);
     private readonly Dictionary<string, VoiceClientSession> sessionsByUid = new(StringComparer.Ordinal);
     private readonly Dictionary<string, DirectorVoiceListener> directorListenersByUid = new(StringComparer.Ordinal);
+    private readonly HashSet<string> recorderListeners = new(StringComparer.Ordinal);
+    private RecorderRecordingSession? recorderSession;
     private readonly Dictionary<string, VoiceTokenBucket> handshakeRatesByUid = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ActiveTalkerNotification> activeTalkersByKey = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> channelProviderWarningMilliseconds = new(StringComparer.Ordinal);
@@ -37,6 +39,7 @@ public sealed class ServerVoiceController : IDisposable
     private VoiceTokenBucket egressBudget;
     private readonly ListenerEgressBudget listenerEgressBudget;
     private readonly ListenerEgressBudget directorEgressBudget;
+    private readonly ListenerEgressBudget recorderEgressBudget;
     private long slowTickListenerId;
     private long spatialTickListenerId;
     private long lastChannelProviderSyncMs;
@@ -56,6 +59,7 @@ public sealed class ServerVoiceController : IDisposable
         egressBudget = CreateEgressBudget(sapi.World.ElapsedMilliseconds);
         listenerEgressBudget = new ListenerEgressBudget(config.MaxListenerEgressKbps);
         directorEgressBudget = new ListenerEgressBudget(config.MaxDirectorEgressKbps);
+        recorderEgressBudget = new ListenerEgressBudget(config.MaxRecorderEgressKbps);
         RestorePersistentChannels();
     }
 
@@ -96,6 +100,8 @@ public sealed class ServerVoiceController : IDisposable
             .RegisterMessageType<ChannelMemberPagePacket>()
             .RegisterMessageType<TalkerStateDeltaPacket>()
             .RegisterMessageType<DirectorVoiceListenerUpdatePacket>()
+            .RegisterMessageType<RecorderVoiceListenerPacket>()
+            .RegisterMessageType<RecorderVoiceTimelinePacket>()
             .RegisterMessageType<VoiceFeedbackPacket>()
             .RegisterMessageType<VoiceDiagnosticsPacket>()
             .SetMessageHandler<ClientVoiceStatePacket>(OnClientState)
@@ -103,6 +109,7 @@ public sealed class ServerVoiceController : IDisposable
             .SetMessageHandler<AdminVoiceControlPacket>(OnAdminVoiceControl)
             .SetMessageHandler<VoiceHelloPacket>(OnVoiceHello)
             .SetMessageHandler<DirectorVoiceListenerUpdatePacket>(OnDirectorVoiceListenerUpdate)
+            .SetMessageHandler<RecorderVoiceListenerPacket>(OnRecorderVoiceListenerUpdate)
             .SetMessageHandler<ChannelCommandPacket>(OnChannelCommand);
 
         voiceChannel = sapi.Network.RegisterUdpChannel(VoiceConstants.VoiceChannelName)
@@ -350,6 +357,34 @@ public sealed class ServerVoiceController : IDisposable
                     return TextCommandResult.Success(entries);
                 }
 
+            case "recording":
+                {
+                    if (!HasServerControl(args))
+                    {
+                        return NoServerControl();
+                    }
+
+                    string recordingAction = args.RawArgs.PopWord("status").ToLowerInvariant();
+                    if (recordingAction == "status")
+                    {
+                        return TextCommandResult.Success(BuildRecorderStatus());
+                    }
+
+                    if (recordingAction is not ("start" or "stop") || GetCommandPlayer(args) is not { } recorder)
+                    {
+                        return TextCommandResult.Error(SVCLang.Get("server-recording-usage"));
+                    }
+
+                    OnRecorderVoiceListenerUpdate(recorder, new RecorderVoiceListenerPacket
+                    {
+                        Active = recordingAction == "start",
+                        ClientTimestampMilliseconds = MonotonicClock.NowMilliseconds
+                    });
+                    return TextCommandResult.Success(recordingAction == "start"
+                        ? SVCLang.Get("server-recording-started")
+                        : SVCLang.Get("server-recording-stopped"));
+                }
+
             case "channels":
                 {
                     if (!HasServerControl(args))
@@ -555,6 +590,11 @@ public sealed class ServerVoiceController : IDisposable
         streamArbiter.RemovePlayer(player.PlayerUID);
         directorStreamArbiter.RemovePlayer(player.PlayerUID);
         directorListenersByUid.Remove(player.PlayerUID);
+        recorderListeners.Remove(player.PlayerUID);
+        if (recorderSession?.OwnerUid == player.PlayerUID)
+        {
+            StopRecorderSession(player, MonotonicClock.NowMilliseconds, "owner-left");
+        }
         channels.RemoveOnlineState(player.PlayerUID);
         RemoveActiveTalkerNotifications(player.PlayerUID);
         SendSnapshots(affectedChannelMembers);
@@ -771,7 +811,8 @@ public sealed class ServerVoiceController : IDisposable
             MaxStreamsPerListener = config.MaxStreamsPerListener,
             AllowContinuousTalk = config.AllowContinuousTalk,
             HasServerControl = player.HasPrivilege(Privilege.controlserver),
-            ServerInstanceId = GetServerInstanceId()
+            ServerInstanceId = GetServerInstanceId(),
+            EnableRecorderCapture = config.EnableRecorderCapture
         }, player);
         SendChannelSnapshot(player);
         SendTransmitAccessState(player, now);
@@ -800,7 +841,9 @@ public sealed class ServerVoiceController : IDisposable
         voiceChannel?.SendPacket(new VoicePongPacket
         {
             ConnectionEpoch = session.ConnectionEpoch,
-            Nonce = packet.Nonce
+            Nonce = packet.Nonce,
+            ClientSendTimestampMilliseconds = packet.ClientSendTimestampMilliseconds,
+            ServerTimestampMilliseconds = MonotonicClock.NowMilliseconds
         }, player);
     }
 
@@ -1362,6 +1405,17 @@ public sealed class ServerVoiceController : IDisposable
             return;
         }
 
+        long serverTimestamp = MonotonicClock.NowMilliseconds;
+        // Capture time is supplied in the server clock domain. Invalid or stale
+        // client estimates must never move a multi-track WAV timeline backward.
+        if (packet.CaptureServerTimestampMilliseconds > 0
+            && (packet.CaptureServerTimestampMilliseconds < serverTimestamp - 10_000L
+            || packet.CaptureServerTimestampMilliseconds > serverTimestamp + 2_000L)
+        )
+        {
+            packet.CaptureServerTimestampMilliseconds = serverTimestamp;
+        }
+
         if (!session.PacketRate.TryConsume(1, now)
             || !session.ByteRate.TryConsume(packet.Payload.Length, now))
         {
@@ -1449,8 +1503,157 @@ public sealed class ServerVoiceController : IDisposable
         }
 
         SendV2Relays(fromPlayer, packet, mode, position, routeRecipients, now);
+        SendRecorderRelay(fromPlayer, packet, session.Codec, now);
         SendDirectorProximityRelays(fromPlayer, packet, session.Codec, mode, position, now);
         metrics.RecordRoute(Stopwatch.GetElapsedTime(routeStarted).TotalMilliseconds, candidateCount, now);
+    }
+
+    private void OnRecorderVoiceListenerUpdate(IServerPlayer player, RecorderVoiceListenerPacket packet)
+    {
+        if (!lifecycle.IsStarted || !config.EnableRecorderCapture || !player.HasPrivilege(Privilege.controlserver))
+        {
+            return;
+        }
+
+        long now = MonotonicClock.NowMilliseconds;
+
+        if (packet.Active)
+        {
+            if (recorderSession is { } existing && existing.OwnerUid != player.PlayerUID)
+            {
+                SendFeedback(player, "recording-already-active", existing.OwnerName);
+                return;
+            }
+
+            if (recorderSession == null)
+            {
+                long start = now + 1_500L;
+                recorderSession = new RecorderRecordingSession(
+                    player.PlayerUID,
+                    player.PlayerName,
+                    $"multitrack-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}",
+                    start,
+                    DateTimeOffset.UtcNow.AddMilliseconds(1_500).ToUnixTimeMilliseconds());
+                RecordAudit(player, "recording-start", recorderSession.Value.SessionId, "multitrack", "server-clock-anchor");
+            }
+
+            RecorderRecordingSession session = recorderSession!.Value;
+            recorderListeners.Add(player.PlayerUID);
+            controlChannel?.SendPacket(new RecorderVoiceTimelinePacket
+            {
+                Active = true,
+                ServerTimestampMilliseconds = now,
+                ClientTimestampMilliseconds = packet.ClientTimestampMilliseconds,
+                SessionId = session.SessionId,
+                StartServerTimestampMilliseconds = session.StartServerTimestampMilliseconds,
+                StartUtcUnixMilliseconds = session.StartUtcUnixMilliseconds
+            }, player);
+        }
+        else
+        {
+            if (recorderSession?.OwnerUid == player.PlayerUID)
+            {
+                StopRecorderSession(player, now, "requested");
+            }
+        }
+    }
+
+    private void StopRecorderSession(IServerPlayer actor, long endServerTimestampMilliseconds, string reason)
+    {
+        if (recorderSession is not RecorderRecordingSession session)
+        {
+            recorderListeners.Remove(actor.PlayerUID);
+            return;
+        }
+
+        long end = Math.Max(session.StartServerTimestampMilliseconds, endServerTimestampMilliseconds);
+        if (onlinePlayersByUid.TryGetValue(session.OwnerUid, out IServerPlayer? owner))
+        {
+            controlChannel?.SendPacket(new RecorderVoiceTimelinePacket
+            {
+                Active = false,
+                ServerTimestampMilliseconds = end,
+                SessionId = session.SessionId,
+                StartServerTimestampMilliseconds = session.StartServerTimestampMilliseconds,
+                StartUtcUnixMilliseconds = session.StartUtcUnixMilliseconds,
+                EndServerTimestampMilliseconds = end
+            }, owner);
+        }
+
+        recorderListeners.Clear();
+        recorderSession = null;
+        RecordAudit(actor, "recording-stop", session.SessionId, "multitrack", reason);
+    }
+
+    private string BuildRecorderStatus()
+    {
+        if (recorderSession is not RecorderRecordingSession session)
+        {
+            return SVCLang.Get("server-recording-status-idle");
+        }
+
+        return SVCLang.Get("server-recording-status-active", session.OwnerName, session.SessionId);
+    }
+
+    private void SendRecorderRelay(IServerPlayer speaker, VoiceFrameV3Packet frame, int codec, long now)
+    {
+        if (!config.EnableRecorderCapture
+            || recorderSession == null
+            || recorderListeners.Count == 0
+            || speaker.Entity is null
+            || frame.CaptureServerTimestampMilliseconds <= 0)
+        {
+            return;
+        }
+
+        RecorderRecordingSession session = recorderSession.Value;
+        int listenerCount = 0;
+        foreach (string listenerUid in recorderListeners.ToArray())
+        {
+            // The owner records their microphone locally. Do not loop that
+            // stream back, but keep their recorder subscription alive.
+            if (listenerUid == speaker.PlayerUID)
+            {
+                continue;
+            }
+
+            if (listenerUid != session.OwnerUid
+                || !onlinePlayersByUid.TryGetValue(listenerUid, out IServerPlayer? listener)
+                || !listener.HasPrivilege(Privilege.controlserver)
+                || !sessionsByUid.ContainsKey(listenerUid))
+            {
+                recorderListeners.Remove(listenerUid);
+                continue;
+            }
+
+            if (listenerCount >= config.MaxRecorderListeners)
+            {
+                break;
+            }
+
+            int estimatedPacketBytes = frame.Payload.Length + 96;
+            if (!recorderEgressBudget.HasCapacity(listenerUid, estimatedPacketBytes, now)
+                || egressBudget.Available(now) + 0.0001d < estimatedPacketBytes
+                || !recorderEgressBudget.TryConsume(listenerUid, estimatedPacketBytes, now)
+                || !egressBudget.TryConsume(estimatedPacketBytes, now))
+            {
+                continue;
+            }
+
+            voiceChannel?.SendPacket(new RecorderVoiceRelayFrameV3Packet
+            {
+                SpeakerUid = speaker.PlayerUID,
+                SpeakerEntityId = speaker.Entity.EntityId,
+                SessionId = frame.SessionId,
+                Sequence = frame.Sequence,
+                Payload = frame.Payload,
+                Codec = codec,
+                SpeakerName = speaker.PlayerName,
+                ServerTimestampMilliseconds = MonotonicClock.NowMilliseconds,
+                CaptureServerTimestampMilliseconds = frame.CaptureServerTimestampMilliseconds
+            }, listener);
+            listenerCount++;
+        }
     }
 
     private void RecordInvalidFrame(IServerPlayer player, long now)
@@ -1594,7 +1797,9 @@ public sealed class ServerVoiceController : IDisposable
                 Z = (float)position.Z,
                 Codec = sessionsByUid.TryGetValue(speaker.PlayerUID, out VoiceClientSession? codecSession)
                     ? codecSession.Codec
-                    : VoiceProtocol.CodecImaAdpcm
+                    : VoiceProtocol.CodecImaAdpcm,
+                SenderUid = speaker.PlayerUID,
+                CaptureServerTimestampMilliseconds = frame.CaptureServerTimestampMilliseconds
             };
             IServerPlayer[] finalTargets = permittedTargets.Count == targets.Length ? targets : permittedTargets.ToArray();
             voiceChannel?.SendPacket(relay, finalTargets);
@@ -2004,6 +2209,7 @@ public sealed class ServerVoiceController : IDisposable
         egressBudget = CreateEgressBudget(sapi.World.ElapsedMilliseconds);
         listenerEgressBudget.SetLimit(config.MaxListenerEgressKbps);
         directorEgressBudget.SetLimit(config.MaxDirectorEgressKbps);
+        recorderEgressBudget.SetLimit(config.MaxRecorderEgressKbps);
         StopAllTalkerNotifications();
         RestorePersistentChannels();
         RefreshOnlinePlayerSnapshot();
@@ -2456,6 +2662,9 @@ public sealed class ServerVoiceController : IDisposable
         channelProviderWarningMilliseconds.Clear();
         listenerEgressBudget.Clear();
         directorEgressBudget.Clear();
+        recorderEgressBudget.Clear();
+        recorderListeners.Clear();
+        recorderSession = null;
         statesByUid.Clear();
         mutedByListenerUid.Clear();
         packetRates.Clear();
@@ -2534,7 +2743,7 @@ public sealed class ServerVoiceController : IDisposable
             DirectorListenerRate = new VoiceTokenBucket(10, 10, nowMilliseconds);
             StateRate = new VoiceTokenBucket(2, 5, nowMilliseconds);
             MuteRate = new VoiceTokenBucket(20, 256, nowMilliseconds);
-            PingRate = new VoiceTokenBucket(1, 3, nowMilliseconds);
+            PingRate = new VoiceTokenBucket(8, 8, nowMilliseconds);
         }
 
         public int ConnectionEpoch { get; }
@@ -2637,6 +2846,12 @@ public sealed class ServerVoiceController : IDisposable
 
     private readonly record struct RelayRecipient(IServerPlayer Player, VoiceRelayKind RelayKind, string ChannelId, int Priority);
     private readonly record struct RelayGroup(VoiceRelayKind RelayKind, string ChannelId);
+    private readonly record struct RecorderRecordingSession(
+        string OwnerUid,
+        string OwnerName,
+        string SessionId,
+        long StartServerTimestampMilliseconds,
+        long StartUtcUnixMilliseconds);
     private readonly record struct ActiveTalkerNotification(string ChannelId, string SenderUid, string SenderName, long LastPacketMilliseconds);
     private readonly record struct DirectorVoiceListener(
         Vec3d Position,

@@ -4,20 +4,20 @@
 <th style="padding: 6px 8px; text-align: left;">Current Release</th>
 </tr></thead><tbody>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Mod name</td><td style="padding: 6px 8px; vertical-align: top;">SimpleVoiceChat</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Mod version</td><td style="padding: 6px 8px; vertical-align: top;"><code>1.0.14</code></td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Mod version</td><td style="padding: 6px 8px; vertical-align: top;"><code>1.1.0</code></td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Game version</td><td style="padding: 6px 8px; vertical-align: top;">Vintage Story <code>1.22.3</code></td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Voice protocol</td><td style="padding: 6px 8px; vertical-align: top;">Protocol V3; Opus is the preferred codec, and the server configuration determines whether ADPCM fallback is allowed</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Voice protocol</td><td style="padding: 6px 8px; vertical-align: top;">Protocol V4; Opus is the preferred codec, and the server configuration determines whether ADPCM fallback is allowed</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Installation scope</td><td style="padding: 6px 8px; vertical-align: top;">The same version must be installed on both the client and server</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Documentation verified</td><td style="padding: 6px 8px; vertical-align: top;"><code>2026-08-13</code></td></tr>
 </tbody></table>
 <p>SimpleVoiceChat provides proximity voice chat, whisper/normal/shout modes, custom channels, per-player local volume and muting, recording, audio processing, permission management, and capacity safeguards. The server handles only authentication, routing, and forwarding; clients handle capture, playback, and local settings.</p>
-<div style="border-left: 4px solid #e03e2d; padding: 8px 12px; margin: 12px 0; background-color: #fff5f5;"><p style="color: #e03e2d; margin: 0;"><strong>Important:</strong> The current release uses protocol V3. The voice handshake may be rejected when the client and server versions do not match. Do not install multiple SimpleVoiceChat ZIP files at the same time.</p></div>
+<div style="border-left: 4px solid #e03e2d; padding: 8px 12px; margin: 12px 0; background-color: #fff5f5;"><p style="color: #e03e2d; margin: 0;"><strong>Important:</strong> The current release uses protocol V4. The voice handshake may be rejected when the client and server versions do not match. Do not install multiple SimpleVoiceChat ZIP files at the same time.</p></div>
 
 <h2>1. Installation and First Launch</h2>
 <ol>
 <li>Shut down the Vintage Story client and server.</li>
 <li>Delete old SimpleVoiceChat ZIP files from the Mods directory, leaving only the version you intend to use.</li>
-<li>Place <code>SimpleVoiceChat_1.0.14.zip</code> unchanged in the <code>Mods</code> directory on both the client and server. Do not extract the mod archive.</li>
+<li>Place <code>SimpleVoiceChat-v1.1.0.zip</code> unchanged in the <code>Mods</code> directory on both the client and server. Do not extract the mod archive.</li>
 <li>Start the server first, then start the client and join the world.</li>
 <li>On first use, the chat box prompts you to press <code>'</code> to open settings. The prompt itself does not open a window.</li>
 <li>Press <code>'</code> to open the initial setup wizard. On the welcome page, you can choose "Skip Initial Setup and Open Settings," select "Cancel" to close the wizard, or select "Confirm" to begin configuration.</li>
@@ -33,6 +33,7 @@
 <tr><td style="padding: 6px 8px; vertical-align: top;">Mute microphone</td><td style="padding: 6px 8px; vertical-align: top;"><code>Ctrl + -</code></td><td style="padding: 6px 8px; vertical-align: top;">Stops transmitting your microphone audio.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Deafen / Undeafen</td><td style="padding: 6px 8px; vertical-align: top;"><code>;</code></td><td style="padding: 6px 8px; vertical-align: top;">Stops or resumes playback of all remote voice audio.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Open voice window</td><td style="padding: 6px 8px; vertical-align: top;"><code>'</code></td><td style="padding: 6px 8px; vertical-align: top;">Opens the wizard on first use and the main settings window afterward.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Multi-track settings</td><td style="padding: 6px 8px; vertical-align: top;"><code>Ctrl + F9</code></td><td style="padding: 6px 8px; vertical-align: top;">Opens the administrator multi-track recording settings.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Speech-to-Chat</td><td style="padding: 6px 8px; vertical-align: top;"><code>V</code></td><td style="padding: 6px 8px; vertical-align: top;">When enabled, hold to record and release to transcribe into the active chat channel.</td></tr>
 </tbody></table>
 <p>The default push-to-talk key is <code>N</code>; <code>Alt + N</code> is reserved for switching between push-to-talk and voice activation. To change a binding, use the Simple Voice Chat category in the game's key-binding settings. Neither the initial setup wizard nor the Speech Recognition page contains a key-capture control.</p>
@@ -120,9 +121,11 @@
 
 <h2>8. Player List and Recordings to File</h2>
 <p>The player icon at the bottom of the Channels page opens the player list. The list displays up to six players per page and supports searching by player name or ID. You must select "Search" to run a search; "Cancel" on the right restores the full player list. Each player card includes a local volume slider, mute icon, and settings gear. These volume and mute settings do not change server permissions.</p>
-<p>The record icon at the bottom of the home page controls recording to file. Select it, then choose "Record Input Only" or "Record Input and Output." Select the record icon again to stop and save a WAV file. Recordings are saved in:</p>
+<p>The record icon at the bottom of the home page controls recording to file. Select it, then choose "Input Only," "Input+Output," or "Multi-track speakers." Select the record icon again to stop and save a WAV file. Recordings are saved in:</p>
 <p><code>AppData\Roaming\VintagestoryData\ModData\SimpleVoiceChat</code></p>
 <p>"Microphone Test" is separate from recording to file. Test audio on the Settings page is kept only in memory for start/stop recording and playback checks; it does not create a file.</p>
+<p>Multi-track recording requires <code>controlserver</code> and <code>EnableRecorderCapture: true</code> in <code>SimpleVoiceChat.Server.json</code>. Press <code>Ctrl + F9</code>, wait for three UDP clock samples, and begin recording; the server creates a future shared monotonic-clock anchor. Each speaker is written as a separate padded mono WAV inside one session directory, while <code>session.json</code> retains the common timeline. Administrators may also use <code>/svc recording start|stop|status</code>; recording start and stop are written to <code>/svc audit</code>.</p>
+<p>The optional OBS plugin adds one <code>SimpleVoiceChat Player Voice</code> source. Keep microphone, game, desktop, and music sources on their normal OBS tracks. The plugin acknowledges the actual OBS recording UTC start, and the session writes <code>obs-sync.json</code> plus <code>session.json.obsAlignment</code>; <code>wavZeroMinusObsStartMilliseconds</code> is the automatic WAV-to-video alignment offset.</p>
 
 <h2>9. Administration Page and Privileges</h2>
 <p>Players who have the Vintage Story <code>controlserver</code> privilege and have completed the voice handshake see an "Administration" button at the top of the home page. The Administration page does not provide a channel-creation entry point. Channels are still created with "Create Channel" at the bottom of the Channels page or by using a server command. Administrators can view all channels and players and perform these server-authorized management actions:</p>
@@ -194,7 +197,7 @@
 <tr><td style="padding: 6px 8px; vertical-align: top;">The seventh row is missing from a list</td><td style="padding: 6px 8px; vertical-align: top;">Channel and player lists display up to six rows per page. Use the paginator at the bottom to change pages.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Cannot join a channel</td><td style="padding: 6px 8px; vertical-align: top;">Check whether the channel is locked, the password is correct, you are banned, or you have reached the limit of eight channels per player.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Channel speaking slots are full</td><td style="padding: 6px 8px; vertical-align: top;">The channel has reached its simultaneous-speaker limit. Try again later. Listen Only and muted players cannot speak.</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Protocol V3 incompatibility message</td><td style="padding: 6px 8px; vertical-align: top;">The client and server must both use compatible protocol V3 builds. Install <code>1.0.14</code> on both sides and remove older archives.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Protocol V4 incompatibility message</td><td style="padding: 6px 8px; vertical-align: top;">The client and server must both use compatible protocol V4 builds. Install <code>1.1.0</code> on both sides and remove older archives.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Microphone Test does not create a file</td><td style="padding: 6px 8px; vertical-align: top;">This is by design. "Microphone Test" on the Settings page records only in memory. To save a file, use the record icon on the home page.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Vosk or Whisper reports an invalid model path</td><td style="padding: 6px 8px; vertical-align: top;">Vosk requires the extracted model directory. Whisper requires the actual <code>.bin</code> model file. Confirm that the path uses the current platform's syntax and that the game can read it.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">The log says a native DLL is not in the mod root</td><td style="padding: 6px 8px; vertical-align: top;">Do not move Whisper or Vosk native libraries manually. The release package keeps them under <code>native/</code>. Remove manually extracted DLLs and reinstall the complete archive.</td></tr>

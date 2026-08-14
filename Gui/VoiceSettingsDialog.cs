@@ -48,7 +48,8 @@ internal enum VoiceSettingsOverlay
     RecordingMode,
     OwnerLeave,
     JoinChannel,
-    ConfirmChannelAction
+    ConfirmChannelAction,
+    MultiTrackRecording
 }
 
 internal static class VoiceSettingsNavigation
@@ -882,6 +883,9 @@ public sealed class VoiceSettingsDialog : GuiDialog
             case VoiceSettingsOverlay.RecordingMode:
                 AddRecordingModeOverlay(composer);
                 break;
+            case VoiceSettingsOverlay.MultiTrackRecording:
+                AddMultiTrackRecordingOverlay(composer);
+                break;
             case VoiceSettingsOverlay.OwnerLeave:
                 AddOwnerLeaveOverlay(composer);
                 break;
@@ -898,21 +902,55 @@ public sealed class VoiceSettingsDialog : GuiDialog
     {
         const double x = 190;
         const double y = 190;
-        const double width = 560;
+        const double width = 720;
         const double height = 220;
         AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("recording-mode-title"));
         AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "recording-mode-close");
         CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
         composer.AddStaticText(SVCLang.Get("recording-mode-description"), label,
             ElementBounds.Fixed(x + 24, y + 60, width - 48, 28));
+        double buttonWidth = (width - 72) / 3d;
         AddFlatButton(composer, SVCLang.Get("recording-mode-input"),
             () => StartRecordingMode(VoiceRecordingMode.InputOnly),
-            ElementBounds.Fixed(x + 24, y + 104, (width - 60) / 2d, 42),
+            ElementBounds.Fixed(x + 24, y + 104, buttonWidth, 42),
             "recording-mode-input");
         AddFlatButton(composer, SVCLang.Get("recording-mode-input-output"),
             () => StartRecordingMode(VoiceRecordingMode.InputAndOutput),
-            ElementBounds.Fixed(x + 36 + (width - 60) / 2d, y + 104, (width - 60) / 2d, 42),
+            ElementBounds.Fixed(x + 36 + buttonWidth, y + 104, buttonWidth, 42),
             "recording-mode-input-output");
+        AddFlatButton(composer, SVCLang.Get("recording-mode-multitrack"),
+            () => StartRecordingMode(VoiceRecordingMode.MultiTrack),
+            ElementBounds.Fixed(x + 48 + buttonWidth * 2d, y + 104, buttonWidth, 42),
+            "recording-mode-multitrack");
+        composer.GetButton("recording-mode-multitrack").Enabled = controller.HasServerControl;
+    }
+
+    private void AddMultiTrackRecordingOverlay(GuiComposer composer)
+    {
+        const double x = 220;
+        const double y = 185;
+        const double width = 640;
+        const double height = 245;
+        AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("multitrack-settings-title"));
+        AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "multitrack-settings-close");
+        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        string status = controller.IsRecording && controller.RecordingMode == VoiceRecordingMode.MultiTrack
+            ? SVCLang.Get("multitrack-status-recording")
+            : controller.IsMultiTrackStartPending
+                ? SVCLang.Get("multitrack-status-syncing", controller.RecorderClockSampleCount)
+                : controller.CanStartMultiTrackRecording
+                    ? SVCLang.Get("multitrack-status-ready", controller.RecorderClockRoundTripMilliseconds.ToString("0"))
+                    : SVCLang.Get("multitrack-status-waiting", controller.RecorderClockSampleCount);
+        composer.AddStaticText(SVCLang.Get("multitrack-settings-description"), label,
+            ElementBounds.Fixed(x + 24, y + 58, width - 48, 44));
+        composer.AddStaticText(status, label, ElementBounds.Fixed(x + 24, y + 112, width - 48, 28));
+        bool active = controller.IsRecording && controller.RecordingMode == VoiceRecordingMode.MultiTrack || controller.IsMultiTrackStartPending;
+        AddFlatButton(composer,
+            active ? SVCLang.Get("button-recording-stop") : SVCLang.Get("button-recording-start"),
+            () => active ? controller.StopRecordingFromSettings() : controller.StartRecordingFromSettings(VoiceRecordingMode.MultiTrack),
+            ElementBounds.Fixed(x + 24, y + 164, 220, 40),
+            "multitrack-toggle");
+        composer.GetButton("multitrack-toggle").Enabled = active || controller.HasServerControl;
     }
 
     private void AddOwnerLeaveOverlay(GuiComposer composer)
@@ -1524,6 +1562,18 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
         PushOverlayState();
         overlay = VoiceSettingsOverlay.RecordingMode;
+        QueueCompose();
+    }
+
+    internal void OpenMultiTrackRecordingOverlay()
+    {
+        if (overlay != VoiceSettingsOverlay.None)
+        {
+            return;
+        }
+
+        PushOverlayState();
+        overlay = VoiceSettingsOverlay.MultiTrackRecording;
         QueueCompose();
     }
 

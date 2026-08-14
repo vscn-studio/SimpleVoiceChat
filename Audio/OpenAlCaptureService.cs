@@ -1,4 +1,5 @@
 using OpenTK.Audio.OpenAL;
+using SimpleVoiceChat.Networking;
 using SimpleVoiceChat.Config;
 using Vintagestory.API.Client;
 
@@ -114,7 +115,7 @@ public sealed class OpenAlCaptureService : IDisposable
 
             ALC.CaptureSamples(captureDevice, buffer, VoiceConstants.SamplesPerFrame);
             timestampMilliseconds = frameTimestampClock.ResolveFrameEndTimestamp(
-                capi.World.ElapsedMilliseconds,
+                MonotonicClock.NowMilliseconds,
                 available);
             return true;
         }

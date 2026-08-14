@@ -2,7 +2,7 @@ namespace SimpleVoiceChat.Config;
 
 public sealed class SimpleVoiceChatServerConfig
 {
-    private const int CurrentConfigVersion = 6;
+    private const int CurrentConfigVersion = 7;
 
     public int ConfigVersion { get; set; } = 1;
     public string ServerInstanceId { get; set; } = string.Empty;
@@ -39,6 +39,9 @@ public sealed class SimpleVoiceChatServerConfig
     public bool EnableDirectorProximityCapture { get; set; } = false;
     public int MaxDirectorListeners { get; set; } = 1;
     public int MaxDirectorStreamsPerListener { get; set; } = 32;
+    public bool EnableRecorderCapture { get; set; } = false;
+    public int MaxRecorderListeners { get; set; } = 1;
+    public int MaxRecorderEgressKbps { get; set; } = 4096;
     public long NextChannelNumber { get; set; } = 1;
     public List<string> GloballyMutedPlayerUids { get; set; } = new();
     public List<string> ForceBlockedPlayerUids { get; set; } = new();
@@ -70,6 +73,10 @@ public sealed class SimpleVoiceChatServerConfig
             }
             ConfigVersion = 6;
         }
+        if (ConfigVersion < 7)
+        {
+            ConfigVersion = 7;
+        }
         ConfigVersion = Math.Max(CurrentConfigVersion, ConfigVersion);
         if (!Guid.TryParse(ServerInstanceId, out Guid serverInstanceId) || serverInstanceId == Guid.Empty)
         {
@@ -93,6 +100,8 @@ public sealed class SimpleVoiceChatServerConfig
         MaxChannelMembers = Math.Clamp(MaxChannelMembers, 2, 100);
         MaxDirectorListeners = Math.Clamp(MaxDirectorListeners, 1, 8);
         MaxDirectorStreamsPerListener = Math.Clamp(MaxDirectorStreamsPerListener, 1, 64);
+        MaxRecorderListeners = Math.Clamp(MaxRecorderListeners, 1, 4);
+        MaxRecorderEgressKbps = Math.Clamp(MaxRecorderEgressKbps, 512, 8_192);
         MaxChannelsPerPlayer = Math.Clamp(MaxChannelsPerPlayer, 1, 8);
         MaxChannels = Math.Clamp(MaxChannels, 16, 512);
         ChannelMemberPageSize = Math.Clamp(ChannelMemberPageSize, 8, 50);

@@ -1,8 +1,8 @@
 # SimpleVoiceChat / 简单语音对话
 
-SimpleVoiceChat `1.0.14` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, local recording, moderation, optional speech-to-chat, and optional VS Director capture.
+SimpleVoiceChat `1.1.0` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, local recording, moderation, optional speech-to-chat, and optional VS Director capture.
 
-SimpleVoiceChat `1.0.14` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、本地录音、管理功能、可选语音转文字聊天以及可选 VS Director 录制集成。
+SimpleVoiceChat `1.1.0` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、本地录音、管理功能、可选语音转文字聊天以及可选 VS Director 录制集成。
 
 - [中文说明](#中文说明)
 - [English](#english)
@@ -17,8 +17,8 @@ SimpleVoiceChat `1.0.14` 是适用于 Vintage Story `1.22.3` 的客户端/服务
 - 可将声音发送到接近度范围、当前频道或两者。
 - 自定义频道支持开放、密码和隐藏可见性，以及所有者、主持人、成员、只听和封禁角色。
 - 支持按键说话、语音触发通话（自由麦）、输入/输出设备选择、增益、噪声门、玩家单独音量与静音。
-- 首选 Opus 编码；服务器可选择是否允许 ADPCM 回退。客户端和服务器必须使用协议 V3 兼容版本。
-- 可在本机进行麦克风试听并主动保存输入或输入+输出 WAV 录音。
+- 首选 Opus 编码；服务器可选择是否允许 ADPCM 回退。客户端和服务器必须使用协议 V4 兼容版本。
+- 可在本机进行麦克风试听，并主动保存仅输入、输入+输出或多人分轨 WAV 录音。
 - 语音识别默认关闭，完全由玩家在客户端配置，不经过 SimpleVoiceChat 服务端。
 - VS Director 是可选集成，不是前置模组，也不需要单独的集成模组。
 
@@ -26,7 +26,7 @@ SimpleVoiceChat `1.0.14` 是适用于 Vintage Story `1.22.3` 的客户端/服务
 
 1. 关闭 Vintage Story 客户端和服务器。
 2. 删除 `Mods` 目录中的旧版 SimpleVoiceChat 压缩包，避免同时加载多个版本。
-3. 将 `SimpleVoiceChat_1.0.14.zip` 原样放入客户端和服务器的 `Mods` 目录，不要解压模组包。
+3. 将 `SimpleVoiceChat-v1.1.0.zip` 原样放入客户端和服务器的 `Mods` 目录，不要解压模组包。
 4. 启动服务器，然后启动客户端。首次按 `'` 会打开设置向导。
 
 SimpleVoiceChat 不依赖 Simple Voice Chat、VS Director 或 `SimpleVoiceChat_VSDirectorIntegration` 等其他模组。单独安装即可使用基本语音功能。
@@ -41,6 +41,7 @@ SimpleVoiceChat 不依赖 Simple Voice Chat、VS Director 或 `SimpleVoiceChat_V
 | 本地麦克风静音 | `Ctrl + -` |
 | 拒听/恢复全部语音 | `;` |
 | 打开设置 | `'` |
+| 打开多人分轨设置（管理员） | `Ctrl + F9` |
 | 语音转文字聊天 | 按住 `V` 录音，松开识别并发送 |
 
 快捷键可在 Vintage Story 的游戏按键设置中修改。语音识别页面不另设快捷键输入框。
@@ -102,6 +103,14 @@ VS Director 自身也必须启用对应的回放或离屏语音捕获设置。�
 
 SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到端加密。玩家主动录音或 VS Director 录制可能保存语音内容，应遵守服务器和参与者的隐私规则。
 
+### OBS 与多人分轨录制
+
+录音模式提供“仅输入”、“输入+输出”和“多人分轨”。“多人分轨”会在 `%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat` 创建一个会话目录：每位说话人各有一个单声道 WAV，`session.json` 包含共同起始时钟、采样率、长度和玩家身份。所有 WAV 都补齐到同一时间轴，可直接分别调音和生成按玩家颜色区分的字幕。
+
+多人分轨是管理员专用功能：录音客户端必须拥有 `controlserver`，且服务器的 `SimpleVoiceChat.Server.json` 必须显式设置 `EnableRecorderCapture: true`。按 `Ctrl + F9` 打开多人分轨设置；该页面会先收集至少三个 UDP 往返时钟样本，再由服务器创建一个 1.5 秒后的统一起点。每个逐玩家 WAV 都按该服务器单调时钟写入，早于起点的帧会被丢弃、空档会补静音，因此网络到达顺序不会造成轨道位移。管理员也可使用 `/svc recording start|stop|status`，开始和结束都会记入 `/svc audit`。录音监听会保存语音，请仅在全部参与者知情且服务器规则允许时使用。
+
+模组对本机 OBS 插件提供唯一的 PCM 总线：`PlayerVoice`。它通过命名管道 `simplevoicechat-audiobuses` 输出 16 kHz 单声道 PCM16 帧；OBS 只需添加一个 `SimpleVoiceChat Player Voice` 源，麦克风、游戏、桌面音频和音乐仍由 OBS 自己分别采集。多人分轨开始时会发送会话标记；插件会回传实际 OBS 录制 UTC 起点，模组将其写入会话目录的 `obs-sync.json` 并合并到 `session.json` 的 `obsAlignment`。该偏移量可自动将 OBS 视频零点与逐玩家 WAV 零点对齐，OBS 音轨数量不会随玩家数量增长。
+
 ### 常用命令
 
 客户端：
@@ -134,8 +143,8 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 - Transmit to proximity, the selected custom channel, or both.
 - Open, password-protected, and hidden channels with Owner, Moderator, Member, Listen Only, and Banned roles.
 - Push-to-talk, voice activation, input/output device selection, gain, noise gate, per-player volume, and local mute.
-- Opus is preferred; the server may optionally allow ADPCM fallback. Compatible V3 builds are required on both sides.
-- In-memory microphone testing and explicit input-only or input-and-output WAV recording.
+- Opus is preferred; the server may optionally allow ADPCM fallback. Compatible V4 builds are required on both sides.
+- In-memory microphone testing plus input-only, input-and-output, and administrator multi-track WAV recording.
 - Optional client-side speech-to-chat, disabled by default and never processed by the SimpleVoiceChat server.
 - Optional runtime VS Director integration without a hard dependency or a separate integration mod.
 
@@ -143,7 +152,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 
 1. Stop the Vintage Story client and server.
 2. Remove older SimpleVoiceChat archives from each `Mods` directory so that only one version can load.
-3. Place `SimpleVoiceChat_1.0.14.zip` unchanged in the client and server `Mods` directories. Do not extract the mod archive.
+3. Place `SimpleVoiceChat-v1.1.0.zip` unchanged in the client and server `Mods` directories. Do not extract the mod archive.
 4. Start the server and client. Press `'` to open the first-run setup wizard.
 
 SimpleVoiceChat does not require Simple Voice Chat, VS Director, or `SimpleVoiceChat_VSDirectorIntegration`. The base voice features work with this package alone.
@@ -158,6 +167,7 @@ SimpleVoiceChat does not require Simple Voice Chat, VS Director, or `SimpleVoice
 | Mute the local microphone | `Ctrl + -` |
 | Deafen / restore all received voice | `;` |
 | Open settings | `'` |
+| Open multi-track settings (administrator) | `Ctrl + F9` |
 | Speech-to-chat | Hold `V`, then release to transcribe and send |
 
 Bindings can be changed in Vintage Story's game key settings. The Speech Recognition page does not provide a separate key-binding field.
@@ -190,13 +200,19 @@ Cloud API keys are stored as plain text in the local `SimpleVoiceChat.Client.jso
 
 Channels use stable `channel-number` IDs. Ordinary players may create channels by default, although the server can disable that permission. Channel owners manage members, roles, locking, and lifecycle; server administrators use the `controlserver` privilege for server-wide actions.
 
-The home-page recording button saves input-only or input-and-output WAV files. On Windows, the default location is:
+The home-page recording button offers Input Only, Input+Output, and Multi-track speakers. Input+Output stores the microphone and received playback as separate stereo channels. On Windows, the default location is:
 
 ```text
 %APPDATA%\VintagestoryData\ModData\SimpleVoiceChat
 ```
 
 Microphone Test is memory-only and neither creates a file nor sends audio to the server.
+
+### OBS and Multi-track Recording
+
+Multi-track recording is administrator-only: enable `EnableRecorderCapture: true` in `SimpleVoiceChat.Server.json` and use a client with the `controlserver` privilege. Press `Ctrl + F9`, wait for three UDP clock samples, then start recording. The server creates a shared start point 1.5 seconds in the future on its monotonic clock. Every speaker receives a separately padded mono WAV in one session directory; `session.json` preserves the shared timeline and speaker identities. `/svc recording start|stop|status` provides the same server-managed control path, and the start/stop events are retained by `/svc audit`.
+
+The OBS plugin exposes exactly one `SimpleVoiceChat Player Voice` source through the local `simplevoicechat-audiobuses` pipe. Add it once, then keep microphone, game audio, desktop audio, and music on their normal OBS sources and tracks. When a multi-track session starts, the plugin returns the actual OBS recording UTC start; the mod writes `obs-sync.json` and `session.json.obsAlignment`. The `wavZeroMinusObsStartMilliseconds` value is the automatic WAV-to-video alignment offset and does not consume an OBS track per player.
 
 ### Optional VS Director Integration
 

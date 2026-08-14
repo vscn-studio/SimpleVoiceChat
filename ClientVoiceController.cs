@@ -18,6 +18,7 @@ public sealed class ClientVoiceController : IDisposable
     private const int SettingsMemberPageSize = 8;
     private const int MaxCaptureFramesPerTick = 8;
     private const long VoiceProbeIntervalMilliseconds = 2_000;
+    private const long RecorderClockProbeIntervalMilliseconds = 250;
     private const long VoiceProbeTimeoutMilliseconds = 6_000;
     private const long CaptureRecoveryIntervalMilliseconds = 10_000;
 
@@ -29,7 +30,10 @@ public sealed class ClientVoiceController : IDisposable
     private OpenAlCaptureService? capture;
     private OpenAlPlaybackService? playback;
     private DirectorVoiceIntegration? directorVoice;
+    private RecorderVoiceCapture? recorderVoice;
     private VoiceRecordingService? recording;
+    private readonly AudioBusMixer audioBuses = new();
+    private AudioBusPipeBridge? audioBusPipeBridge;
     private VoiceTestRecordingBuffer? microphoneTest;
     private VoiceHud? hud;
     private VoiceSettingsDialog? settingsDialog;
@@ -62,6 +66,12 @@ public sealed class ClientVoiceController : IDisposable
     private bool captureWarningShown;
     private bool localMutePressed;
     private bool globalMutePressed;
+    private bool recorderListenerActive;
+    private bool recorderListenerRequested;
+    private readonly ServerClockEstimator recorderClock = new();
+    private RecorderVoiceTimelinePacket? pendingRecorderTimeline;
+    private bool multiTrackStartPending;
+    private bool multiTrackSettingsPressed;
     private bool settingsPressed;
     private bool toggleTalkPressed;
     private bool voiceHandshakeAccepted;
@@ -120,6 +130,35 @@ public sealed class ClientVoiceController : IDisposable
     internal bool VoiceActivationEnabled => config.PreferVoiceActivation;
     internal float MicrophoneRms => lastMicRms;
     internal bool OcclusionForced => serverConfig.ForceImmersive;
+    internal AudioBusMixer AudioBuses => audioBuses;
+
+    internal bool RecorderListenerActive => recorderListenerActive;
+    internal bool IsMultiTrackStartPending => multiTrackStartPending;
+    internal bool CanStartMultiTrackRecording => hasServerControl && serverConfig.EnableRecorderCapture && recorderClock.IsStable;
+    internal int RecorderClockSampleCount => recorderClock.SampleCount;
+    internal double RecorderClockRoundTripMilliseconds => recorderClock.BestRoundTripMilliseconds;
+
+    internal void SetRecorderListener(bool active)
+    {
+        if (!hasServerControl || controlChannel?.Connected != true)
+        {
+            recorderListenerRequested = false;
+            recorderListenerActive = false;
+            return;
+        }
+
+        recorderListenerRequested = active;
+        if (!active)
+        {
+            recorderListenerActive = false;
+        }
+        controlChannel.SendPacket(new RecorderVoiceListenerPacket
+        {
+            Active = active,
+            ClientTimestampMilliseconds = MonotonicClock.NowMilliseconds,
+            SessionId = recording?.ActiveMultiTrackSession?.SessionId ?? string.Empty
+        });
+    }
 
     public void Start()
     {
@@ -143,8 +182,26 @@ public sealed class ClientVoiceController : IDisposable
         playback = new OpenAlPlaybackService(capi, config);
         VoiceRecordingService recordingService = recording;
         playback.OutputFrameCaptured = samples => recordingService.AppendOutput(samples);
+        playback.RemoteFrameCaptured = (entityId, uid, samples, timestamp) => CaptureMultiTrackRemote(recordingService, entityId, uid, samples, timestamp);
+        playback.RemoteFrameCaptured += (_, _, samples, timestamp) =>
+        {
+            if (!recorderListenerActive)
+            {
+                audioBuses.SubmitAt(AudioBusKind.PlayerVoice, samples, ToLocalAudioTimestamp(timestamp));
+            }
+        };
+        audioBusPipeBridge = new AudioBusPipeBridge(audioBuses);
         playback.Initialize();
         directorVoice = new DirectorVoiceIntegration(capi);
+        recorderVoice = new RecorderVoiceCapture();
+        recorderVoice.FrameCaptured = (uid, name, samples, timestamp) =>
+        {
+            if (recording?.Mode == VoiceRecordingMode.MultiTrack)
+            {
+                recording.AppendRemote(uid, name, samples, timestamp);
+            }
+            audioBuses.SubmitAt(AudioBusKind.PlayerVoice, samples, ToLocalAudioTimestamp(timestamp));
+        };
 
         hud = new VoiceHud(capi, BuildHudSnapshot, ShouldShowHud);
         capi.Gui.RegisterDialog(hud);
@@ -183,6 +240,8 @@ public sealed class ClientVoiceController : IDisposable
             .RegisterMessageType<ChannelMemberPagePacket>()
             .RegisterMessageType<TalkerStateDeltaPacket>()
             .RegisterMessageType<DirectorVoiceListenerUpdatePacket>()
+            .RegisterMessageType<RecorderVoiceListenerPacket>()
+            .RegisterMessageType<RecorderVoiceTimelinePacket>()
             .RegisterMessageType<VoiceFeedbackPacket>()
             .RegisterMessageType<VoiceDiagnosticsPacket>()
             .SetMessageHandler<ServerVoiceConfigPacket>(OnServerConfig)
@@ -192,16 +251,19 @@ public sealed class ClientVoiceController : IDisposable
             .SetMessageHandler<ChannelMemberPagePacket>(OnChannelMemberPage)
             .SetMessageHandler<TalkerStateDeltaPacket>(OnTalkerStateDelta)
             .SetMessageHandler<VoiceFeedbackPacket>(OnVoiceFeedback)
-            .SetMessageHandler<VoiceDiagnosticsPacket>(OnVoiceDiagnostics);
+            .SetMessageHandler<VoiceDiagnosticsPacket>(OnVoiceDiagnostics)
+            .SetMessageHandler<RecorderVoiceTimelinePacket>(OnRecorderVoiceTimelinePacket);
 
         voiceChannel = capi.Network.RegisterUdpChannel(VoiceConstants.VoiceChannelName)
             .RegisterMessageType<VoiceFrameV3Packet>()
             .RegisterMessageType<VoiceRelayFrameV3Packet>()
             .RegisterMessageType<DirectorVoiceRelayFrameV3Packet>()
+            .RegisterMessageType<RecorderVoiceRelayFrameV3Packet>()
             .RegisterMessageType<VoicePingPacket>()
             .RegisterMessageType<VoicePongPacket>()
             .SetMessageHandler<VoiceRelayFrameV3Packet>(OnVoiceRelayFrameV3)
             .SetMessageHandler<DirectorVoiceRelayFrameV3Packet>(OnDirectorVoiceRelayFrameV3)
+            .SetMessageHandler<RecorderVoiceRelayFrameV3Packet>(OnRecorderVoiceRelayFrameV3)
             .SetMessageHandler<VoicePongPacket>(OnVoicePong);
     }
 
@@ -214,6 +276,7 @@ public sealed class ClientVoiceController : IDisposable
         capi.Input.RegisterHotKey(VoiceConstants.LocalMuteHotKey, SVCLang.Get("hotkey-local-mute"), GlKeys.Minus, HotkeyType.GUIOrOtherControls, ctrlPressed: true);
         capi.Input.RegisterHotKey(VoiceConstants.GlobalMuteHotKey, SVCLang.Get("hotkey-global-mute"), GlKeys.Semicolon, HotkeyType.CharacterControls);
         capi.Input.RegisterHotKey(VoiceConstants.SettingsHotKey, SVCLang.Get("hotkey-settings"), GlKeys.Quote, HotkeyType.GUIOrOtherControls);
+        capi.Input.RegisterHotKey(VoiceConstants.MultiTrackSettingsHotKey, SVCLang.Get("hotkey-multitrack-settings"), GlKeys.F9, HotkeyType.GUIOrOtherControls, ctrlPressed: true);
         capi.Input.RegisterHotKey(VoiceConstants.SpeechRecognitionHotKey, SVCLang.Get("hotkey-speech-recognition"), GlKeys.V, HotkeyType.CharacterControls);
 
         capi.Input.SetHotKeyHandler(VoiceConstants.ModeCycleHotKey, _ =>
@@ -293,6 +356,23 @@ public sealed class ClientVoiceController : IDisposable
             }
             return true;
         });
+        capi.Input.SetHotKeyHandler(VoiceConstants.MultiTrackSettingsHotKey, _ =>
+        {
+            if (!lifecycle.IsStarted || multiTrackSettingsPressed)
+            {
+                return false;
+            }
+
+            multiTrackSettingsPressed = true;
+            if (!hasServerControl || !serverConfig.EnableRecorderCapture)
+            {
+                capi.ShowChatMessage(SVCLang.Get("chat-multitrack-admin-only"));
+                return true;
+            }
+
+            settingsDialog?.OpenMultiTrackRecordingOverlay();
+            return true;
+        });
     }
 
     private void OnKeyUp(KeyEvent e)
@@ -319,6 +399,11 @@ public sealed class ClientVoiceController : IDisposable
         if (e.KeyCode == GetHotkeyCode(VoiceConstants.SettingsHotKey, GlKeys.Quote))
         {
             settingsPressed = false;
+        }
+
+        if (e.KeyCode == GetHotkeyCode(VoiceConstants.MultiTrackSettingsHotKey, GlKeys.F9))
+        {
+            multiTrackSettingsPressed = false;
         }
     }
 
@@ -538,6 +623,12 @@ public sealed class ClientVoiceController : IDisposable
             return;
         }
         serverConfig = packet;
+        if (!serverConfig.EnableRecorderCapture && (recorderListenerActive || recorderListenerRequested || multiTrackStartPending))
+        {
+            multiTrackStartPending = false;
+            pendingRecorderTimeline = null;
+            SetRecorderListener(false);
+        }
         ActivateCurrentServerProfile(packet.ServerInstanceId);
         if (serverConfig.ForceImmersive)
         {
@@ -558,9 +649,9 @@ public sealed class ClientVoiceController : IDisposable
         controlChannel.SendPacket(new VoiceHelloPacket
         {
             ProtocolVersion = VoiceProtocol.CurrentVersion,
-            ModVersion = "1.0.2",
+            ModVersion = "1.1.0",
             SupportedCodecs = new[] { VoiceProtocol.CodecOpus, VoiceProtocol.CodecImaAdpcm },
-            Capabilities = (int)(VoiceCapability.ProtocolV3
+            Capabilities = (int)(VoiceCapability.ProtocolV4
                 | VoiceCapability.ChannelDeltas
                 | VoiceCapability.ChannelMemberPaging
                 | VoiceCapability.AdaptiveJitter
@@ -590,6 +681,11 @@ public sealed class ClientVoiceController : IDisposable
         negotiatedCodec = packet.Codec;
         hasServerControl = voiceHandshakeAccepted && packet.HasServerControl;
         voiceProbeTracker.Reset();
+        recorderClock.Reset();
+        recorderListenerActive = false;
+        recorderListenerRequested = false;
+        pendingRecorderTimeline = null;
+        multiTrackStartPending = false;
         lastVoiceProbeSentMs = 0;
         voiceEncoder?.Dispose();
         voiceEncoder = voiceHandshakeAccepted ? VoiceCodecFactory.CreateEncoder(negotiatedCodec, packet.Bitrate) : null;
@@ -801,6 +897,16 @@ public sealed class ClientVoiceController : IDisposable
 
         if (voiceProbeTracker.MarkReply(packet.Nonce, capi.World.ElapsedMilliseconds))
         {
+            recorderClock.AddSample(
+                packet.ClientSendTimestampMilliseconds,
+                packet.ServerTimestampMilliseconds,
+                MonotonicClock.NowMilliseconds);
+            if (multiTrackStartPending && !recorderListenerRequested && recorderClock.IsStable)
+            {
+                SetRecorderListener(true);
+                capi.ShowChatMessage(SVCLang.Get("chat-multitrack-waiting-anchor"));
+            }
+            TryStartPendingMultiTrackSession();
             hud?.Refresh();
         }
     }
@@ -1292,7 +1398,30 @@ public sealed class ClientVoiceController : IDisposable
             return false;
         }
 
-        if (!recording.Start(mode, out string error))
+        if (mode == VoiceRecordingMode.MultiTrack)
+        {
+            if (!hasServerControl || !serverConfig.EnableRecorderCapture)
+            {
+                capi.ShowChatMessage(SVCLang.Get("chat-multitrack-admin-only"));
+                return false;
+            }
+
+            if (!recorderClock.IsStable)
+            {
+                multiTrackStartPending = true;
+                capi.ShowChatMessage(SVCLang.Get("chat-multitrack-syncing"));
+                settingsDialog?.RefreshConfiguration();
+                return true;
+            }
+
+            multiTrackStartPending = true;
+            SetRecorderListener(true);
+            capi.ShowChatMessage(SVCLang.Get("chat-multitrack-waiting-anchor"));
+            settingsDialog?.RefreshConfiguration();
+            return true;
+        }
+
+        if (!recording.Start(mode, MonotonicClock.NowMilliseconds, out string error))
         {
             capi.ShowChatMessage(SVCLang.Get("chat-recording-failed", error));
             return false;
@@ -1302,18 +1431,43 @@ public sealed class ClientVoiceController : IDisposable
         settingsDialog?.RefreshConfiguration();
         capi.ShowChatMessage(SVCLang.Get("chat-recording-started", mode == VoiceRecordingMode.InputOnly
             ? SVCLang.Get("recording-mode-input")
-            : SVCLang.Get("recording-mode-input-output")));
+                : SVCLang.Get("recording-mode-input-output")));
         return true;
+    }
+
+    private void CaptureMultiTrackRemote(VoiceRecordingService recordingService, long entityId, string uid, short[] samples, long timestamp)
+    {
+        if (recordingService.Mode != VoiceRecordingMode.MultiTrack || recorderListenerActive)
+        {
+            return;
+        }
+
+        IPlayer? player = capi.World.AllOnlinePlayers.FirstOrDefault(candidate => candidate.Entity?.EntityId == entityId);
+        if (player != null || !string.IsNullOrWhiteSpace(uid))
+        {
+            recordingService.AppendRemote(
+                string.IsNullOrWhiteSpace(uid) ? player!.PlayerUID : uid,
+                player?.PlayerName ?? uid,
+                samples,
+                timestamp);
+        }
     }
 
     internal bool StopRecordingFromSettings()
     {
-        if (recording == null || !recording.IsRecording)
+        if (recording == null || (!recording.IsRecording && !multiTrackStartPending))
         {
             return false;
         }
 
-        bool saved = recording.Stop(out string path);
+        bool wasMultiTrack = recording.Mode == VoiceRecordingMode.MultiTrack || multiTrackStartPending;
+        multiTrackStartPending = false;
+        pendingRecorderTimeline = null;
+        string path = string.Empty;
+        bool saved = recording.IsRecording && recording.Stop(
+            wasMultiTrack ? recorderClock.ToServerTime(MonotonicClock.NowMilliseconds) : MonotonicClock.NowMilliseconds,
+            out path);
+        SetRecorderListener(false);
         if (!lastPressed)
         {
             capture?.Stop();
@@ -1340,7 +1494,7 @@ public sealed class ClientVoiceController : IDisposable
             return true;
         }
 
-        if (!HasRecording || playback == null)
+        if (!HasRecording || recording?.CanPlayLastRecording != true || playback == null)
         {
             capi.ShowChatMessage(SVCLang.Get("chat-recording-playback-empty"));
             return false;
@@ -1792,6 +1946,84 @@ public sealed class ClientVoiceController : IDisposable
         directorVoice?.Enqueue(packet);
     }
 
+    private void OnRecorderVoiceRelayFrameV3(RecorderVoiceRelayFrameV3Packet packet)
+    {
+        if (!lifecycle.IsStarted
+            || !recorderListenerActive
+            || !voiceHandshakeAccepted
+            || !VoiceProtocolValidation.IsValidRecorderRelayShape(packet))
+        {
+            return;
+        }
+
+        recorderVoice?.Enqueue(packet, MonotonicClock.NowMilliseconds);
+    }
+
+    private void OnRecorderVoiceTimelinePacket(RecorderVoiceTimelinePacket packet)
+    {
+        if (!packet.Active)
+        {
+            if (recording?.Mode == VoiceRecordingMode.MultiTrack)
+            {
+                recording.Stop(packet.EndServerTimestampMilliseconds, out _);
+            }
+            recorderListenerActive = false;
+            recorderListenerRequested = false;
+            multiTrackStartPending = false;
+            pendingRecorderTimeline = null;
+            settingsDialog?.RefreshConfiguration();
+            hud?.Refresh();
+            return;
+        }
+
+        if (!hasServerControl)
+        {
+            return;
+        }
+
+        recorderListenerRequested = true;
+        multiTrackStartPending = true;
+        pendingRecorderTimeline = packet;
+        TryStartPendingMultiTrackSession();
+    }
+
+    private void TryStartPendingMultiTrackSession()
+    {
+        if (pendingRecorderTimeline is not RecorderVoiceTimelinePacket timeline
+            || recording == null
+            || recording.IsRecording
+            || !multiTrackStartPending
+            || !recorderClock.IsStable)
+        {
+            return;
+        }
+
+        if (!recording.Start(
+                VoiceRecordingMode.MultiTrack,
+                timeline.SessionId,
+                timeline.StartServerTimestampMilliseconds,
+                timeline.StartUtcUnixMilliseconds,
+                recorderClock.OffsetMilliseconds,
+                out string error))
+        {
+            multiTrackStartPending = false;
+            SetRecorderListener(false);
+            capi.ShowChatMessage(SVCLang.Get("chat-recording-failed", error));
+            return;
+        }
+
+        recorderListenerActive = true;
+        pendingRecorderTimeline = null;
+        capture?.Start();
+        if (recording.ActiveMultiTrackSession is AudioRecordingSession session)
+        {
+            audioBuses.NotifyRecordingSessionStarted(session);
+        }
+        capi.ShowChatMessage(SVCLang.Get("chat-recording-started", SVCLang.Get("recording-mode-multitrack")));
+        settingsDialog?.RefreshConfiguration();
+        hud?.Refresh();
+    }
+
     private void OnFastTick(float dt)
     {
         if (!lifecycle.IsStarted)
@@ -1968,7 +2200,9 @@ public sealed class ClientVoiceController : IDisposable
         }
         if (!voiceHandshakeAccepted
             || voiceChannel?.Connected != true
-            || now - lastVoiceProbeSentMs < VoiceProbeIntervalMilliseconds)
+            || now - lastVoiceProbeSentMs < (!recorderClock.IsStable
+                ? RecorderClockProbeIntervalMilliseconds
+                : VoiceProbeIntervalMilliseconds))
         {
             return;
         }
@@ -1983,7 +2217,8 @@ public sealed class ClientVoiceController : IDisposable
         voiceChannel.SendPacket(new VoicePingPacket
         {
             ConnectionEpoch = connectionEpoch,
-            Nonce = nonce
+            Nonce = nonce,
+            ClientSendTimestampMilliseconds = MonotonicClock.NowMilliseconds
         });
     }
 
@@ -2022,6 +2257,8 @@ public sealed class ClientVoiceController : IDisposable
         }
         playback?.Update(serverConfig);
         directorVoice?.Update(serverConfig);
+        recorderVoice?.Update(MonotonicClock.NowMilliseconds);
+        audioBuses.Flush(MonotonicClock.NowMilliseconds);
         bool playbackActive = playback?.IsRecordingPlaybackActive == true;
         if (playbackActive != lastRecordingPlaybackActive)
         {
@@ -2172,6 +2409,14 @@ public sealed class ClientVoiceController : IDisposable
         {
             VoiceRecordingService recordingService = recording;
             playback.OutputFrameCaptured = samples => recordingService.AppendOutput(samples);
+            playback.RemoteFrameCaptured = (entityId, uid, samples, timestamp) => CaptureMultiTrackRemote(recordingService, entityId, uid, samples, timestamp);
+            playback.RemoteFrameCaptured += (_, _, samples, timestamp) =>
+            {
+                if (!recorderListenerActive)
+                {
+                    audioBuses.SubmitAt(AudioBusKind.PlayerVoice, samples, ToLocalAudioTimestamp(timestamp));
+                }
+            };
         }
         playback.Initialize();
         lastRecordingPlaybackActive = false;
@@ -2215,7 +2460,10 @@ public sealed class ClientVoiceController : IDisposable
             }
             if (recording?.IsRecording == true)
             {
-                recording.AppendInput(captureBuffer);
+                long recordingTimestamp = recording.Mode == VoiceRecordingMode.MultiTrack
+                    ? recorderClock.ToServerTime(captureTimestampMilliseconds)
+                    : captureTimestampMilliseconds;
+                recording.AppendInput(captureBuffer, recordingTimestamp);
             }
             if (microphoneTest?.IsRecording == true)
             {
@@ -2261,7 +2509,7 @@ public sealed class ClientVoiceController : IDisposable
                 continue;
             }
 
-            SendCapturedFrame(payload, stats);
+            SendCapturedFrame(payload, stats, captureTimestampMilliseconds);
         }
 
         if (hadFrame)
@@ -2276,7 +2524,7 @@ public sealed class ClientVoiceController : IDisposable
         return !requireVoiceActivation || voiceActivationTriggered;
     }
 
-    private void SendCapturedFrame(byte[] payload, VoiceFrameStats stats)
+    private void SendCapturedFrame(byte[] payload, VoiceFrameStats stats, long captureTimestampMilliseconds)
     {
         if (!voiceHandshakeAccepted || voiceEncoder == null)
         {
@@ -2300,8 +2548,18 @@ public sealed class ClientVoiceController : IDisposable
             ChannelId = config.SelectedChannelId,
             Level = (byte)Math.Clamp((int)Math.Round(stats.Rms * byte.MaxValue), 0, byte.MaxValue),
             Flags = 0,
-            Payload = payload
+            Payload = payload,
+            CaptureServerTimestampMilliseconds = recorderClock.IsStable
+                ? recorderClock.ToServerTime(captureTimestampMilliseconds)
+                : 0L
         });
+    }
+
+    private long ToLocalAudioTimestamp(long serverTimestampMilliseconds)
+    {
+        return serverTimestampMilliseconds > 0 && recorderClock.HasEstimate
+            ? recorderClock.ToClientTime(serverTimestampMilliseconds)
+            : MonotonicClock.NowMilliseconds;
     }
 
     private void StopSpeechRecognition()
@@ -2510,6 +2768,14 @@ public sealed class ClientVoiceController : IDisposable
 
     private string BuildHudStatus(bool captureAvailable)
     {
+        if (multiTrackStartPending)
+        {
+            return SVCLang.Get("hud-status-multitrack-syncing");
+        }
+        if (recording?.Mode == VoiceRecordingMode.MultiTrack)
+        {
+            return SVCLang.Get("hud-status-multitrack-recording");
+        }
         if (!serverConfig.Enabled || globalMuted || !voiceHandshakeAccepted)
         {
             return SVCLang.Get("hud-status-voice-off");
@@ -2647,6 +2913,12 @@ public sealed class ClientVoiceController : IDisposable
             capi.Event.UnregisterGameTickListener(fastTickListenerId);
             fastTickListenerId = 0;
         }
+        if (recorderListenerRequested && controlChannel?.Connected == true)
+        {
+            controlChannel.SendPacket(new RecorderVoiceListenerPacket { Active = false });
+        }
+        recorderListenerActive = false;
+        recorderListenerRequested = false;
         if (playbackTickListenerId != 0)
         {
             capi.Event.UnregisterGameTickListener(playbackTickListenerId);
@@ -2665,8 +2937,13 @@ public sealed class ClientVoiceController : IDisposable
         playback = null;
         directorVoice?.Dispose();
         directorVoice = null;
+        recorderVoice?.Dispose();
+        recorderVoice = null;
         recording?.Dispose();
         recording = null;
+        audioBusPipeBridge?.Dispose();
+        audioBusPipeBridge = null;
+        audioBuses.Dispose();
         microphoneTest = null;
         hud?.TryClose();
         hud?.Dispose();

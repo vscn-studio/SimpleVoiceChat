@@ -23,7 +23,8 @@ public static class PacketMapper
             MaxStreamsPerListener = config.MaxStreamsPerListener,
             AllowContinuousTalk = config.AllowContinuousTalk,
             ServerInstanceId = config.ServerInstanceId,
-            EnableDirectorProximityCapture = config.EnableDirectorProximityCapture
+            EnableDirectorProximityCapture = config.EnableDirectorProximityCapture,
+            EnableRecorderCapture = config.EnableRecorderCapture
         };
     }
 }

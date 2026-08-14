@@ -16,7 +16,8 @@ public static class VoiceProtocolValidation
             || packet.Flags != 0
             || packet.Payload == null
             || packet.Payload.Length == 0
-            || packet.Payload.Length > Math.Clamp(maximumPayloadBytes, 1, VoiceConstants.MaxUdpPacketBytes))
+            || packet.Payload.Length > Math.Clamp(maximumPayloadBytes, 1, VoiceConstants.MaxUdpPacketBytes)
+            || packet.CaptureServerTimestampMilliseconds < 0)
         {
             return false;
         }
@@ -87,6 +88,30 @@ public static class VoiceProtocolValidation
             || packet.ReferenceDistance < 0.1f
             || packet.ReferenceDistance > packet.MaxDistance
             || packet.RolloffFactor is < 0f or > 32f)
+        {
+            return false;
+        }
+
+        return packet.Codec switch
+        {
+            VoiceProtocol.CodecImaAdpcm => packet.Payload.Length == VoiceProtocol.ImaAdpcmPayloadBytes,
+            VoiceProtocol.CodecOpus => true,
+            _ => false
+        };
+    }
+
+    public static bool IsValidRecorderRelayShape(RecorderVoiceRelayFrameV3Packet? packet)
+    {
+        if (packet == null
+            || string.IsNullOrWhiteSpace(packet.SpeakerUid)
+            || packet.SpeakerUid.Length > VoiceProtocol.MaxControlStringLength
+            || packet.SpeakerName is null
+            || packet.SpeakerName.Length > VoiceProtocol.MaxControlStringLength
+            || packet.SpeakerEntityId <= 0
+            || packet.SessionId <= 0
+            || packet.Payload == null
+            || packet.Payload.Length == 0
+            || packet.Payload.Length > 200)
         {
             return false;
         }
