@@ -31,7 +31,7 @@ public sealed class ListenerEgressBudget
 
     public void SetLimit(int kilobitsPerSecond)
     {
-        bytesPerSecond = Math.Clamp(kilobitsPerSecond, 64, 2_048) * 1000d / 8d;
+        bytesPerSecond = Math.Clamp(kilobitsPerSecond, 64, 8_192) * 1000d / 8d;
         budgetsByListener.Clear();
     }
 

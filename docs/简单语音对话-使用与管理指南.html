@@ -124,8 +124,18 @@
 <p>主页底部的录音图标才是实际录音功能。点击后选择“仅输入”“输入+输出”或“多人分轨”，再次点击录音图标停止并保存 WAV 文件。录音保存到：</p>
 <p><code>AppData\Roaming\VintagestoryData\ModData\SimpleVoiceChat</code></p>
 <p>“麦克风测试”与实际录音不同：设置页测试音频只保存在内存中，用于开始/停止录制和播放检查，不生成文件。</p>
-<p>多人分轨要求录音者拥有 <code>controlserver</code>，且 <code>SimpleVoiceChat.Server.json</code> 启用 <code>EnableRecorderCapture: true</code>。按 <code>Ctrl + F9</code> 后等待三个 UDP 时钟样本，再开始录制；服务器会创建一个未来的统一单调时钟锚点。每名玩家在同一会话目录中各有一条补齐静音的单声道 WAV，<code>session.json</code> 保存共同时间线。管理员也可使用 <code>/svc recording start|stop|status</code>，开始和结束均会写入 <code>/svc audit</code>。</p>
-<p>可选 OBS 插件只增加一个 <code>SimpleVoiceChat Player Voice</code> 源；麦克风、游戏、桌面和音乐仍使用 OBS 原有音源与轨道。插件会回传 OBS 实际开始录制的 UTC 时间，会话目录写入 <code>obs-sync.json</code> 并更新 <code>session.json.obsAlignment</code>；<code>wavZeroMinusObsStartMilliseconds</code> 即 WAV 与视频的自动对齐偏移。插件工作流分别生成 Windows x64、Linux x86_64、macOS x86_64 与 macOS arm64 包；Windows 包放入 <code>obs-plugins/64bit</code>，Linux 包保留 OBS 的 <code>lib/.../obs-plugins</code> 目录，macOS 包包含完整的 <code>PlugIns/simplevoicechat_obs.plugin</code> bundle，放入 <code>OBS.app/Contents/PlugIns</code>。</p>
+<h3>多人分轨服务器配置</h3>
+<p>先启动服务器一次，让 Vintage Story 在服务器数据目录的 <code>ModConfig/SimpleVoiceChat.Server.json</code> 生成配置。在现有 JSON 中修改下列字段；不要创建重复字段，也不要用片段覆盖其他服务器设置：</p>
+<pre><code>{
+  "EnableRecorderCapture": true,
+  "MaxRecorderListeners": 1,
+  "MaxRecorderEgressKbps": 4096
+}</code></pre>
+<p>保存后，由拥有 <code>controlserver</code> 的管理员执行 <code>/svc reload</code>，或重启服务器。<code>EnableRecorderCapture</code> 必须为 <code>true</code>；<code>MaxRecorderListeners</code> 是录制管理员接收端上限，不是说话玩家数量，当前单管理员会话保持 <code>1</code>；<code>MaxRecorderEgressKbps</code> 是每个录制管理员接收压缩语音转发的带宽预算，不限制 WAV 文件大小，允许范围为 <code>512-8192</code>，默认且推荐 <code>4096</code>。它仍受服务器总出口 <code>MaxServerEgressKbps</code> 限制。</p>
+<p>多人分轨要求录音者拥有 <code>controlserver</code>。按 <code>Ctrl + F9</code> 后等待三个 UDP 时钟样本，再开始录制；服务器会创建一个未来的统一单调时钟锚点。每名玩家在同一会话目录中各有一条补齐静音的单声道 WAV，<code>session.json</code> 保存共同时间线。管理员也可使用 <code>/svc recording start|stop|status</code>，开始和结束均会写入 <code>/svc audit</code>。</p>
+<h3>OBS 安装与自动对齐</h3>
+<p>将对应系统的插件包解压到 OBS 安装根目录：Windows 使用 <code>obs-plugins/64bit/simplevoicechat_obs.dll</code>；Linux 保留包内 <code>lib/.../obs-plugins</code> 路径；macOS 将 <code>PlugIns/simplevoicechat_obs.plugin</code> 放入 <code>OBS.app/Contents/PlugIns</code>。重启 OBS 后，在“来源”中添加一次 <code>SimpleVoiceChat Player Voice</code>，再在高级音频属性中把它分配到所需 OBS 音轨。麦克风、游戏、桌面和音乐继续使用 OBS 原有音源。</p>
+<p>多人分轨会话与 OBS 录制必须有重叠时间，启动先后不限。插件会回传 OBS 实际开始录制的 UTC 时间，会话目录写入 <code>obs-sync.json</code> 并更新 <code>session.json.obsAlignment</code>。剪辑导入逐玩家 WAV 时使用 <code>wavZeroMinusObsStartMilliseconds</code>，公式为 <code>obsTimeMs = wavTimeMs + wavZeroMinusObsStartMilliseconds</code>；该设计不会随着玩家数量占用更多 OBS 音轨。</p>
 
 <h2>九、管理员页面与权限</h2>
 <p>拥有 Vintage Story <code>controlserver</code> 权限并完成语音握手的玩家，主页顶部会看到“管理员”按钮。管理员页面不创建频道入口；频道创建仍通过频道页底部“创建频道”，或使用服务器命令。管理员可以查看全部频道和玩家，并执行服务端再次鉴权的管理操作：</p>

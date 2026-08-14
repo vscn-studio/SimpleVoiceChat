@@ -11,11 +11,19 @@ the mod for editing and subtitles, so the OBS track count never grows with the
 number of speakers.
 
 The GitHub Actions workflow builds packages for Windows x64, Linux x86_64,
-macOS x86_64, and macOS arm64 against OBS Studio 32.0.4. The Windows package
-contains `obs-plugins/64bit/simplevoicechat_obs.dll`; the Linux package
-preserves OBS's installed `lib/.../obs-plugins` path; macOS packages contain
-the complete `PlugIns/simplevoicechat_obs.plugin` bundle for
-`OBS.app/Contents/PlugIns`.
+macOS x86_64, and macOS arm64 against OBS Studio 32.0.4. Install the
+platform-matched package by extracting it into the OBS installation root:
+
+- Windows: `obs-plugins/64bit/simplevoicechat_obs.dll`
+- Linux: retain the packaged `lib/.../obs-plugins` path under the OBS prefix
+- macOS: copy `PlugIns/simplevoicechat_obs.plugin` to `OBS.app/Contents/PlugIns`
+
+Restart OBS. Add `SimpleVoiceChat Player Voice` once from the Sources menu,
+then assign it to the desired recording track in Advanced Audio Properties.
+The plugin and the game client must run as the same local user because their
+IPC endpoint is local. The multi-track session and OBS recording must overlap;
+either may start first. `obs-sync.json` in the session directory records the
+alignment formula used when importing individual WAV files into an editor.
 
 Build with an OBS Studio development environment, for example:
 

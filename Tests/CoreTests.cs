@@ -332,6 +332,14 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void RecorderEgressBudgetHonorsFourMegabitLimit()
+    {
+        ListenerEgressBudget budget = new(4_096);
+
+        Assert.True(budget.HasCapacity("recorder", 400_000, 0));
+    }
+
+    [Fact]
     public void AudioBusMixerEmitsPlayerVoiceWithMixedSamples()
     {
         using AudioBusMixer mixer = new(4);

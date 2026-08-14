@@ -107,9 +107,27 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 
 录音模式提供“仅输入”、“输入+输出”和“多人分轨”。“多人分轨”会在 `%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat` 创建一个会话目录：每位说话人各有一个单声道 WAV，`session.json` 包含共同起始时钟、采样率、长度和玩家身份。所有 WAV 都补齐到同一时间轴，可直接分别调音和生成按玩家颜色区分的字幕。
 
-多人分轨是管理员专用功能：录音客户端必须拥有 `controlserver`，且服务器的 `SimpleVoiceChat.Server.json` 必须显式设置 `EnableRecorderCapture: true`。按 `Ctrl + F9` 打开多人分轨设置；该页面会先收集至少三个 UDP 往返时钟样本，再由服务器创建一个 1.5 秒后的统一起点。每个逐玩家 WAV 都按该服务器单调时钟写入，早于起点的帧会被丢弃、空档会补静音，因此网络到达顺序不会造成轨道位移。管理员也可使用 `/svc recording start|stop|status`，开始和结束都会记入 `/svc audit`。录音监听会保存语音，请仅在全部参与者知情且服务器规则允许时使用。
+#### 服务器端启用
 
-模组对本机 OBS 插件提供唯一的 PCM 总线：`PlayerVoice`。Windows 通过命名管道 `simplevoicechat-audiobuses` 输出 16 kHz 单声道 PCM16 帧；Linux 和 macOS 使用同名协议的本地 Unix socket，优先位于 `XDG_RUNTIME_DIR`，否则使用当前临时目录。OBS 只需添加一个 `SimpleVoiceChat Player Voice` 源，麦克风、游戏、桌面音频和音乐仍由 OBS 自己分别采集。多人分轨开始时会发送会话标记；插件会回传实际 OBS 录制 UTC 起点，模组将其写入会话目录的 `obs-sync.json` 并合并到 `session.json` 的 `obsAlignment`。该偏移量可自动将 OBS 视频零点与逐玩家 WAV 零点对齐，OBS 音轨数量不会随玩家数量增长。OBS 插件工作流会生成 Windows x64、Linux x86_64、macOS x86_64 和 macOS arm64 的独立安装包。
+先启动服务器一次，让 Vintage Story 生成配置文件；在服务器数据目录的 `ModConfig/SimpleVoiceChat.Server.json` 中修改现有字段。不要创建第二个同名字段，也不要用下面的片段覆盖其他服务器设置：
+
+```json
+{
+  "EnableRecorderCapture": true,
+  "MaxRecorderListeners": 1,
+  "MaxRecorderEgressKbps": 4096
+}
+```
+
+保存后，以拥有 `controlserver` 的管理员执行 `/svc reload`，或重启服务器。`EnableRecorderCapture` 必须为 `true`，否则客户端不会显示可用的多人分轨录制。`MaxRecorderListeners` 是可接收录制转发的管理员监听端上限，不是参与说话的玩家数量；当前一场录制只允许一名管理员拥有会话，因此保持 `1`。`MaxRecorderEgressKbps` 是每个录制管理员接收压缩语音转发的带宽预算，不限制 WAV 文件大小；允许范围为 `512-8192`，默认且推荐 `4096`。它还受到服务器总出口 `MaxServerEgressKbps` 的共同约束。
+
+多人分轨是管理员专用功能：录音客户端必须拥有 `controlserver`。按 `Ctrl + F9` 打开多人分轨设置；该页面会先收集至少三个 UDP 往返时钟样本，再由服务器创建一个 1.5 秒后的统一起点。每个逐玩家 WAV 都按该服务器单调时钟写入，早于起点的帧会被丢弃、空档会补静音，因此网络到达顺序不会造成轨道位移。管理员也可使用 `/svc recording start|stop|status`，开始和结束都会记入 `/svc audit`。录音监听会保存语音，请仅在全部参与者知情且服务器规则允许时使用。
+
+#### OBS 安装与同步
+
+解压与系统匹配的插件包到 OBS 安装根目录：Windows 会得到 `obs-plugins/64bit/simplevoicechat_obs.dll`；Linux 保留包内的 `lib/.../obs-plugins` 路径；macOS 将 `PlugIns/simplevoicechat_obs.plugin` 放入 `OBS.app/Contents/PlugIns`。重启 OBS 后，在“来源”中添加一次 `SimpleVoiceChat Player Voice`，并在高级音频属性中把它分配给所需的 OBS 音轨。麦克风、游戏、桌面音频和音乐仍由 OBS 自己分别采集。
+
+模组对本机 OBS 插件提供唯一的 PCM 总线：`PlayerVoice`。Windows 通过命名管道 `simplevoicechat-audiobuses` 输出 16 kHz 单声道 PCM16 帧；Linux 和 macOS 使用同名协议的本地 Unix socket，优先位于 `XDG_RUNTIME_DIR`，否则使用当前临时目录。多人分轨会话和 OBS 录制必须有重叠时间；二者启动先后不限。插件会回传实际 OBS 录制 UTC 起点，模组将其写入会话目录的 `obs-sync.json` 并合并到 `session.json` 的 `obsAlignment`。其中 `wavZeroMinusObsStartMilliseconds` 的公式是 `obsTimeMs = wavTimeMs + wavZeroMinusObsStartMilliseconds`，供剪辑软件导入逐玩家 WAV 时使用；OBS 音轨数量不会随玩家数量增长。OBS 插件工作流会生成 Windows x64、Linux x86_64、macOS x86_64 和 macOS arm64 的独立安装包。
 
 ### 常用命令
 
@@ -210,9 +228,27 @@ Microphone Test is memory-only and neither creates a file nor sends audio to the
 
 ### OBS and Multi-track Recording
 
-Multi-track recording is administrator-only: enable `EnableRecorderCapture: true` in `SimpleVoiceChat.Server.json` and use a client with the `controlserver` privilege. Press `Ctrl + F9`, wait for three UDP clock samples, then start recording. The server creates a shared start point 1.5 seconds in the future on its monotonic clock. Every speaker receives a separately padded mono WAV in one session directory; `session.json` preserves the shared timeline and speaker identities. `/svc recording start|stop|status` provides the same server-managed control path, and the start/stop events are retained by `/svc audit`.
+#### Enable it on the server
 
-The OBS plugin exposes exactly one `SimpleVoiceChat Player Voice` source through local IPC. Windows uses the `simplevoicechat-audiobuses` named pipe; Linux and macOS use the same-protocol Unix socket, preferring `XDG_RUNTIME_DIR` and otherwise the current temporary directory. Add the source once, then keep microphone, game audio, desktop audio, and music on their normal OBS sources and tracks. When a multi-track session starts, the plugin returns the actual OBS recording UTC start; the mod writes `obs-sync.json` and `session.json.obsAlignment`. The `wavZeroMinusObsStartMilliseconds` value is the automatic WAV-to-video alignment offset and does not consume an OBS track per player. The OBS plugin workflow publishes separate Windows x64, Linux x86_64, macOS x86_64, and macOS arm64 packages.
+Start the server once so Vintage Story creates the configuration, then edit the existing fields in `ModConfig/SimpleVoiceChat.Server.json` under the server data directory. Do not add duplicate fields or replace the server's other settings with this example:
+
+```json
+{
+  "EnableRecorderCapture": true,
+  "MaxRecorderListeners": 1,
+  "MaxRecorderEgressKbps": 4096
+}
+```
+
+Save the file, then run `/svc reload` as an administrator with `controlserver`, or restart the server. `EnableRecorderCapture` must be `true`; otherwise clients cannot start multi-track recording. `MaxRecorderListeners` limits recording-admin relay recipients, not the number of speakers. One recording session currently has one administrator owner, so leave it at `1`. `MaxRecorderEgressKbps` is the per-recording-admin budget for relayed compressed voice, not a WAV-file size limit. Its allowed range is `512-8192`; `4096` is the default and recommended value. It remains subject to the server-wide `MaxServerEgressKbps` budget.
+
+Multi-track recording is administrator-only and requires the recording client to have `controlserver`. Press `Ctrl + F9`, wait for three UDP clock samples, then start recording. The server creates a shared start point 1.5 seconds in the future on its monotonic clock. Every speaker receives a separately padded mono WAV in one session directory; `session.json` preserves the shared timeline and speaker identities. `/svc recording start|stop|status` provides the same server-managed control path, and the start/stop events are retained by `/svc audit`.
+
+#### Install and synchronize with OBS
+
+Extract the platform-matched plugin package to the OBS installation root: Windows produces `obs-plugins/64bit/simplevoicechat_obs.dll`; Linux keeps the package's `lib/.../obs-plugins` path; macOS places `PlugIns/simplevoicechat_obs.plugin` in `OBS.app/Contents/PlugIns`. Restart OBS, add `SimpleVoiceChat Player Voice` once under Sources, then assign it to the desired OBS track in Advanced Audio Properties. Keep microphone, game audio, desktop audio, and music on their normal OBS sources.
+
+The OBS plugin exposes exactly one `PlayerVoice` source through local IPC. Windows uses the `simplevoicechat-audiobuses` named pipe; Linux and macOS use the same-protocol Unix socket, preferring `XDG_RUNTIME_DIR` and otherwise the current temporary directory. The multi-track session and OBS recording must overlap, in either start order. The plugin returns the actual OBS recording UTC start; the mod writes `obs-sync.json` and `session.json.obsAlignment`. `wavZeroMinusObsStartMilliseconds` follows `obsTimeMs = wavTimeMs + wavZeroMinusObsStartMilliseconds` when importing the individual WAV files into an editor. OBS track count does not grow with the number of speakers. The OBS plugin workflow publishes separate Windows x64, Linux x86_64, macOS x86_64, and macOS arm64 packages.
 
 ### Optional VS Director Integration
 
