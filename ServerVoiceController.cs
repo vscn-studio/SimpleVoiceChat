@@ -104,13 +104,16 @@ public sealed class ServerVoiceController : IDisposable
             .RegisterMessageType<RecorderVoiceTimelinePacket>()
             .RegisterMessageType<VoiceFeedbackPacket>()
             .RegisterMessageType<VoiceDiagnosticsPacket>()
+            .RegisterMessageType<VoicePingPacket>()
+            .RegisterMessageType<VoicePongPacket>()
             .SetMessageHandler<ClientVoiceStatePacket>(OnClientState)
             .SetMessageHandler<MutePlayerPacket>(OnMutePlayer)
             .SetMessageHandler<AdminVoiceControlPacket>(OnAdminVoiceControl)
             .SetMessageHandler<VoiceHelloPacket>(OnVoiceHello)
             .SetMessageHandler<DirectorVoiceListenerUpdatePacket>(OnDirectorVoiceListenerUpdate)
             .SetMessageHandler<RecorderVoiceListenerPacket>(OnRecorderVoiceListenerUpdate)
-            .SetMessageHandler<ChannelCommandPacket>(OnChannelCommand);
+            .SetMessageHandler<ChannelCommandPacket>(OnChannelCommand)
+            .SetMessageHandler<VoicePingPacket>(OnControlVoicePing);
 
         voiceChannel = sapi.Network.RegisterUdpChannel(VoiceConstants.VoiceChannelName)
             .RegisterMessageType<VoiceFrameV3Packet>()
@@ -825,9 +828,26 @@ public sealed class ServerVoiceController : IDisposable
 
     private void OnVoicePing(IServerPlayer player, VoicePingPacket packet)
     {
+        if (TryCreateVoicePong(player, packet, out VoicePongPacket pong))
+        {
+            voiceChannel?.SendPacket(pong, player);
+        }
+    }
+
+    private void OnControlVoicePing(IServerPlayer player, VoicePingPacket packet)
+    {
+        if (TryCreateVoicePong(player, packet, out VoicePongPacket pong))
+        {
+            controlChannel?.SendPacket(pong, player);
+        }
+    }
+
+    private bool TryCreateVoicePong(IServerPlayer player, VoicePingPacket packet, out VoicePongPacket pong)
+    {
+        pong = null!;
         if (!lifecycle.IsStarted)
         {
-            return;
+            return false;
         }
         long now = sapi.World.ElapsedMilliseconds;
         if (packet.Nonce <= 0
@@ -835,16 +855,17 @@ public sealed class ServerVoiceController : IDisposable
             || packet.ConnectionEpoch != session.ConnectionEpoch
             || !session.PingRate.TryConsume(1, now))
         {
-            return;
+            return false;
         }
 
-        voiceChannel?.SendPacket(new VoicePongPacket
+        pong = new VoicePongPacket
         {
             ConnectionEpoch = session.ConnectionEpoch,
             Nonce = packet.Nonce,
             ClientSendTimestampMilliseconds = packet.ClientSendTimestampMilliseconds,
             ServerTimestampMilliseconds = MonotonicClock.NowMilliseconds
-        }, player);
+        };
+        return true;
     }
 
     private void OnDirectorVoiceListenerUpdate(

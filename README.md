@@ -123,7 +123,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 
 多人分轨是管理员专用功能：录音客户端必须拥有 `controlserver`。按 `Ctrl + F9` 会直接打开多人分轨设置，即使主设置页原本关闭；等待至少三个 UDP 往返时钟样本后点击“开始录制”。开始后窗口保持打开，状态会变为“正在按服务器时间锚点录制逐玩家音轨”，同一位置会显示“停止录制”按钮。服务器随后创建一个 1.5 秒后的统一起点。每个逐玩家 WAV 都按该服务器单调时钟写入，早于起点的帧会被丢弃、空档会补静音，因此网络到达顺序不会造成轨道位移。管理员也可使用 `/svc recording start|stop|status`，开始和结束都会记入 `/svc audit`。录音监听会保存语音，请仅在全部参与者知情且服务器规则允许时使用。
 
-单人游戏也可测试该流程：单人世界的内置服务器同样需要上述配置，成功的会话只会写入 `local.wav`，因为此时没有远端玩家。多人游戏中，让每位玩家在录制状态出现后说一句话，停止录制后才会出现 `<玩家UID>.wav`、`session.core.json` 和 `session.json`。未进入“录制逐玩家音轨”状态，或录制期间没有任何语音样本时，不会创建 `multitrack-*` 目录。OBS 的 `SimpleVoiceChat Player Voice` 只负责录下混合的玩家语音和回传 OBS 时间点，不会自行启动多人分轨，也不会写出玩家 WAV。
+单人游戏也可测试该流程：单人世界的内置服务器同样需要上述配置，成功的会话只会写入 `local.wav`，因为此时没有远端玩家。单人模式的 Vintage Story UDP 端点可能是虚拟连接；若一秒内未收到 UDP 时钟回包，模组会自动改用可靠控制通道完成同样的三次时钟采样。多人游戏中，让每位玩家在录制状态出现后说一句话，停止录制后才会出现 `<玩家UID>.wav`、`session.core.json` 和 `session.json`。未进入“录制逐玩家音轨”状态，或录制期间没有任何语音样本时，不会创建 `multitrack-*` 目录。OBS 的 `SimpleVoiceChat Player Voice` 只负责录下混合的玩家语音和回传 OBS 时间点，不会自行启动多人分轨，也不会写出玩家 WAV。
 
 #### OBS 安装与同步
 
@@ -246,7 +246,7 @@ Save the file, then run `/svc reload` as an administrator with `controlserver`, 
 
 Multi-track recording is administrator-only and requires the recording client to have `controlserver`. `Ctrl + F9` opens the multi-track panel even when the main settings page is closed. Wait for three UDP clock samples, then start recording. The panel remains open while synchronization and recording run, shows the active recording status, and provides the Stop recording button. The server creates a shared start point 1.5 seconds in the future on its monotonic clock. Every speaker receives a separately padded mono WAV in one session directory; `session.json` preserves the shared timeline and speaker identities. `/svc recording start|stop|status` provides the same server-managed control path, and the start/stop events are retained by `/svc audit`.
 
-Single-player worlds can test the same workflow because their integrated server uses the same configuration. A successful single-player session produces only `local.wav`; remote-player WAV files require another player to send voice after the recording status becomes active. The `multitrack-*` directory, `session.core.json`, and `session.json` are written only after audio arrives and recording stops. OBS `SimpleVoiceChat Player Voice` records one mixed player-voice source and returns an OBS timing marker; it neither starts a multi-track session nor writes individual player WAV files.
+Single-player worlds can test the same workflow because their integrated server uses the same configuration. A successful single-player session produces only `local.wav`; remote-player WAV files require another player to send voice after the recording status becomes active. Vintage Story may use a virtual UDP endpoint for single-player worlds; if it does not reply to a clock probe within one second, the mod automatically completes the same three clock samples through the reliable control channel. The `multitrack-*` directory, `session.core.json`, and `session.json` are written only after audio arrives and recording stops. OBS `SimpleVoiceChat Player Voice` records one mixed player-voice source and returns an OBS timing marker; it neither starts a multi-track session nor writes individual player WAV files.
 
 #### Install and synchronize with OBS
 

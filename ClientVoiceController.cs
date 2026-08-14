@@ -19,6 +19,7 @@ public sealed class ClientVoiceController : IDisposable
     private const int MaxCaptureFramesPerTick = 8;
     private const long VoiceProbeIntervalMilliseconds = 2_000;
     private const long RecorderClockProbeIntervalMilliseconds = 250;
+    private const long RecorderClockControlFallbackDelayMilliseconds = 1_000;
     private const long VoiceProbeTimeoutMilliseconds = 6_000;
     private const long CaptureRecoveryIntervalMilliseconds = 10_000;
 
@@ -42,6 +43,7 @@ public sealed class ClientVoiceController : IDisposable
     private readonly short[] captureBuffer = new short[VoiceConstants.SamplesPerFrame];
     private readonly VoiceCapturePreprocessor capturePreprocessor = new();
     private readonly VoiceProbeTracker voiceProbeTracker = new();
+    private readonly VoiceProbeTracker recorderClockControlProbeTracker = new();
     private ServerVoiceConfigPacket serverConfig = new()
     {
         Enabled = true,
@@ -99,6 +101,7 @@ public sealed class ClientVoiceController : IDisposable
     private int nextSessionId = 1;
     private int nextVoiceProbeNonce = 1;
     private long lastVoiceProbeSentMs;
+    private long lastRecorderClockControlProbeSentMs;
     private long voiceHandshakeAcceptedMs;
     private long lastCaptureRecoveryAttemptMs;
     private long transmitBlockedUntilMs;
@@ -244,6 +247,8 @@ public sealed class ClientVoiceController : IDisposable
             .RegisterMessageType<RecorderVoiceTimelinePacket>()
             .RegisterMessageType<VoiceFeedbackPacket>()
             .RegisterMessageType<VoiceDiagnosticsPacket>()
+            .RegisterMessageType<VoicePingPacket>()
+            .RegisterMessageType<VoicePongPacket>()
             .SetMessageHandler<ServerVoiceConfigPacket>(OnServerConfig)
             .SetMessageHandler<VoiceWelcomePacket>(OnVoiceWelcome)
             .SetMessageHandler<ChannelSnapshotPacket>(OnChannelSnapshot)
@@ -252,7 +257,8 @@ public sealed class ClientVoiceController : IDisposable
             .SetMessageHandler<TalkerStateDeltaPacket>(OnTalkerStateDelta)
             .SetMessageHandler<VoiceFeedbackPacket>(OnVoiceFeedback)
             .SetMessageHandler<VoiceDiagnosticsPacket>(OnVoiceDiagnostics)
-            .SetMessageHandler<RecorderVoiceTimelinePacket>(OnRecorderVoiceTimelinePacket);
+            .SetMessageHandler<RecorderVoiceTimelinePacket>(OnRecorderVoiceTimelinePacket)
+            .SetMessageHandler<VoicePongPacket>(OnControlVoicePong);
 
         voiceChannel = capi.Network.RegisterUdpChannel(VoiceConstants.VoiceChannelName)
             .RegisterMessageType<VoiceFrameV3Packet>()
@@ -681,12 +687,14 @@ public sealed class ClientVoiceController : IDisposable
         negotiatedCodec = packet.Codec;
         hasServerControl = voiceHandshakeAccepted && packet.HasServerControl;
         voiceProbeTracker.Reset();
+        recorderClockControlProbeTracker.Reset();
         recorderClock.Reset();
         recorderListenerActive = false;
         recorderListenerRequested = false;
         pendingRecorderTimeline = null;
         multiTrackStartPending = false;
         lastVoiceProbeSentMs = 0;
+        lastRecorderClockControlProbeSentMs = 0;
         voiceEncoder?.Dispose();
         voiceEncoder = voiceHandshakeAccepted ? VoiceCodecFactory.CreateEncoder(negotiatedCodec, packet.Bitrate) : null;
         if (!voiceHandshakeAccepted && !string.IsNullOrWhiteSpace(packet.Message))
@@ -887,6 +895,16 @@ public sealed class ClientVoiceController : IDisposable
 
     private void OnVoicePong(VoicePongPacket packet)
     {
+        AcceptRecorderClockSample(packet, voiceProbeTracker);
+    }
+
+    private void OnControlVoicePong(VoicePongPacket packet)
+    {
+        AcceptRecorderClockSample(packet, recorderClockControlProbeTracker);
+    }
+
+    private void AcceptRecorderClockSample(VoicePongPacket packet, VoiceProbeTracker probeTracker)
+    {
         if (!lifecycle.IsStarted
             || !voiceHandshakeAccepted
             || packet.ConnectionEpoch != connectionEpoch
@@ -895,7 +913,7 @@ public sealed class ClientVoiceController : IDisposable
             return;
         }
 
-        if (voiceProbeTracker.MarkReply(packet.Nonce, capi.World.ElapsedMilliseconds))
+        if (probeTracker.MarkReply(packet.Nonce, capi.World.ElapsedMilliseconds))
         {
             recorderClock.AddSample(
                 packet.ClientSendTimestampMilliseconds,
@@ -2166,6 +2184,7 @@ public sealed class ClientVoiceController : IDisposable
             SendHello();
         }
         UpdateVoiceProbe();
+        UpdateRecorderClockControlFallback();
         directorVoice?.UpdateListener(controlChannel);
         TryRecoverCapture();
         UpdatePendingInviteTimeout();
@@ -2552,6 +2571,35 @@ public sealed class ClientVoiceController : IDisposable
             CaptureServerTimestampMilliseconds = recorderClock.IsStable
                 ? recorderClock.ToServerTime(captureTimestampMilliseconds)
                 : 0L
+        });
+    }
+
+    private void UpdateRecorderClockControlFallback()
+    {
+        long now = capi.World.ElapsedMilliseconds;
+        recorderClockControlProbeTracker.Expire(now, VoiceProbeTimeoutMilliseconds);
+        if (recorderClock.IsStable
+            || !voiceHandshakeAccepted
+            || controlChannel?.Connected != true
+            || voiceProbeTracker.IsResponsive(now, VoiceProbeTimeoutMilliseconds)
+            || now - voiceHandshakeAcceptedMs < RecorderClockControlFallbackDelayMilliseconds
+            || now - lastRecorderClockControlProbeSentMs < RecorderClockProbeIntervalMilliseconds)
+        {
+            return;
+        }
+
+        if (nextVoiceProbeNonce == int.MaxValue)
+        {
+            nextVoiceProbeNonce = 1;
+        }
+        int nonce = nextVoiceProbeNonce++;
+        lastRecorderClockControlProbeSentMs = now;
+        recorderClockControlProbeTracker.MarkSent(nonce, now);
+        controlChannel.SendPacket(new VoicePingPacket
+        {
+            ConnectionEpoch = connectionEpoch,
+            Nonce = nonce,
+            ClientSendTimestampMilliseconds = MonotonicClock.NowMilliseconds
         });
     }
 
