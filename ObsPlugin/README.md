@@ -10,6 +10,12 @@ and music as their own OBS sources. Individual player WAV files are written by
 the mod for editing and subtitles, so the OBS track count never grows with the
 number of speakers.
 
+OBS cannot start the mod's multi-track session. Open the mod's multi-track
+panel with `Ctrl + F9`, wait for the active recording status, and stop it
+in-game to finalize the individual WAV files. For a single-player test, the
+completed session contains only `local.wav`; remote player WAV files appear
+only when other players speak during an active multi-track session.
+
 The GitHub Actions workflow builds packages for Windows x64, Linux x86_64,
 macOS x86_64, and macOS arm64 against OBS Studio 32.0.4. Install the
 platform-matched package by extracting it into the OBS installation root:

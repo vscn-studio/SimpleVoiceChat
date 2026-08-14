@@ -1064,7 +1064,16 @@ public sealed class VoiceSettingsDialog : GuiDialog
         bool started = controller.StartRecordingFromSettings(mode);
         if (started)
         {
-            CloseOverlay();
+            if (mode == VoiceRecordingMode.MultiTrack)
+            {
+                // Keep the dedicated panel visible while clock synchronization and recording run.
+                overlay = VoiceSettingsOverlay.MultiTrackRecording;
+                QueueCompose();
+            }
+            else
+            {
+                CloseOverlay();
+            }
         }
         return started;
     }
@@ -1567,6 +1576,11 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     internal void OpenMultiTrackRecordingOverlay()
     {
+        if (!IsOpened())
+        {
+            TryOpen();
+        }
+
         if (overlay != VoiceSettingsOverlay.None)
         {
             return;
