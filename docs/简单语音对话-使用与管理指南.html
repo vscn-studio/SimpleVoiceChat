@@ -8,7 +8,7 @@
 <tr><td style="padding: 6px 8px; vertical-align: top;">游戏版本</td><td style="padding: 6px 8px; vertical-align: top;">Vintage Story <code>1.22.3</code></td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">语音协议</td><td style="padding: 6px 8px; vertical-align: top;">协议 V4；Opus 为首选编码，是否允许 ADPCM 回退由服务器配置决定</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">安装范围</td><td style="padding: 6px 8px; vertical-align: top;">客户端和服务器均需安装同一版本</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">文档核对日期</td><td style="padding: 6px 8px; vertical-align: top;"><code>2026-08-13</code></td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">文档核对日期</td><td style="padding: 6px 8px; vertical-align: top;"><code>2026-08-14</code></td></tr>
 </tbody></table>
 <p>SimpleVoiceChat 提供接近度语音、耳语/正常/大喊模式、自定义频道、玩家本地音量与静音、录音、音频处理、权限管理和容量保护。服务器只负责鉴权、路由和转发，客户端负责采集、播放及本地设置。</p>
 <div style="border-left: 4px solid #e03e2d; padding: 8px 12px; margin: 12px 0; background-color: #fff5f5;"><p style="color: #e03e2d; margin: 0;"><strong>重要：</strong> 当前发行包使用协议 V4。客户端与服务器版本不一致时，语音握手可能被拒绝；请不要同时放置多个 SimpleVoiceChat 压缩包。</p></div>
@@ -120,8 +120,8 @@
 
 <h2>八、玩家列表与实际录音</h2>
 <p>频道页底部的玩家图标打开玩家列表。玩家列表每页最多显示 6 名玩家，支持按玩家名称或 ID 搜索，搜索必须点击“搜索”，右侧“取消”恢复全部玩家。每名玩家卡片包含本地音量滑块、静音图标和设置齿轮；设置和静音不会改变服务器权限。</p>
-<p>主页底部的录音图标才是实际录音功能。点击后选择“仅输入”“输入+输出”或“多人分轨”，再次点击录音图标停止并保存 WAV 文件。录音保存到：</p>
-<p><code>AppData\Roaming\VintagestoryData\ModData\SimpleVoiceChat</code></p>
+<p>主页底部的录音图标才是实际录音功能。点击后选择“仅输入”“输入+输出”或“多人分轨”。“仅输入”保存本机麦克风；“输入+输出”保存双声道 WAV，左声道为麦克风、右声道为本机播放；“多人分轨”不生成一条混合 WAV，而是在一个会话目录中按说话人生成独立 WAV。普通录音再次点击主页录音图标即可停止；多人分轨开始后，推荐使用多人分轨面板中的“停止录音”按钮结束。</p>
+<p>Windows 客户端默认保存到 <code>%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat</code>（实际展开通常是 <code>C:\Users\&lt;用户名&gt;\AppData\Roaming\VintagestoryData\ModData\SimpleVoiceChat</code>）。Linux/macOS 使用 Vintage Story 客户端数据目录下的同名 <code>ModData/SimpleVoiceChat</code> 路径。</p>
 <p>“麦克风测试”与实际录音不同：设置页测试音频只保存在内存中，用于开始/停止录制和播放检查，不生成文件。</p>
 <h3>多人分轨服务器配置</h3>
 <p>先启动服务器一次，让 Vintage Story 在服务器数据目录的 <code>ModConfig/SimpleVoiceChat.Server.json</code> 生成配置。在现有 JSON 中修改下列字段；不要创建重复字段，也不要用片段覆盖其他服务器设置：</p>
@@ -131,13 +131,31 @@
   "MaxRecorderEgressKbps": 4096
 }</code></pre>
 <p>保存后，由拥有 <code>controlserver</code> 的管理员执行 <code>/svc reload</code>，或重启服务器。<code>EnableRecorderCapture</code> 必须为 <code>true</code>；<code>MaxRecorderListeners</code> 是录制管理员接收端上限，不是说话玩家数量，当前单管理员会话保持 <code>1</code>；<code>MaxRecorderEgressKbps</code> 是每个录制管理员接收压缩语音转发的带宽预算，不限制 WAV 文件大小，允许范围为 <code>512-8192</code>，默认且推荐 <code>4096</code>。它仍受服务器总出口 <code>MaxServerEgressKbps</code> 限制。</p>
-<p>多人分轨要求录音者拥有 <code>controlserver</code>。<code>Ctrl + F9</code> 会直接打开多人分轨面板，即使主设置页关闭；等待三个 UDP 时钟样本后开始录制。面板会保留在屏幕上，显示同步或录制状态，并在开始后提供“停止录制”按钮。服务器会创建一个未来的统一单调时钟锚点。每名玩家在同一会话目录中各有一条补齐静音的单声道 WAV，<code>session.json</code> 保存共同时间线。管理员也可使用 <code>/svc recording start|stop|status</code>，开始和结束均会写入 <code>/svc audit</code>。</p>
-<p>单人游戏可测试相同流程，内置服务器使用同一配置；成功后只会写入 <code>local.wav</code>，因为没有远端玩家。单人模式的 Vintage Story 可能使用虚拟 UDP 端点；若一秒内没有 UDP 时钟回包，模组会自动通过可靠控制通道完成同样的三次时钟采样。多人时，必须在状态显示正在录制后让每名玩家说话，并点击停止录制，才会写入 <code>&lt;玩家UID&gt;.wav</code>、<code>session.core.json</code> 和 <code>session.json</code>。OBS 的 <code>SimpleVoiceChat Player Voice</code> 只录制混合玩家语音并回传时间点，不会自行启动多人分轨或生成玩家 WAV。</p>
+<p>多人分轨要求录音者拥有 <code>controlserver</code>，并且服务器配置中的 <code>EnableRecorderCapture</code> 已开启。按 <code>Ctrl + F9</code> 会直接打开多人分轨面板，即使主设置页关闭。面板先显示时钟样本计数，达到 <code>3/3</code> 后才可开始；点击“开始录制”后，服务器创建一个未来的统一单调时钟锚点，状态变为按服务器时间录制逐玩家音轨，随后才让参与者说话。录制中面板保持可见，并提供“停止录音”按钮；也可以用主页录音图标停止。每名实际产生语音的玩家在同一会话目录中各有一条补齐静音的单声道 WAV，<code>session.json</code> 保存共同时间线、采样率、时长和玩家身份。管理员也可使用 <code>/svc recording start|stop|status</code>；开始和结束均会写入 <code>/svc audit</code>。</p>
+<p>单人游戏可测试相同流程，内置服务器使用同一配置；成功后通常只会写入 <code>local.wav</code>，因为没有远端玩家。单人模式的 Vintage Story 可能使用虚拟 UDP 端点；若一秒内没有 UDP 时钟回包，模组会自动通过可靠控制通道完成同样的三次时钟采样。多人时，每名参与者必须在状态显示正在录制后实际说话；没有语音帧的玩家不会产生 WAV。停止录制后才会完成 <code>&lt;玩家UID&gt;.wav</code>、<code>session.core.json</code> 和 <code>session.json</code>。OBS 的 <code>SimpleVoiceChat Player Voice</code> 只提供一条混合玩家语音总线并回传时间点，不会自行启动多人分轨或生成玩家 WAV；玩家数量不会增加 OBS 音轨数量。</p>
 <h3>OBS 安装与自动对齐</h3>
-<p>将对应系统的插件包解压到 OBS 安装根目录：Windows 使用 <code>obs-plugins/64bit/simplevoicechat_obs.dll</code>；Linux 保留包内 <code>lib/.../obs-plugins</code> 路径；macOS 将 <code>PlugIns/simplevoicechat_obs.plugin</code> 放入 <code>OBS.app/Contents/PlugIns</code>。重启 OBS 后，在“来源”中添加一次 <code>SimpleVoiceChat Player Voice</code>，再在高级音频属性中把它分配到所需 OBS 音轨。麦克风、游戏、桌面和音乐继续使用 OBS 原有音源。</p>
-<p>多人分轨会话与 OBS 录制必须有重叠时间，启动先后不限。插件会回传 OBS 实际开始录制的 UTC 时间，会话目录写入 <code>obs-sync.json</code> 并更新 <code>session.json.obsAlignment</code>。其中 <code>wavZeroMinusObsStartMilliseconds</code> 的公式为 <code>obsTimeMs = wavTimeMs + wavZeroMinusObsStartMilliseconds</code>。</p>
-<p>停止 OBS 录制后，插件会读取 OBS 实际写出的原视频，并等待本会话的 <code>session.json</code>、<code>obs-sync.json</code> 和逐玩家 WAV 最终落盘。完成后会在视频同目录自动生成 <code>&lt;视频名&gt;-&lt;会话ID&gt;-multitrack.mkv</code> 和同名 <code>.fcpxml</code>。MKV 保留 OBS 原视频和已有音频流，并新增每位玩家一条原始 PCM 音频流；FCPXML 引用原 OBS 视频及所有 WAV，按上述精确毫秒偏移放入独立音轨。会话目录中的 <code>obs-export.json</code> 会记录 <code>waiting</code>、<code>exporting</code>、<code>completed</code> 或 <code>failed</code>、路径和错误原因；完成前请保持 OBS 打开。</p>
-<p>DaVinci Resolve 使用“文件 &gt; 导入时间线 &gt; 导入 FCPXML”，选择自动生成的 <code>.fcpxml</code>。视频和每位玩家的音轨导入后已经同步，可直接分别调音、剪辑和分配字幕颜色。MKV 用于归档或多音轨播放；Resolve 的剪辑入口应使用 FCPXML。该设计不会随着玩家数量占用更多 OBS 音轨。</p>
+<p>将对应系统的插件包解压到 OBS 安装根目录：Windows 使用 <code>obs-plugins/64bit/simplevoicechat_obs.dll</code>；Linux 保留包内 <code>lib/.../obs-plugins</code> 路径；macOS 将 <code>PlugIns/simplevoicechat_obs.plugin</code> 放入 <code>OBS.app/Contents/PlugIns</code>。重启 OBS 后，在“来源”中添加一次 <code>SimpleVoiceChat Player Voice</code>，再在“高级音频属性”中把它分配到所需 OBS 音轨。插件和游戏客户端必须由同一操作系统用户运行，否则本地命名管道/Unix socket 无法通信。麦克风、游戏、桌面和音乐继续使用 OBS 原有音源；插件只提供一条混合的玩家语音总线，逐玩家分离由模组 WAV 完成。</p>
+<p>多人分轨会话与 OBS 录制必须有重叠时间，启动先后不限。实际操作建议：先在游戏中让面板达到 <code>3/3</code>，然后开始 OBS 录制，再点击游戏面板的“开始录制”并等待状态变为正在录制；结束时先点击游戏面板的“停止录音”，再停止 OBS。这样 OBS 视频完整覆盖玩家 WAV，WAV 也会在 OBS 停止事件触发导出前完成。若先停止 OBS，插件仍会等待最多 10 分钟，直到本会话的 WAV 和同步文件落盘。插件会回传 OBS 实际开始录制的 UTC 时间，会话目录写入 <code>obs-sync.json</code> 并更新 <code>session.json.obsAlignment</code>。其中 <code>wavZeroMinusObsStartMilliseconds</code> 的公式为 <code>obsTimeMs = wavTimeMs + wavZeroMinusObsStartMilliseconds</code>。</p>
+<p>停止 OBS 录制后，插件会读取 OBS 实际写出的原视频，并等待本会话的 <code>session.json</code>、<code>obs-sync.json</code> 和逐玩家 WAV 最终落盘。完成后会在视频同目录自动生成 <code>&lt;视频名&gt;-&lt;会话ID&gt;-multitrack.mkv</code> 和同名 <code>.fcpxml</code>；文件已存在时会追加数字后缀。MKV 保留 OBS 原视频和已有音频流，并新增每位玩家一条未经处理的 PCM 音频流；FCPXML 引用原 OBS 视频及所有 WAV，按同步文件中的偏移放入独立音轨。会话目录中的 <code>obs-export.json</code> 会记录 <code>waiting</code>、<code>exporting</code>、<code>completed</code> 或 <code>failed</code>、输入/输出路径、偏移和错误原因；只有状态为 <code>completed</code> 才表示两个导出文件都已写完。导出完成前请保持 OBS 打开。</p>
+<h3>导出文件与 DaVinci Resolve 剪辑</h3>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">文件</th><th style="padding: 6px 8px; text-align: left;">用途</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>&lt;视频名&gt;.mp4</code></td><td style="padding: 6px 8px; vertical-align: top;">OBS 原始视频；FCPXML 会引用它。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>...-multitrack.fcpxml</code></td><td style="padding: 6px 8px; vertical-align: top;">时间线描述文件，不包含媒体本身；是 Resolve 的推荐导入入口。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>...-multitrack.mkv</code></td><td style="padding: 6px 8px; vertical-align: top;">包含 OBS 视频、原有 OBS 音频和新增逐玩家 PCM 音轨的归档/检查文件。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>&lt;会话目录&gt;\&lt;玩家UID&gt;.wav</code></td><td style="padding: 6px 8px; vertical-align: top;">逐玩家原始单声道语音；单人测试通常为 <code>local.wav</code>。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>obs-sync.json</code></td><td style="padding: 6px 8px; vertical-align: top;">OBS 实际录制起点与服务器/WAV 起点的时间锚点；不需要导入 Resolve。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>session.json</code> / <code>session.core.json</code></td><td style="padding: 6px 8px; vertical-align: top;">会话时间线、采样率、时长、玩家身份及 OBS 对齐信息；用于导出诊断。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>obs-export.json</code></td><td style="padding: 6px 8px; vertical-align: top;">导出状态、输入/输出路径、偏移和错误信息；状态为 <code>completed</code> 才可剪辑。</td></tr>
+</tbody></table>
+<ol>
+<li>确认会话目录中的 <code>obs-export.json</code> 为 <code>"status": "completed"</code>。不要只看到文件名就开始剪辑。</li>
+<li>打开 DaVinci Resolve，新建或打开项目，选择“文件 &gt; 导入时间线 &gt; 导入 FCPXML”，选中自动生成的 <code>.fcpxml</code>。不要先把 WAV 手工拖到时间线。</li>
+<li>进入 Edit 页面检查：OBS 视频在 <code>V1</code>，每位玩家位于独立音频轨。FCPXML 已将音频放在正确的时间位置，例如 <code>wavZeroMinusObsStartMilliseconds = 5880</code> 表示 WAV 时间零点位于视频的 <code>5.880</code> 秒处。</li>
+<li>如果导入后同时看到 OBS 的混合麦克风/桌面语音轨和逐玩家轨，先将混合语音轨静音或删除，避免同一声音播放两次；游戏音效、环境、天气和音乐等 OBS 音源可按需要保留。</li>
+<li>在逐玩家音轨上分别完成音量、均衡、降噪、压缩和剪辑。字幕不会由本流程自动生成，也不会自动设置字幕颜色；创建字幕后，可根据音轨名称或玩家 UID 手动为不同说话人设置颜色。</li>
+</ol>
+<p>FCPXML 使用 MP4 和 WAV 的绝对路径引用，因此不要在导入前移动、重命名或删除 MP4、FCPXML 或会话目录。若必须移动，在 Resolve 的 Media Pool 中使用“Relink Selected Clips”指向新的视频目录和会话目录。<code>wavZeroMinusObsStartMilliseconds</code> 为正数时表示 WAV 零点位于 OBS 录制开始之后，为负数时表示 WAV 零点位于 OBS 录制开始之前；两种情况都由 FCPXML 自动处理。MKV 可用于归档或支持多音轨的播放器检查，但 Resolve 剪辑应优先使用 FCPXML。</p>
+<p>新建 Resolve 项目时，建议先确认时间线帧率与 OBS 源一致（例如 OBS 为 60 FPS 就使用 60 FPS）。FCPXML 会从源视频读取帧率，音频同步本身基于毫秒和采样位置，不依赖“每秒多少帧”的人工换算；已有 24 FPS 项目可能锁定时间线设置，遇到帧率提示时请新建匹配帧率的时间线。</p>
 
 <h2>九、管理员页面与权限</h2>
 <p>拥有 Vintage Story <code>controlserver</code> 权限并完成语音握手的玩家，主页顶部会看到“管理员”按钮。管理员页面不创建频道入口；频道创建仍通过频道页底部“创建频道”，或使用服务器命令。管理员可以查看全部频道和玩家，并执行服务端再次鉴权的管理操作：</p>
@@ -193,7 +211,7 @@
 <tr><td style="padding: 6px 8px; vertical-align: top;">服务器频道总数</td><td style="padding: 6px 8px; vertical-align: top;">默认最多 256 个，配置边界为 16-512。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">主要配置</td><td style="padding: 6px 8px; vertical-align: top;"><code>SimpleVoiceChat.Server.json</code>、<code>SimpleVoiceChat.Client.json</code>。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">管理审计</td><td style="padding: 6px 8px; vertical-align: top;"><code>SimpleVoiceChat.Audit.json</code>；记录管理操作，不记录语音内容。</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">实际录音</td><td style="padding: 6px 8px; vertical-align: top;"><code>AppData\Roaming\VintagestoryData\ModData\SimpleVoiceChat</code>；仅客户端本地保存。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">实际录音</td><td style="padding: 6px 8px; vertical-align: top;"><code>%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat</code>（Windows）；仅客户端本地保存。</td></tr>
 </tbody></table>
 <p>服务端转发压缩语音帧，不常态解码、混音或保存语音载荷。本模组不提供端到端加密，传输保护依赖 Vintage Story 底层连接。实际录音属于玩家主动操作，应按服务器和活动隐私规则管理。</p>
 
@@ -211,6 +229,12 @@
 <tr><td style="padding: 6px 8px; vertical-align: top;">频道发言席位已满</td><td style="padding: 6px 8px; vertical-align: top;">频道同时发言人数达到上限，稍后重试；只听角色和禁言玩家不能发言。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">提示协议 V4 不兼容</td><td style="padding: 6px 8px; vertical-align: top;">客户端和服务器必须都使用兼容的协议 V4 版本；建议双方均安装 <code>1.1.0</code>，并删除旧压缩包。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">麦克风测试没有文件</td><td style="padding: 6px 8px; vertical-align: top;">这是设计行为。设置页“麦克风测试”只在内存中录制；需要保存文件时使用主页录音图标。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>Ctrl + F9</code> 没有可用的开始按钮，或一直显示 <code>0/3</code></td><td style="padding: 6px 8px; vertical-align: top;">确认已进入世界、语音握手完成、录音客户端拥有 <code>controlserver</code>，并且当前服务器的 <code>EnableRecorderCapture</code> 为 <code>true</code>；修改后执行 <code>/svc reload</code> 或重启服务器。单人模式等待一秒后会自动尝试可靠控制通道；仍不增长时检查客户端/服务器版本和游戏日志。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">已经添加 <code>SimpleVoiceChat Player Voice</code>，但没有逐玩家 WAV</td><td style="padding: 6px 8px; vertical-align: top;">OBS 来源只是混合监听总线。必须在游戏内启动“多人分轨”，等待状态显示正在录制，让对应玩家实际说话，再使用“停止录音”完成会话。单人测试只有 <code>local.wav</code> 是正常结果。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">没有生成 MKV/FCPXML</td><td style="padding: 6px 8px; vertical-align: top;">查看会话目录的 <code>obs-export.json</code>。确保 OBS 录制与多人分轨会话有重叠、OBS 与游戏由同一系统用户运行、原视频仍存在，并在状态变为 <code>completed</code> 前保持 OBS 打开；<code>failed</code> 时按 <code>error</code> 字段排查。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Resolve 提示 Media Offline</td><td style="padding: 6px 8px; vertical-align: top;">FCPXML 引用绝对路径。恢复原文件位置，或在 Media Pool 中使用“Relink Selected Clips”，分别指向 OBS 视频和包含逐玩家 WAV 的会话目录。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">导入后声音重复</td><td style="padding: 6px 8px; vertical-align: top;">OBS 原视频中的混合语音轨与逐玩家 WAV 同时播放。静音或删除混合语音轨，保留逐玩家轨；不要删除仍需要的游戏音效、音乐等其他音轨。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">视频属性是 60 FPS，但 Resolve 时间线显示 24 FPS</td><td style="padding: 6px 8px; vertical-align: top;">在导入前把新项目/时间线帧率设为 60 FPS，或新建匹配源视频的时间线。音频由 FCPXML 按毫秒偏移和采样位置对齐，不需要按时间尺上的帧编号手算。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Whisper 提示模型路径错误</td><td style="padding: 6px 8px; vertical-align: top;">Whisper 必须填写实际 <code>.bin</code> 模型文件。确认路径属于当前平台且游戏有读取权限。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">日志提示原生 DLL 不在模组根目录</td><td style="padding: 6px 8px; vertical-align: top;">不要手工移动 Whisper 原生库。发布包已将它放在 <code>native/</code> 下；删除手工拆出的 DLL，并重新安装完整压缩包。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">VS Director 回放或离屏没有语音</td><td style="padding: 6px 8px; vertical-align: top;">确认服务器开启 <code>EnableDirectorProximityCapture</code>、VS Director 开启对应捕获选项、导演玩家拥有 <code>controlserver</code>，并检查日志中是否存在“optional VS Director integration is unavailable”。不需要额外集成模组。</td></tr>

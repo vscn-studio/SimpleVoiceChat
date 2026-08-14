@@ -892,10 +892,10 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private void AddRecordingModeOverlay(GuiComposer composer)
     {
-        const double x = 190;
-        const double y = 190;
         const double width = 720;
         const double height = 220;
+        double x = (WindowWidth - width) / 2d;
+        double y = (WindowHeight - height) / 2d;
         AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("recording-mode-title"));
         AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "recording-mode-close");
         CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
@@ -919,10 +919,10 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private void AddMultiTrackRecordingOverlay(GuiComposer composer)
     {
-        const double x = 220;
-        const double y = 185;
         const double width = 640;
         const double height = 245;
+        double x = (WindowWidth - width) / 2d;
+        double y = (WindowHeight - height) / 2d;
         AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("multitrack-settings-title"));
         AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "multitrack-settings-close");
         CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
