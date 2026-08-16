@@ -261,11 +261,15 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
 
     private static void AddWizardButton(GuiComposer composer, string text, ActionConsumable action, ElementBounds bounds, string key, bool primary)
     {
-        composer
-            .AddStaticCustomDraw(bounds, (ctx, surface, elementBounds) => DrawButtonBackground(ctx, elementBounds, primary))
-            .AddButton(text, action, bounds,
+        composer.AddInteractiveElement(
+            new VoiceSettingsTextButton(
+                composer.Api,
+                text,
+                action,
+                bounds,
                 CairoFont.WhiteSmallText().WithFontSize(15).WithColor(new[] { 1.0, 1.0, 1.0, 1.0 }).WithOrientation(EnumTextOrientation.Center),
-                EnumButtonStyle.None, key);
+                primary),
+            key);
     }
 
     private static void ConfigureSlider(GuiComposer composer, string key, int value, int minimum, int maximum, string suffix = "")
@@ -353,14 +357,4 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
         ctx.Stroke();
     }
 
-    private static void DrawButtonBackground(Context ctx, ElementBounds bounds, bool primary)
-    {
-        bounds.CalcWorldBounds();
-        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
-        ctx.SetSourceRGBA(0.62, 0.66, 0.72, primary ? 0.36 : 0.22);
-        ctx.FillPreserve();
-        ctx.SetSourceRGBA(0.92, 0.95, 1.0, primary ? 0.95 : 0.88);
-        ctx.LineWidth = GuiElement.scaled(1);
-        ctx.Stroke();
-    }
 }

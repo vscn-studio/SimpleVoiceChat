@@ -192,6 +192,122 @@ internal static class VoiceSettingsComposerExtensions
     }
 }
 
+internal sealed class VoiceSettingsTextButton : GuiElementTextButton
+{
+    private readonly LoadedTexture normalBackground;
+    private readonly LoadedTexture pressedBackground;
+    private readonly LoadedTexture disabledBackground;
+    private readonly bool highlighted;
+    private bool pressed;
+
+    public VoiceSettingsTextButton(
+        ICoreClientAPI capi,
+        string text,
+        ActionConsumable clicked,
+        ElementBounds bounds,
+        CairoFont font,
+        bool highlighted = false)
+        : base(
+            capi,
+            text,
+            font,
+            font.Clone().WithColor(new[] { 0.02, 0.025, 0.032, 1.0 }),
+            clicked,
+            bounds,
+            EnumButtonStyle.None)
+    {
+        this.highlighted = highlighted;
+        normalBackground = new LoadedTexture(capi);
+        pressedBackground = new LoadedTexture(capi);
+        disabledBackground = new LoadedTexture(capi);
+        SetOrientation(font.Orientation);
+    }
+
+    public override void ComposeElements(Context ctxStatic, ImageSurface surfaceStatic)
+    {
+        Bounds.CalcWorldBounds();
+        ComposeBackground(normalBackground, pressedState: false, disabledState: false);
+        ComposeBackground(pressedBackground, pressedState: true, disabledState: false);
+        ComposeBackground(disabledBackground, pressedState: false, disabledState: true);
+        base.ComposeElements(ctxStatic, surfaceStatic);
+    }
+
+    private void ComposeBackground(LoadedTexture texture, bool pressedState, bool disabledState)
+    {
+        int width = Math.Max(1, Bounds.OuterWidthInt);
+        int height = Math.Max(1, Bounds.OuterHeightInt);
+        using ImageSurface surface = new(Format.Argb32, width, height);
+        using Context context = new(surface);
+        context.Rectangle(0, 0, width, height);
+        if (pressedState)
+        {
+            context.SetSourceRGBA(1.0, 1.0, 1.0, 0.98);
+        }
+        else
+        {
+            context.SetSourceRGBA(0.62, 0.66, 0.72,
+                disabledState ? 0.14 : highlighted ? 0.36 : 0.22);
+        }
+        context.FillPreserve();
+        if (pressedState)
+        {
+            context.SetSourceRGBA(0.02, 0.025, 0.032, 0.96);
+        }
+        else
+        {
+            context.SetSourceRGBA(0.92, 0.95, 1.0,
+                disabledState ? 0.42 : highlighted ? 0.95 : 0.88);
+        }
+        context.LineWidth = GuiElement.scaled(1);
+        context.Stroke();
+        GuiElement.GenerateTexture(api, surface, ref texture.TextureId);
+    }
+
+    public override void RenderInteractiveElements(float deltaTime)
+    {
+        LoadedTexture background = !Enabled
+            ? disabledBackground
+            : pressed ? pressedBackground : normalBackground;
+        api.Render.Render2DTexturePremultipliedAlpha(background.TextureId, Bounds);
+        base.RenderInteractiveElements(deltaTime);
+    }
+
+    public override void OnMouseDownOnElement(ICoreClientAPI api, MouseEvent args)
+    {
+        base.OnMouseDownOnElement(api, args);
+        if (Enabled)
+        {
+            pressed = true;
+        }
+    }
+
+    public override void OnMouseUpOnElement(ICoreClientAPI api, MouseEvent args)
+    {
+        pressed = false;
+        base.OnMouseUpOnElement(api, args);
+    }
+
+    public override void OnMouseUp(ICoreClientAPI api, MouseEvent args)
+    {
+        base.OnMouseUp(api, args);
+        pressed = false;
+    }
+
+    public override void OnFocusLost()
+    {
+        pressed = false;
+        base.OnFocusLost();
+    }
+
+    public override void Dispose()
+    {
+        normalBackground.Dispose();
+        pressedBackground.Dispose();
+        disabledBackground.Dispose();
+        base.Dispose();
+    }
+}
+
 internal sealed class VoiceSettingsLevelMeter : GuiElementControl
 {
     private readonly Func<float> level;
@@ -480,16 +596,29 @@ internal sealed class VoiceSettingsKeyBinding : GuiElementControl
         int height = Math.Max(1, Bounds.OuterHeightInt);
         using ImageSurface surface = new(Format.Argb32, width, height);
         using Context context = new(surface);
+        bool pressedState = capturing && Enabled;
         context.Rectangle(0, 0, width, height);
-        context.SetSourceRGBA(0.15, 0.18, 0.22, Enabled ? 0.98 : 0.45);
+        context.SetSourceRGBA(
+            pressedState ? 1.0 : 0.15,
+            pressedState ? 1.0 : 0.18,
+            pressedState ? 1.0 : 0.22,
+            Enabled ? 0.98 : 0.45);
         context.FillPreserve();
-        context.SetSourceRGBA(0.84, 0.89, 0.96, capturing ? 0.98 : 0.72);
+        context.SetSourceRGBA(
+            pressedState ? 0.02 : 0.84,
+            pressedState ? 0.025 : 0.89,
+            pressedState ? 0.032 : 0.96,
+            Enabled ? pressedState ? 0.96 : 0.72 : 0.35);
         context.LineWidth = GuiElement.scaled(1);
         context.Stroke();
         font.SetupContext(context);
         string text = capturing ? SVCLang.Get("setup-key-binding-waiting") : value;
         TextExtents extents = context.TextExtents(text);
-        context.SetSourceRGBA(0.96, 0.97, 1.0, 1.0);
+        context.SetSourceRGBA(
+            pressedState ? 0.02 : 0.96,
+            pressedState ? 0.025 : 0.97,
+            pressedState ? 0.032 : 1.0,
+            1.0);
         context.MoveTo((width - extents.XAdvance) / 2d - extents.XBearing, (height - context.FontExtents.Height) / 2d + context.FontExtents.Ascent);
         context.ShowText(text);
         GuiElement.GenerateTexture(api, surface, ref texture.TextureId);
@@ -553,6 +682,12 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
     private bool expanded;
 
     public override bool Focusable => Enabled;
+
+    public bool IsExpanded => expanded;
+
+    public string? HoveredValue => hoveredIndex >= 0 && hoveredIndex < values.Length
+        ? values[hoveredIndex]
+        : null;
 
     public VoiceSettingsDropDown(
         ICoreClientAPI capi,
@@ -678,12 +813,34 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
     public override void OnFocusLost()
     {
         base.OnFocusLost();
+        Close();
+    }
+
+    public void Close()
+    {
         if (!expanded)
         {
             return;
         }
 
         expanded = false;
+        RebuildTextures();
+    }
+
+    public void RestoreExpanded(string? hoveredValue)
+    {
+        if (!Enabled || values.Length == 0)
+        {
+            return;
+        }
+
+        int restoredIndex = string.IsNullOrEmpty(hoveredValue)
+            ? selectedIndex
+            : Array.IndexOf(values, hoveredValue);
+        expanded = true;
+        hoveredIndex = restoredIndex >= 0
+            ? restoredIndex
+            : selectedIndex;
         RebuildTextures();
     }
 
@@ -734,18 +891,35 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
         int arrowWidth = Math.Max((int)GuiElement.scaled(24), width / 7);
         using ImageSurface surface = new(Format.Argb32, width, height);
         using Context context = new(surface);
-        context.SetSourceRGBA(0.18, 0.21, 0.25, Enabled ? 0.96 : 0.45);
+        bool pressedState = expanded && Enabled;
+        context.SetSourceRGBA(
+            pressedState ? 1.0 : 0.18,
+            pressedState ? 1.0 : 0.21,
+            pressedState ? 1.0 : 0.25,
+            Enabled ? pressedState ? 0.98 : 0.96 : 0.45);
         context.Rectangle(0, 0, width, height);
         context.FillPreserve();
-        context.SetSourceRGBA(0.88, 0.92, 0.98, Enabled ? 0.72 : 0.35);
+        context.SetSourceRGBA(
+            pressedState ? 0.02 : 0.88,
+            pressedState ? 0.025 : 0.92,
+            pressedState ? 0.032 : 0.98,
+            Enabled ? pressedState ? 0.96 : 0.72 : 0.35);
         context.LineWidth = GuiElement.scaled(1);
         context.Stroke();
         font.SetupContext(context);
         string text = names.Length == 0 ? string.Empty : FitText(context, names[selectedIndex], width - arrowWidth - GuiElement.scaled(16));
         FontExtents extents = context.FontExtents;
-        context.SetSourceRGBA(0.96, 0.97, 1.0, 1.0);
+        context.SetSourceRGBA(
+            pressedState ? 0.02 : 0.96,
+            pressedState ? 0.025 : 0.97,
+            pressedState ? 0.032 : 1.0,
+            1.0);
         DrawTextLineAt(context, text, GuiElement.scaled(9), (height - extents.Height) / 2d);
-        context.SetSourceRGBA(0.26, 0.30, 0.35, 0.98);
+        context.SetSourceRGBA(
+            pressedState ? 0.92 : 0.26,
+            pressedState ? 0.93 : 0.30,
+            pressedState ? 0.95 : 0.35,
+            0.98);
         context.Rectangle(width - arrowWidth, 0, arrowWidth, height);
         context.Fill();
         context.NewPath();
@@ -753,7 +927,11 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
         context.LineTo(width - arrowWidth / 2d + GuiElement.scaled(5), height / 2d - GuiElement.scaled(2));
         context.LineTo(width - arrowWidth / 2d, height / 2d + GuiElement.scaled(4));
         context.ClosePath();
-        context.SetSourceRGBA(1, 1, 1, 1);
+        context.SetSourceRGBA(
+            pressedState ? 0.02 : 1.0,
+            pressedState ? 0.025 : 1.0,
+            pressedState ? 0.032 : 1.0,
+            1.0);
         context.Fill();
         GuiElement.GenerateTexture(api, surface, ref valueTexture.TextureId);
     }
@@ -868,12 +1046,23 @@ internal sealed class VoiceSettingsIconButton : GuiElementControl
         using ImageSurface surface = new(Format.Argb32, Bounds.OuterWidthInt, Bounds.OuterHeightInt);
         using Context ctx = new(surface);
         ctx.Rectangle(0, 0, Bounds.OuterWidth, Bounds.OuterHeight);
-        ctx.SetSourceRGBA(0.62, 0.66, 0.72, Enabled ? 0.30 : 0.14);
+        bool pressedState = pressed && Enabled;
+        ctx.SetSourceRGBA(
+            pressedState ? 1.0 : 0.62,
+            pressedState ? 1.0 : 0.66,
+            pressedState ? 1.0 : 0.72,
+            Enabled ? pressedState ? 0.98 : 0.30 : 0.14);
         ctx.FillPreserve();
-        ctx.SetSourceRGBA(0.92, 0.95, 1.0, Enabled ? 0.88 : 0.42);
+        ctx.SetSourceRGBA(
+            pressedState ? 0.02 : 0.92,
+            pressedState ? 0.025 : 0.95,
+            pressedState ? 0.032 : 1.0,
+            Enabled ? pressedState ? 0.96 : 0.88 : 0.42);
         ctx.LineWidth = GuiElement.scaled(1);
         ctx.Stroke();
-        double[] iconColor = darkIcon ? new[] { 0.02, 0.025, 0.032, 1.0 } : new[] { 1.0, 1.0, 1.0, 1.0 };
+        double[] iconColor = pressedState || darkIcon
+            ? new[] { 0.02, 0.025, 0.032, 1.0 }
+            : new[] { 1.0, 1.0, 1.0, 1.0 };
         double iconAreaWidth = Bounds.OuterWidth - GuiElement.scaled(10);
         double iconAreaHeight = Bounds.OuterHeight - GuiElement.scaled(10);
         double aspect = iconName == "svc-fa-users" ? 640d / 512d : iconName == "svc-fa-xmark" ? 384d / 512d : 1d;
@@ -896,7 +1085,7 @@ internal sealed class VoiceSettingsIconButton : GuiElementControl
         {
             // Fallback for SVG loaders that do not resolve the custom asset.
             double inset = GuiElement.scaled(7);
-            ctx.SetSourceRGBA(0.96, 0.97, 1.0, 1.0);
+            ctx.SetSourceRGBA(iconColor[0], iconColor[1], iconColor[2], iconColor[3]);
             ctx.LineWidth = Math.Max(GuiElement.scaled(2), Bounds.OuterWidth * 0.09);
             ctx.LineCap = LineCap.Butt;
             ctx.MoveTo(inset, inset);
@@ -907,7 +1096,7 @@ internal sealed class VoiceSettingsIconButton : GuiElementControl
         }
         else if (darkIcon && iconName == "svc-fa-gear")
         {
-            DrawGearFallback(ctx, Bounds.OuterWidth, Bounds.OuterHeight);
+            DrawGearFallback(ctx, Bounds.OuterWidth, Bounds.OuterHeight, pressedState);
         }
         else if (darkIcon && iconName == "svc-fa-users")
         {
@@ -916,7 +1105,7 @@ internal sealed class VoiceSettingsIconButton : GuiElementControl
         GuiElement.GenerateTexture(api, surface, ref textureId);
     }
 
-    private static void DrawGearFallback(Context ctx, double width, double height)
+    private static void DrawGearFallback(Context ctx, double width, double height, bool pressedState)
     {
         double cx = width / 2d;
         double cy = height / 2d;
@@ -933,7 +1122,11 @@ internal sealed class VoiceSettingsIconButton : GuiElementControl
         ctx.Stroke();
         ctx.Arc(cx, cy, GuiElement.scaled(8), 0, Math.PI * 2);
         ctx.Fill();
-        ctx.SetSourceRGBA(0.62, 0.66, 0.72, 1.0);
+        ctx.SetSourceRGBA(
+            pressedState ? 1.0 : 0.62,
+            pressedState ? 1.0 : 0.66,
+            pressedState ? 1.0 : 0.72,
+            1.0);
         ctx.Arc(cx, cy, GuiElement.scaled(3), 0, Math.PI * 2);
         ctx.Fill();
         ctx.Restore();
@@ -972,13 +1165,22 @@ internal sealed class VoiceSettingsIconButton : GuiElementControl
         bool wasPressed = pressed;
         pressed = false;
         base.OnMouseUpOnElement(api, args);
+        Redraw();
         if (wasPressed && Enabled)
         {
             api.Gui.PlaySound("menubutton");
             clicked?.Invoke(true);
-            return;
         }
-        Redraw();
+    }
+
+    public override void OnMouseUp(ICoreClientAPI api, MouseEvent args)
+    {
+        base.OnMouseUp(api, args);
+        if (pressed)
+        {
+            pressed = false;
+            Redraw();
+        }
     }
 
     public override void OnKeyDown(ICoreClientAPI api, KeyEvent args)
@@ -1078,9 +1280,18 @@ internal sealed class VoiceSettingsImageButton : GuiElementControl
         double width = Bounds.OuterWidth;
         double height = Bounds.OuterHeight;
         ctx.Rectangle(0, 0, width, height);
-        ctx.SetSourceRGBA(0.62, 0.66, 0.72, Enabled ? 0.30 : 0.14);
+        bool pressedState = pressed && Enabled;
+        ctx.SetSourceRGBA(
+            pressedState ? 1.0 : 0.62,
+            pressedState ? 1.0 : 0.66,
+            pressedState ? 1.0 : 0.72,
+            Enabled ? pressedState ? 0.98 : 0.30 : 0.14);
         ctx.FillPreserve();
-        ctx.SetSourceRGBA(0.92, 0.95, 1.0, Enabled ? 0.88 : 0.42);
+        ctx.SetSourceRGBA(
+            pressedState ? 0.02 : 0.92,
+            pressedState ? 0.025 : 0.95,
+            pressedState ? 0.032 : 1.0,
+            Enabled ? pressedState ? 0.96 : 0.88 : 0.42);
         ctx.LineWidth = GuiElement.scaled(1);
         ctx.Stroke();
 
@@ -1092,14 +1303,26 @@ internal sealed class VoiceSettingsImageButton : GuiElementControl
             imageWidth = width - padding * 2;
             imageHeight = imageSurface.Height * imageWidth / Math.Max(1, imageSurface.Width);
         }
+        DrawImage(ctx, imageSurface, (width - imageWidth) / 2d, (height - imageHeight) / 2d,
+            imageWidth, imageHeight);
+        GuiElement.GenerateTexture(api, surface, ref textureId);
+    }
+
+    private static void DrawImage(
+        Context ctx,
+        ImageSurface image,
+        double x,
+        double y,
+        double width,
+        double height)
+    {
         ctx.Save();
-        ctx.Translate((width - imageWidth) / 2d, (height - imageHeight) / 2d);
-        ctx.Scale(imageWidth / imageSurface.Width, imageHeight / imageSurface.Height);
-        ctx.SetSourceSurface(imageSurface, 0, 0);
-        ctx.Rectangle(0, 0, imageSurface.Width, imageSurface.Height);
+        ctx.Translate(x, y);
+        ctx.Scale(width / image.Width, height / image.Height);
+        ctx.SetSourceSurface(image, 0, 0);
+        ctx.Rectangle(0, 0, image.Width, image.Height);
         ctx.Fill();
         ctx.Restore();
-        GuiElement.GenerateTexture(api, surface, ref textureId);
     }
 
     public override void RenderInteractiveElements(float deltaTime)
@@ -1120,12 +1343,22 @@ internal sealed class VoiceSettingsImageButton : GuiElementControl
         bool wasPressed = pressed;
         pressed = false;
         base.OnMouseUpOnElement(api, args);
+        Redraw();
         if (wasPressed && Enabled)
         {
             api.Gui.PlaySound("menubutton");
             clicked?.Invoke(true);
         }
-        Redraw();
+    }
+
+    public override void OnMouseUp(ICoreClientAPI api, MouseEvent args)
+    {
+        base.OnMouseUp(api, args);
+        if (pressed)
+        {
+            pressed = false;
+            Redraw();
+        }
     }
 
     public override void Dispose()
@@ -1149,6 +1382,7 @@ internal sealed class VoiceSettingsCheckBox : GuiElementControl
     private const string CheckedIcon = "svc-fa-check";
     private readonly Action<bool>? changed;
     private int textureId;
+    private bool pressed;
 
     public bool On { get; private set; }
     public override bool Focusable => Enabled;
@@ -1181,21 +1415,33 @@ internal sealed class VoiceSettingsCheckBox : GuiElementControl
         double width = Bounds.OuterWidth;
         double height = Bounds.OuterHeight;
         ctx.Rectangle(0, 0, width, height);
-        ctx.SetSourceRGBA(0.22, 0.25, 0.30, Enabled ? 0.96 : 0.45);
+        bool pressedState = pressed && Enabled;
+        ctx.SetSourceRGBA(
+            pressedState ? 1.0 : 0.22,
+            pressedState ? 1.0 : 0.25,
+            pressedState ? 1.0 : 0.30,
+            Enabled ? pressedState ? 0.98 : 0.96 : 0.45);
         ctx.FillPreserve();
-        ctx.SetSourceRGBA(0.86, 0.90, 0.96, Enabled ? 0.78 : 0.35);
+        ctx.SetSourceRGBA(
+            pressedState ? 0.02 : 0.86,
+            pressedState ? 0.025 : 0.90,
+            pressedState ? 0.032 : 0.96,
+            Enabled ? pressedState ? 0.96 : 0.78 : 0.35);
         ctx.LineWidth = GuiElement.scaled(1);
         ctx.Stroke();
         if (On)
         {
-            api.Gui.Icons.DrawIcon(ctx, CheckedIcon, GuiElement.scaled(5), GuiElement.scaled(5), width - GuiElement.scaled(10), height - GuiElement.scaled(10), new[] { 0.96, 0.97, 1.0, 1.0 });
+            double[] iconColor = pressedState
+                ? new[] { 0.02, 0.025, 0.032, 1.0 }
+                : new[] { 0.96, 0.97, 1.0, 1.0 };
+            api.Gui.Icons.DrawIcon(ctx, CheckedIcon, GuiElement.scaled(5), GuiElement.scaled(5), width - GuiElement.scaled(10), height - GuiElement.scaled(10), iconColor);
             // Keep the FA icon as the primary renderer and provide a Cairo fallback
             // for clients whose SVG rasterizer cannot resolve custom mod assets.
             ctx.NewPath();
             ctx.MoveTo(width * 0.22, height * 0.52);
             ctx.LineTo(width * 0.43, height * 0.73);
             ctx.LineTo(width * 0.80, height * 0.27);
-            ctx.SetSourceRGBA(0.96, 0.97, 1.0, 1.0);
+            ctx.SetSourceRGBA(iconColor[0], iconColor[1], iconColor[2], iconColor[3]);
             ctx.LineWidth = Math.Max(GuiElement.scaled(2), width * 0.11);
             ctx.LineCap = LineCap.Butt;
             ctx.LineJoin = LineJoin.Miter;
@@ -1213,10 +1459,21 @@ internal sealed class VoiceSettingsCheckBox : GuiElementControl
     {
         base.OnMouseDownOnElement(api, args);
         if (!Enabled) return;
+        pressed = true;
         On = !On;
-        changed?.Invoke(On);
         Redraw();
         api.Gui.PlaySound("toggleswitch");
+        changed?.Invoke(On);
+    }
+
+    public override void OnMouseUp(ICoreClientAPI api, MouseEvent args)
+    {
+        base.OnMouseUp(api, args);
+        if (pressed)
+        {
+            pressed = false;
+            Redraw();
+        }
     }
 
     public override void OnKeyDown(ICoreClientAPI api, KeyEvent args)
@@ -1253,6 +1510,7 @@ internal sealed class VoiceSettingsMuteButton : GuiElementControl
     private readonly ImageSurface mutedSurface;
     private readonly ImageSurface unmutedSurface;
     private int textureId;
+    private bool pressed;
 
     public bool On { get; private set; }
     public override bool Focusable => Enabled;
@@ -1296,9 +1554,18 @@ internal sealed class VoiceSettingsMuteButton : GuiElementControl
         double width = Bounds.OuterWidth;
         double height = Bounds.OuterHeight;
         ctx.Rectangle(0, 0, width, height);
-        ctx.SetSourceRGBA(0.62, 0.66, 0.72, Enabled ? 0.30 : 0.14);
+        bool pressedState = pressed && Enabled;
+        ctx.SetSourceRGBA(
+            pressedState ? 1.0 : 0.62,
+            pressedState ? 1.0 : 0.66,
+            pressedState ? 1.0 : 0.72,
+            Enabled ? pressedState ? 0.98 : 0.30 : 0.14);
         ctx.FillPreserve();
-        ctx.SetSourceRGBA(0.92, 0.95, 1.0, Enabled ? 0.88 : 0.42);
+        ctx.SetSourceRGBA(
+            pressedState ? 0.02 : 0.92,
+            pressedState ? 0.025 : 0.95,
+            pressedState ? 0.032 : 1.0,
+            Enabled ? pressedState ? 0.96 : 0.88 : 0.42);
         ctx.LineWidth = GuiElement.scaled(1);
         ctx.Stroke();
         ImageSurface icon = On ? mutedSurface : unmutedSurface;
@@ -1317,10 +1584,21 @@ internal sealed class VoiceSettingsMuteButton : GuiElementControl
     {
         base.OnMouseDownOnElement(api, args);
         if (!Enabled) return;
+        pressed = true;
         On = !On;
-        changed?.Invoke(On);
         Redraw();
         api.Gui.PlaySound("toggleswitch");
+        changed?.Invoke(On);
+    }
+
+    public override void OnMouseUp(ICoreClientAPI api, MouseEvent args)
+    {
+        base.OnMouseUp(api, args);
+        if (pressed)
+        {
+            pressed = false;
+            Redraw();
+        }
     }
 
     public override void OnKeyDown(ICoreClientAPI api, KeyEvent args)
@@ -1358,6 +1636,7 @@ internal sealed class VoiceSettingsIconToggleButton : GuiElementControl
     private readonly ImageSurface onSurface;
     private readonly ImageSurface offSurface;
     private int textureId;
+    private bool pressed;
 
     public bool On { get; private set; }
     public override bool Focusable => Enabled;
@@ -1399,10 +1678,21 @@ internal sealed class VoiceSettingsIconToggleButton : GuiElementControl
             return;
         }
 
+        pressed = true;
         On = !On;
-        changed?.Invoke(On);
         Redraw();
         api.Gui.PlaySound("toggleswitch");
+        changed?.Invoke(On);
+    }
+
+    public override void OnMouseUp(ICoreClientAPI api, MouseEvent args)
+    {
+        base.OnMouseUp(api, args);
+        if (pressed)
+        {
+            pressed = false;
+            Redraw();
+        }
     }
 
     public override void OnKeyDown(ICoreClientAPI api, KeyEvent args)
@@ -1431,9 +1721,18 @@ internal sealed class VoiceSettingsIconToggleButton : GuiElementControl
         double width = Bounds.OuterWidth;
         double height = Bounds.OuterHeight;
         ctx.Rectangle(0, 0, width, height);
-        ctx.SetSourceRGBA(0.62, 0.66, 0.72, On ? 0.36 : 0.22);
+        bool pressedState = pressed && Enabled;
+        ctx.SetSourceRGBA(
+            pressedState ? 1.0 : 0.62,
+            pressedState ? 1.0 : 0.66,
+            pressedState ? 1.0 : 0.72,
+            pressedState ? 0.98 : On ? 0.36 : 0.22);
         ctx.FillPreserve();
-        ctx.SetSourceRGBA(0.92, 0.95, 1.0, Enabled ? 0.95 : 0.45);
+        ctx.SetSourceRGBA(
+            pressedState ? 0.02 : 0.92,
+            pressedState ? 0.025 : 0.95,
+            pressedState ? 0.032 : 1.0,
+            Enabled ? pressedState ? 0.96 : 0.95 : 0.45);
         ctx.LineWidth = GuiElement.scaled(1);
         ctx.Stroke();
 

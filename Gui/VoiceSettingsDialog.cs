@@ -73,6 +73,41 @@ internal static class VoiceSettingsNavigation
 
 public sealed class VoiceSettingsDialog : GuiDialog
 {
+    // Recompose creates new control instances, so retain the open dropdown by key.
+    private static readonly string[] DropdownElementKeys =
+    {
+        "inputDevice",
+        "outputDevice",
+        "quick-channel",
+        "quick-transmit",
+        "speech-recognition-provider",
+        "owner-leave-target",
+        "overlay-channel-action",
+        "overlay-player-channel",
+        "overlay-player-action",
+        "overlay-create-visibility",
+        "adminPlayer",
+        "adminChannel",
+        "adminAction"
+    };
+
+    private static readonly string[] TextInputElementKeys =
+    {
+        "speech-recognition-api-key",
+        "speech-recognition-model",
+        "speech-recognition-endpoint",
+        "channel-search",
+        "players-search",
+        "join-channel-password",
+        "overlay-create-name",
+        "overlay-create-password",
+        "adminRenameInput"
+    };
+
+    private readonly record struct DropdownSnapshot(string Key, string? HoveredValue);
+
+    private readonly record struct FocusSnapshot(string Key, int CaretLine, int CaretPosition);
+
     private readonly record struct OverlaySnapshot(
         VoiceSettingsOverlay Overlay,
         string ChannelId,
@@ -161,6 +196,16 @@ public sealed class VoiceSettingsDialog : GuiDialog
     public override double DrawOrder => 0.48;
     public override double InputOrder => 0.3;
 
+    public override void OnMouseDown(MouseEvent args)
+    {
+        if (!args.Handled)
+        {
+            CloseDropdownsOutside(args.X, args.Y);
+        }
+
+        base.OnMouseDown(args);
+    }
+
     public override bool TryOpen()
     {
         controller.RequestSettingsRefresh();
@@ -202,6 +247,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
             scrollPosition = 0;
         }
 
+        DropdownSnapshot? expandedDropdown = CaptureExpandedDropdown();
+        FocusSnapshot? focusedElement = CaptureFocusedElement();
         SingleComposer?.Dispose();
         bool home = selectedPage == VoiceSettingsPage.Home && overlay == VoiceSettingsOverlay.None;
         double windowWidth = home ? HomeWindowWidth : WindowWidth;
@@ -270,7 +317,118 @@ public sealed class VoiceSettingsDialog : GuiDialog
         {
             AddOverlay(composer);
         }
-        SingleComposer = composer.EndChildElements().Compose();
+        composer = composer.EndChildElements();
+        RestoreExpandedDropdown(composer, expandedDropdown);
+        SingleComposer = composer.Compose(focusFirstElement: false);
+        if (!RestoreFocusedElement(SingleComposer, focusedElement))
+        {
+            SingleComposer.FocusElement(0);
+        }
+    }
+
+    private DropdownSnapshot? CaptureExpandedDropdown()
+    {
+        if (SingleComposer == null)
+        {
+            return null;
+        }
+
+        foreach (string key in DropdownElementKeys)
+        {
+            if (SingleComposer.GetElement(key) is VoiceSettingsDropDown dropdown && dropdown.IsExpanded)
+            {
+                return new DropdownSnapshot(key, dropdown.HoveredValue);
+            }
+        }
+
+        return null;
+    }
+
+    private static void RestoreExpandedDropdown(GuiComposer composer, DropdownSnapshot? snapshot)
+    {
+        if (snapshot is not { } state)
+        {
+            return;
+        }
+
+        if (composer.GetElement(state.Key) is VoiceSettingsDropDown dropdown)
+        {
+            dropdown.RestoreExpanded(state.HoveredValue);
+        }
+    }
+
+    private FocusSnapshot? CaptureFocusedElement()
+    {
+        if (SingleComposer == null)
+        {
+            return null;
+        }
+
+        foreach (string key in DropdownElementKeys.Concat(TextInputElementKeys))
+        {
+            if (SingleComposer.GetElement(key) is not { Focusable: true, HasFocus: true } element)
+            {
+                continue;
+            }
+
+            if (element is GuiElementTextInput textInput)
+            {
+                return new FocusSnapshot(key, textInput.CaretPosLine, textInput.CaretPosInLine);
+            }
+
+            return new FocusSnapshot(key, 0, 0);
+        }
+
+        return null;
+    }
+
+    private static bool RestoreFocusedElement(GuiComposer composer, FocusSnapshot? snapshot)
+    {
+        if (snapshot is not { } state
+            || composer.GetElement(state.Key) is not { Focusable: true } element)
+        {
+            return false;
+        }
+
+        if (!composer.FocusElement(element.TabIndex))
+        {
+            return false;
+        }
+
+        if (element is GuiElementTextInput textInput)
+        {
+            textInput.SetCaretPos(state.CaretPosition, state.CaretLine);
+        }
+
+        return true;
+    }
+
+    private void CloseDropdownsOutside(int posX, int posY)
+    {
+        VoiceSettingsDropDown? keepOpen = null;
+        if (SingleComposer != null)
+        {
+            foreach (string key in DropdownElementKeys)
+            {
+                if (SingleComposer.GetElement(key) is VoiceSettingsDropDown dropdown
+                    && dropdown.IsExpanded
+                    && dropdown.IsPositionInside(posX, posY))
+                {
+                    keepOpen = dropdown;
+                    break;
+                }
+            }
+
+            foreach (string key in DropdownElementKeys)
+            {
+                if (SingleComposer.GetElement(key) is VoiceSettingsDropDown dropdown
+                    && dropdown.IsExpanded
+                    && !ReferenceEquals(dropdown, keepOpen))
+                {
+                    dropdown.Close();
+                }
+            }
+        }
     }
 
     internal void OpenOwnerLeaveOverlay(string channelId)
@@ -341,27 +499,17 @@ public sealed class VoiceSettingsDialog : GuiDialog
         ctx.Stroke();
     }
 
-    private static void DrawFlatButtonBackground(Context ctx, ImageSurface surface, ElementBounds bounds, bool active)
-    {
-        bounds.CalcWorldBounds();
-        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
-        ctx.SetSourceRGBA(0.62, 0.66, 0.72, active ? 0.36 : 0.22);
-        ctx.FillPreserve();
-        ctx.SetSourceRGBA(0.92, 0.95, 1.0, active ? 0.95 : 0.88);
-        ctx.LineWidth = GuiElement.scaled(1);
-        ctx.Stroke();
-    }
-
     private static void AddFlatButton(GuiComposer composer, string text, ActionConsumable action, ElementBounds bounds, string key, bool active = false)
     {
-        composer.AddStaticCustomDraw(bounds, (ctx, surface, elementBounds) => DrawFlatButtonBackground(ctx, surface, elementBounds, active))
-            .AddButton(
+        composer.AddInteractiveElement(
+            new VoiceSettingsTextButton(
+                composer.Api,
                 text,
                 action,
                 bounds,
                 CairoFont.WhiteSmallText().WithFontSize(14).WithOrientation(EnumTextOrientation.Center).WithColor(new[] { 0.96, 0.97, 1.0, 1.0 }),
-                EnumButtonStyle.None,
-                key);
+                active),
+            key);
     }
 
     private static void AddPagination(
