@@ -13,10 +13,17 @@ public sealed class SimpleVoiceChatModSystem : ModSystem
     private ServerVoiceController? serverController;
     private readonly List<IVoiceChannelProvider> channelProviders = new();
     private readonly HashSet<string> channelProviderIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly VoiceSettingsExtensionRegistry clientSettingsExtensions = new();
     private AudioBusMixer? clientAudioBuses;
 
     /// <summary>Returns the player-voice mixer when the client is running.</summary>
     public AudioBusMixer? ClientAudioBuses => clientAudioBuses;
+
+    /// <summary>
+    /// Client-side controls and windows contributed by other mods. Register
+    /// extensions during client startup, then call ShowWindow when needed.
+    /// </summary>
+    public VoiceSettingsExtensionRegistry ClientSettingsExtensions => clientSettingsExtensions;
 
     public bool RegisterVoiceChannelProvider(IVoiceChannelProvider provider)
     {
@@ -50,7 +57,7 @@ public sealed class SimpleVoiceChatModSystem : ModSystem
     public override void StartClientSide(ICoreClientAPI api)
     {
         SimpleVoiceChatClientConfig config = LoadClientConfig(api);
-        clientController = new ClientVoiceController(api, config);
+        clientController = new ClientVoiceController(api, config, clientSettingsExtensions);
         clientController.Start();
         clientAudioBuses = clientController.AudioBuses;
     }
@@ -67,6 +74,7 @@ public sealed class SimpleVoiceChatModSystem : ModSystem
         clientController?.Dispose();
         clientController = null;
         clientAudioBuses = null;
+        clientSettingsExtensions.Clear();
         serverController?.Dispose();
         serverController = null;
         base.Dispose();

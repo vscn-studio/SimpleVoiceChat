@@ -780,7 +780,7 @@ public sealed class CoreTests
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
         JsonElement dependencies = document.RootElement.GetProperty("dependencies");
 
-        Assert.Equal("1.2.3", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("1.2.4", document.RootElement.GetProperty("version").GetString());
         Assert.True(dependencies.TryGetProperty("game", out _));
         Assert.False(dependencies.TryGetProperty("vsdirector", out _));
         Assert.DoesNotContain(
@@ -1069,6 +1069,32 @@ public sealed class CoreTests
             WithInheritance = withInheritance;
             return (T)(object)ModSystem;
         }
+    }
+
+    [Fact]
+    public void SettingsExtensionRegistryRejectsDuplicateAndInvalidControlIds()
+    {
+        VoiceSettingsExtensionRegistry registry = new();
+        VoiceSettingsExtensionButton first = new("example.button", "Example", () => { });
+
+        Assert.True(registry.RegisterButton(first));
+        Assert.False(registry.RegisterButton(new VoiceSettingsExtensionButton("example.button", "Duplicate", () => { })));
+        Assert.False(registry.RegisterButton(new VoiceSettingsExtensionButton("bad/id", "Invalid", () => { })));
+        Assert.True(registry.UnregisterControl("example.button"));
+        Assert.False(registry.UnregisterControl("example.button"));
+    }
+
+    [Fact]
+    public void SettingsExtensionRegistryRejectsDuplicateWindowIds()
+    {
+        VoiceSettingsExtensionRegistry registry = new();
+        VoiceSettingsExtensionWindow first = new("example.window", "Example", _ => { });
+
+        Assert.True(registry.RegisterWindow(first));
+        Assert.False(registry.RegisterWindow(new VoiceSettingsExtensionWindow("example.window", "Duplicate", _ => { })));
+        Assert.False(registry.RegisterWindow(new VoiceSettingsExtensionWindow("bad/id", "Invalid", _ => { })));
+        Assert.True(registry.UnregisterWindow("example.window"));
+        Assert.False(registry.UnregisterWindow("example.window"));
     }
 
     private sealed class DirectorVoiceSourceStub

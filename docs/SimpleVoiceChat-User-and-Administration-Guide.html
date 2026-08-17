@@ -53,6 +53,22 @@
 <li>Quick Transmission Mode: Proximity Only, Current Channel Only, or Proximity and Current Channel.</li>
 </ul>
 <p>Only the current dialog layer is displayed. Closing a dialog returns to the previous layer instead of leaving multiple interactive windows stacked on screen.</p>
+<h3>Main-window extensions (client API)</h3>
+<p>Other client mods can register home-page extension buttons or custom controls through <code>SimpleVoiceChatModSystem.ClientSettingsExtensions</code>. Extensions appear below the quick-control row containing the HUD visibility button, are sorted by <code>Order</code>, and wrap automatically using <code>PreferredWidth</code> and the measured button text width. The home page is capped at 650px; rows beyond the visible area can be reached with the mouse wheel and never overlap or overflow the window.</p>
+<pre><code>var voiceChat = api.ModLoader.GetModSystem&lt;SimpleVoiceChatModSystem&gt;();
+voiceChat.ClientSettingsExtensions.RegisterButton(
+    new VoiceSettingsExtensionButton(
+        "example.button", "Example", () =&gt; OpenExample(),
+        order: 100, preferredWidth: 160));</code></pre>
+<p>A mod can also register an independent extension window. SimpleVoiceChat supplies the centered panel, title, close button, clipping, and the common 4px rounded background:</p>
+<pre><code>voiceChat.ClientSettingsExtensions.RegisterWindow(
+    new VoiceSettingsExtensionWindow(
+        "example.window", "Example",
+        context =&gt; context.Composer.AddStaticText(
+            "Content", CairoFont.WhiteSmallText(),
+            ElementBounds.Fixed(0, 0, context.ContentWidth, 30))));
+voiceChat.ClientSettingsExtensions.ShowWindow("example.window");</code></pre>
+<p>These APIs are client-only. Registration IDs may contain letters, digits, <code>.</code>, <code>_</code>, and <code>-</code>. Closing the main settings dialog also releases an open extension window.</p>
 
 <h3>Settings (Audio)</h3>
 <p>The "Settings" page uses single-row controls for the input device, output device, playback volume, and microphone gain. The noise gate and activation threshold for voice activation are configured in the initial setup wizard and can also be adjusted later in their corresponding settings. Slider values are displayed inside the sliders without being obscured by the handles.</p>

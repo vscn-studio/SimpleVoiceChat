@@ -59,6 +59,7 @@ public sealed class ClientVoiceController : IDisposable
 
     private readonly ICoreClientAPI capi;
     private readonly SimpleVoiceChatClientConfig config;
+    private readonly VoiceSettingsExtensionRegistry settingsExtensions;
     private readonly ControllerLifecycle lifecycle = new();
     private IClientNetworkChannel? controlChannel;
     private IClientNetworkChannel? voiceChannel;
@@ -162,10 +163,14 @@ public sealed class ClientVoiceController : IDisposable
     private CancellationTokenSource? speechRecognitionCancellation;
     private bool speechRecognitionActive;
 
-    public ClientVoiceController(ICoreClientAPI capi, SimpleVoiceChatClientConfig config)
+    public ClientVoiceController(
+        ICoreClientAPI capi,
+        SimpleVoiceChatClientConfig config,
+        VoiceSettingsExtensionRegistry? settingsExtensions = null)
     {
         this.capi = capi;
         this.config = config;
+        this.settingsExtensions = settingsExtensions ?? new VoiceSettingsExtensionRegistry();
         selectedChannelRestorePending = !string.IsNullOrEmpty(config.SelectedChannelId);
         sessionId = NextSessionId();
     }
@@ -255,7 +260,7 @@ public sealed class ClientVoiceController : IDisposable
 
         hud = new VoiceHud(capi, BuildHudSnapshot, ShouldShowHud);
         capi.Gui.RegisterDialog(hud);
-        settingsDialog = new VoiceSettingsDialog(capi, this);
+        settingsDialog = new VoiceSettingsDialog(capi, this, settingsExtensions);
         setupWizard = new VoiceSetupWizardDialog(capi, this);
         inviteDialog = new VoiceInviteDialog(
             capi,

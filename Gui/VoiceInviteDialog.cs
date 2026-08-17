@@ -143,8 +143,8 @@ public sealed class VoiceInviteDialog : GuiDialog
         ctx.Save();
         ctx.Scale(scale, scale);
 
-        FillRound(ctx, 0, 0, Width, Height, 8, 0.02, 0.02, 0.02, 0.78);
-        StrokeRound(ctx, 0.5, 0.5, Width - 1, Height - 1, 8, 0.33, 0.38, 0.42, 0.75);
+        FillRound(ctx, 0, 0, Width, Height, 4, 0.02, 0.02, 0.02, 0.78);
+        StrokeRound(ctx, 0.5, 0.5, Width - 1, Height - 1, 4, 0.33, 0.38, 0.42, 0.75);
 
         DrawText(ctx, SVCLang.Get("invite-title"), 16, 21, 14, 0.92, 0.95, 0.97, 1, bold: true);
         DrawText(ctx, FitText(ctx, SVCLang.Get("invite-message", inviterName), Width - 32, 13), 16, 42, 13, 0.84, 0.87, 0.9, 1, bold: false);
@@ -167,8 +167,8 @@ public sealed class VoiceInviteDialog : GuiDialog
             g += 0.08;
             b += 0.08;
         }
-        FillRound(ctx, x, y, ButtonWidth, ButtonHeight, 6, r, g, b, 0.98);
-        StrokeRound(ctx, x + 0.5, y + 0.5, ButtonWidth - 1, ButtonHeight - 1, 6, 0.52, 0.57, 0.6, hovered ? 0.95 : 0.62);
+        FillRound(ctx, x, y, ButtonWidth, ButtonHeight, 4, r, g, b, 0.98);
+        StrokeRound(ctx, x + 0.5, y + 0.5, ButtonWidth - 1, ButtonHeight - 1, 4, 0.52, 0.57, 0.6, hovered ? 0.95 : 0.62);
 
         CairoFont font = CairoFont.WhiteSmallText().WithFontSize(12f);
         font.WithColor(new[] { 0.94, 0.95, 0.96, 1.0 }).SetupContext(ctx);

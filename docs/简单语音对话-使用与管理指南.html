@@ -53,6 +53,22 @@
 <li>快速发送形式：仅接近度、仅当前频道、接近度和当前频道。</li>
 </ul>
 <p>打开弹窗后只显示当前层，关闭弹窗会返回上一层，不会堆叠多个可操作窗口。</p>
+<h3>主窗口扩展（客户端 API）</h3>
+<p>其他客户端模组可通过 <code>SimpleVoiceChatModSystem.ClientSettingsExtensions</code> 注册主页扩展按钮或自定义控件。扩展控件显示在包含“显示/隐藏 HUD”按钮的快捷控制行下方，按 <code>Order</code> 排序，并根据 <code>PreferredWidth</code> 和按钮文字实际宽度自动换行。主页高度上限为 650px，超过可视区域的行可用鼠标滚轮滚动，不会溢出或重叠。</p>
+<pre><code>var voiceChat = api.ModLoader.GetModSystem&lt;SimpleVoiceChatModSystem&gt;();
+voiceChat.ClientSettingsExtensions.RegisterButton(
+    new VoiceSettingsExtensionButton(
+        "example.button", "Example", () =&gt; OpenExample(),
+        order: 100, preferredWidth: 160));</code></pre>
+<p>模组也可以注册独立扩展窗口。SimpleVoiceChat 统一提供居中面板、标题、关闭按钮、内容裁剪和 4px 圆角背景：</p>
+<pre><code>voiceChat.ClientSettingsExtensions.RegisterWindow(
+    new VoiceSettingsExtensionWindow(
+        "example.window", "Example",
+        context =&gt; context.Composer.AddStaticText(
+            "Content", CairoFont.WhiteSmallText(),
+            ElementBounds.Fixed(0, 0, context.ContentWidth, 30))));
+voiceChat.ClientSettingsExtensions.ShowWindow("example.window");</code></pre>
+<p>这些接口仅在客户端可用；注册 ID 只能包含字母、数字、<code>.</code>、<code>_</code> 和 <code>-</code>。关闭主设置窗口时，已打开的扩展窗口也会释放。</p>
 
 <h3>设置（音频）</h3>
 <p>“设置”页使用单行控件，包含输入设备、输出设备、播放音量和麦克风增益。自由麦的噪声门和触发阈值在首次设置向导中配置，也可继续在对应设置项中调整。滑块内部直接显示数值，数值不会被滑块遮挡。</p>

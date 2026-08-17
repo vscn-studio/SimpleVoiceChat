@@ -1,6 +1,7 @@
 using Cairo;
 using SimpleVoiceChat.Audio;
 using SimpleVoiceChat.Config;
+using SimpleVoiceChat.Integration;
 using SimpleVoiceChat.Networking;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
@@ -125,8 +126,11 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private const double ContentTop = 58;
     private const double ContentWidth = 900;
     private const double ViewportHeight = 580;
-    private const double HomeWindowHeight = 190;
-    private const double HomeViewportHeight = HomeWindowHeight;
+    private const double HomeBaseWindowHeight = 190;
+    private const double HomeMaxWindowHeight = WindowHeight;
+    private const double HomeExtensionStartY = 156;
+    private const double HomeExtensionRowHeight = 40;
+    private const double HomeExtensionGap = 6;
     private const string FontAwesomeCheckIcon = "svc-fa-check";
     private const string FontAwesomeCloseIcon = "svc-fa-xmark";
     private const string FontAwesomeGearIcon = "svc-fa-gear";
@@ -149,6 +153,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private readonly ClientVoiceController controller;
     private readonly SimpleVoiceChatClientConfig config;
+    private readonly VoiceSettingsExtensionRegistry settingsExtensions;
+    private VoiceSettingsExtensionDialog? extensionDialog;
 
     private VoiceSettingsPage selectedPage = VoiceSettingsPage.Home;
     private ElementBounds? contentBounds;
@@ -183,11 +189,16 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private int playerListPage;
     private readonly Stack<OverlaySnapshot> overlayStack = new();
 
-    public VoiceSettingsDialog(ICoreClientAPI capi, ClientVoiceController controller)
+    public VoiceSettingsDialog(
+        ICoreClientAPI capi,
+        ClientVoiceController controller,
+        VoiceSettingsExtensionRegistry? settingsExtensions = null)
         : base(capi)
     {
         this.controller = controller;
         config = controller.SettingsConfig;
+        this.settingsExtensions = settingsExtensions ?? new VoiceSettingsExtensionRegistry();
+        this.settingsExtensions.Attach(QueueCompose, ShowExtensionWindow);
     }
 
     public override string? ToggleKeyCombinationCode => null;
@@ -220,6 +231,15 @@ public sealed class VoiceSettingsDialog : GuiDialog
         overlayStack.Clear();
         Compose();
         return base.TryOpen();
+    }
+
+    public override void Dispose()
+    {
+        settingsExtensions.Detach();
+        extensionDialog?.TryClose();
+        extensionDialog?.Dispose();
+        extensionDialog = null;
+        base.Dispose();
     }
 
     public void RefreshData()
@@ -257,12 +277,26 @@ public sealed class VoiceSettingsDialog : GuiDialog
         SingleComposer?.Dispose();
         bool home = selectedPage == VoiceSettingsPage.Home && overlay == VoiceSettingsOverlay.None;
         double windowWidth = home ? HomeWindowWidth : WindowWidth;
-        double windowHeight = home ? HomeWindowHeight : WindowHeight;
-        activeViewportHeight = home ? HomeViewportHeight : ViewportHeight;
+        IReadOnlyList<IVoiceSettingsExtensionControl> homeExtensions = home
+            ? GetVisibleExtensionControls()
+            : Array.Empty<IVoiceSettingsExtensionControl>();
+        int extensionRows = home
+            ? BuildExtensionRows(homeExtensions, windowWidth - ContentLeft * 2).Count
+            : 0;
+        double requestedHomeHeight = home
+            ? Math.Max(
+                HomeBaseWindowHeight,
+                HomeExtensionStartY + extensionRows * (HomeExtensionRowHeight + HomeExtensionGap) + 2)
+            : WindowHeight;
+        double windowHeight = home
+            ? Math.Min(HomeMaxWindowHeight, requestedHomeHeight)
+            : WindowHeight;
+        activeViewportHeight = home ? windowHeight : ViewportHeight;
         activeContentWidth = home ? windowWidth - ContentLeft * 2 : ContentWidth;
         ElementBounds root = ElementBounds.Fixed(EnumDialogArea.CenterMiddle, 0, 0, windowWidth, windowHeight);
         ElementBounds background = ElementBounds.Fixed(0, 0, windowWidth, windowHeight);
-        double viewportTop = selectedPage == VoiceSettingsPage.Home ? 58 : ContentTop;
+        bool clipContent = !home || requestedHomeHeight > windowHeight;
+        double viewportTop = home ? 0 : ContentTop;
         ElementBounds viewport = ElementBounds.Fixed(ContentLeft, viewportTop, activeContentWidth, activeViewportHeight);
         contentBounds = ElementBounds.Fixed(0, 0, activeContentWidth, activeViewportHeight);
         bool overlayActive = overlay != VoiceSettingsOverlay.None;
@@ -291,7 +325,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
                     _ => OnClose()),
                 "close");
 
-            if (!home)
+            if (clipContent)
             {
                 composer.BeginClip(viewport);
             }
@@ -299,7 +333,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
             contentHeight = selectedPage switch
             {
-                VoiceSettingsPage.Home => AddHomePage(composer),
+                VoiceSettingsPage.Home => AddHomePage(composer, homeExtensions),
                 VoiceSettingsPage.SpeechRecognition => AddSpeechRecognitionPage(composer),
                 VoiceSettingsPage.Channels => AddChannelsPage(composer),
                 VoiceSettingsPage.Admin => AddAdminPage(composer),
@@ -313,7 +347,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             contentBounds.fixedY = -scrollPosition;
 
             composer = composer.EndChildElements();
-            if (!home)
+            if (clipContent)
             {
                 composer = composer.EndClip();
             }
@@ -659,7 +693,9 @@ public sealed class VoiceSettingsDialog : GuiDialog
         return behaviorY + 24;
     }
 
-    private double AddHomePage(GuiComposer composer)
+    private double AddHomePage(
+        GuiComposer composer,
+        IReadOnlyList<IVoiceSettingsExtensionControl> extensions)
     {
         const double buttonWidth = 138;
         const double navigationY = 54;
@@ -762,8 +798,172 @@ public sealed class VoiceSettingsDialog : GuiDialog
             ElementBounds.Fixed(x, quickY, quickDropDownWidth, 42),
             "quick-transmit");
 
-        return quickY + 45;
+        List<ExtensionRowLayout> extensionRows = BuildExtensionRows(extensions, activeContentWidth - ContentLeft * 2);
+        double extensionY = HomeExtensionStartY;
+        foreach (ExtensionRowLayout row in extensionRows)
+        {
+            double xPosition = ContentLeft;
+            foreach (ExtensionControlLayout control in row.Controls)
+            {
+                try
+                {
+                    control.Control.Compose(
+                        composer.Api,
+                        composer,
+                        ElementBounds.Fixed(xPosition, extensionY, control.Width, row.Height));
+                }
+                catch (Exception ex)
+                {
+                    capi.Logger.Warning(
+                        "SimpleVoiceChat: settings extension control '{0}' failed to compose: {1}",
+                        GetExtensionControlId(control.Control),
+                        ex.Message);
+                }
+                xPosition += control.Width + HomeExtensionGap;
+            }
+            extensionY += row.Height + HomeExtensionGap;
+        }
+
+        return Math.Max(quickY + 45, extensionY + (extensionRows.Count > 0 ? 2 : 0));
     }
+
+    private IReadOnlyList<IVoiceSettingsExtensionControl> GetVisibleExtensionControls()
+    {
+        List<IVoiceSettingsExtensionControl> visible = new();
+        foreach (IVoiceSettingsExtensionControl control in settingsExtensions.SnapshotControls())
+        {
+            try
+            {
+                if (control.IsVisible)
+                {
+                    visible.Add(control);
+                }
+            }
+            catch (Exception ex)
+            {
+                capi.Logger.Warning(
+                    "SimpleVoiceChat: settings extension control '{0}' visibility check failed: {1}",
+                    GetExtensionControlId(control),
+                    ex.Message);
+            }
+        }
+        return visible;
+    }
+
+    private List<ExtensionRowLayout> BuildExtensionRows(
+        IReadOnlyList<IVoiceSettingsExtensionControl> extensions,
+        double availableWidth)
+    {
+        List<ExtensionRowLayout> rows = new();
+        if (extensions.Count == 0)
+        {
+            return rows;
+        }
+
+        availableWidth = Math.Max(1, availableWidth);
+        ExtensionRowLayout? current = null;
+        double currentWidth = 0;
+        foreach (IVoiceSettingsExtensionControl control in extensions)
+        {
+            try
+            {
+                double minimumWidth = ClampExtensionDimension(control.MinimumWidth, 96, 48, availableWidth);
+                double preferredWidth = control.PreferredWidth;
+                if (control is VoiceSettingsExtensionButton button)
+                {
+                    preferredWidth = Math.Max(preferredWidth, MeasureExtensionButtonWidth(button.Text));
+                }
+                preferredWidth = ClampExtensionDimension(preferredWidth, 140, minimumWidth, availableWidth);
+                double height = ClampExtensionDimension(control.Height, 34, 28, HomeExtensionRowHeight - 2);
+
+                if (current == null || current.Controls.Count > 0 && currentWidth + HomeExtensionGap + preferredWidth > availableWidth)
+                {
+                    current = new ExtensionRowLayout();
+                    rows.Add(current);
+                    currentWidth = 0;
+                }
+
+                current.Controls.Add(new ExtensionControlLayout(control, preferredWidth));
+                current.Height = Math.Max(current.Height, height);
+                currentWidth += (current.Controls.Count > 1 ? HomeExtensionGap : 0) + preferredWidth;
+            }
+            catch (Exception ex)
+            {
+                capi.Logger.Warning(
+                    "SimpleVoiceChat: settings extension control '{0}' has invalid layout properties: {1}",
+                    GetExtensionControlId(control),
+                    ex.Message);
+            }
+        }
+        return rows;
+    }
+
+    private static double ClampExtensionDimension(double value, double fallback, double minimum, double maximum)
+    {
+        if (!double.IsFinite(value))
+        {
+            value = fallback;
+        }
+        return Math.Clamp(value, minimum, Math.Max(minimum, maximum));
+    }
+
+    private static string GetExtensionControlId(IVoiceSettingsExtensionControl control)
+    {
+        try
+        {
+            return string.IsNullOrWhiteSpace(control.Id) ? "<unnamed>" : control.Id;
+        }
+        catch
+        {
+            return "<unavailable>";
+        }
+    }
+
+    private static double MeasureExtensionButtonWidth(string text)
+    {
+        using ImageSurface surface = new(Format.Argb32, 1, 1);
+        using Context context = new(surface);
+        CairoFont font = CairoFont.WhiteSmallText().WithFontSize(14);
+        font.SetupContext(context);
+        return Math.Ceiling(context.TextExtents(text).XAdvance + GuiElement.scaled(24));
+    }
+
+    private bool ShowExtensionWindow(string id)
+    {
+        if (!settingsExtensions.TryGetWindow(id, out VoiceSettingsExtensionWindow window))
+        {
+            return false;
+        }
+
+        extensionDialog?.TryClose();
+        extensionDialog?.Dispose();
+        extensionDialog = new VoiceSettingsExtensionDialog(capi, window, () =>
+        {
+            if (extensionDialog != null && !extensionDialog.IsOpened())
+            {
+                extensionDialog.Dispose();
+                extensionDialog = null;
+            }
+        });
+        if (!IsOpened())
+        {
+            extensionDialog.TryOpen();
+            return true;
+        }
+
+        extensionDialog.TryOpen();
+        return true;
+    }
+
+    private sealed class ExtensionRowLayout
+    {
+        public List<ExtensionControlLayout> Controls { get; } = new();
+        public double Height { get; set; }
+    }
+
+    private readonly record struct ExtensionControlLayout(
+        IVoiceSettingsExtensionControl Control,
+        double Width);
 
     private double AddSpeechRecognitionPage(GuiComposer composer)
     {
@@ -1629,7 +1829,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private static void DrawOverlayPanel(Context ctx, ImageSurface surface, ElementBounds bounds)
     {
         bounds.CalcWorldBounds();
-        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
+        GuiElement.RoundRectangle(ctx, bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight, GuiElement.scaled(4));
         ctx.SetSourceRGBA(0.025, 0.03, 0.04, 0.98);
         ctx.FillPreserve();
         ctx.SetSourceRGBA(0.88, 0.92, 0.98, 0.72);
@@ -1714,7 +1914,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private static void DrawPlayerCardBackground(Context ctx, ImageSurface surface, ElementBounds bounds)
     {
         bounds.CalcWorldBounds();
-        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
+        GuiElement.RoundRectangle(ctx, bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight, GuiElement.scaled(4));
         ctx.SetSourceRGBA(0.08, 0.1, 0.13, 0.94);
         ctx.FillPreserve();
         ctx.SetSourceRGBA(0.86, 0.9, 0.96, 0.5);
@@ -1725,7 +1925,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private static void DrawChannelCardBackground(Context ctx, ImageSurface surface, ElementBounds bounds)
     {
         bounds.CalcWorldBounds();
-        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
+        GuiElement.RoundRectangle(ctx, bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight, GuiElement.scaled(4));
         ctx.SetSourceRGBA(0.10, 0.12, 0.15, 0.96);
         ctx.FillPreserve();
         ctx.SetSourceRGBA(0.86, 0.90, 0.96, 0.58);

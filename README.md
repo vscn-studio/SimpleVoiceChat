@@ -46,6 +46,38 @@ SimpleVoiceChat 不依赖 Simple Voice Chat、VS Director 或 `SimpleVoiceChat_V
 
 快捷键可在 Vintage Story 的游戏按键设置中修改。语音识别页面不另设快捷键输入框。
 
+### 主设置窗口扩展（客户端 API）
+
+其他客户端模组可以通过 `SimpleVoiceChatModSystem.ClientSettingsExtensions` 向主页注册按钮或自定义控件。控件显示在“显示/隐藏 HUD”所在的快捷控制行下方，按 `Order` 排序；每行会根据 `PreferredWidth` 和文字实际宽度自动排列，放不下时自动换行。主页高度最多为 650px，更多行可以用鼠标滚轮滚动，控件不会溢出或覆盖其他按钮。`IsVisible` 可以在运行时切换显示状态。
+
+```csharp
+var voiceChat = api.ModLoader.GetModSystem<SimpleVoiceChatModSystem>();
+voiceChat.ClientSettingsExtensions.RegisterButton(
+    new VoiceSettingsExtensionButton(
+        "example.button",
+        "Example",
+        () => OpenExample(),
+        order: 100,
+        preferredWidth: 160));
+```
+
+也可以注册与主窗口风格一致的独立扩展窗口。窗口由 SimpleVoiceChat 居中显示，提供标题、关闭按钮、内容裁剪和 4px 圆角背景；第三方模组只负责在 `Compose` 回调中添加内容：
+
+```csharp
+voiceChat.ClientSettingsExtensions.RegisterWindow(
+    new VoiceSettingsExtensionWindow(
+        "example.window",
+        "Example",
+        context => context.Composer.AddStaticText(
+            "Content",
+            CairoFont.WhiteSmallText(),
+            ElementBounds.Fixed(0, 0, context.ContentWidth, 30))));
+
+voiceChat.ClientSettingsExtensions.ShowWindow("example.window");
+```
+
+上述 API 仅在客户端可用；注册 ID 只能包含字母、数字、`.`、`_` 和 `-`。关闭主设置窗口时，已打开的扩展窗口也会被释放。
+
 ### 语音识别
 
 进入 SimpleVoiceChat 设置，点击“语音识别”，选择服务商并填写当前服务商需要的配置。该功能默认关闭；开启后，按住 `V` 录音，松开后将识别文字发送到当前聊天频道。切换下拉菜单时，每个服务商的 API Key、模型、接口地址或本地路径都会分别保存。
@@ -195,6 +227,38 @@ SimpleVoiceChat does not require Simple Voice Chat, VS Director, or `SimpleVoice
 | Speech-to-chat | Hold `V`, then release to transcribe and send |
 
 Bindings can be changed in Vintage Story's game key settings. The Speech Recognition page does not provide a separate key-binding field.
+
+### Main-window extensions (client API)
+
+Client-side mods can register buttons or custom controls through `SimpleVoiceChatModSystem.ClientSettingsExtensions`. They appear below the home-page quick-control row that contains the HUD visibility button. Controls are sorted by `Order`, sized from `PreferredWidth` and the measured button text, and wrapped to new rows when the available width is full. The home page is capped at 650px; additional rows are scrollable with the mouse wheel so controls cannot overlap or extend outside the window. `IsVisible` can be changed at runtime.
+
+```csharp
+var voiceChat = api.ModLoader.GetModSystem<SimpleVoiceChatModSystem>();
+voiceChat.ClientSettingsExtensions.RegisterButton(
+    new VoiceSettingsExtensionButton(
+        "example.button",
+        "Example",
+        () => OpenExample(),
+        order: 100,
+        preferredWidth: 160));
+```
+
+Mods may also register an independently opened window. SimpleVoiceChat supplies the centered panel, title, close button, clipping, and the same 4px rounded background; the mod only composes the content:
+
+```csharp
+voiceChat.ClientSettingsExtensions.RegisterWindow(
+    new VoiceSettingsExtensionWindow(
+        "example.window",
+        "Example",
+        context => context.Composer.AddStaticText(
+            "Content",
+            CairoFont.WhiteSmallText(),
+            ElementBounds.Fixed(0, 0, context.ContentWidth, 30))));
+
+voiceChat.ClientSettingsExtensions.ShowWindow("example.window");
+```
+
+These APIs are client-only. Registration IDs may contain letters, digits, `.`, `_`, and `-`. Closing the main settings dialog also releases an open extension window.
 
 ### Speech Recognition
 
