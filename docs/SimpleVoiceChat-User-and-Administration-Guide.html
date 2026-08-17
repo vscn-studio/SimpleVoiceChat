@@ -8,7 +8,7 @@
 <tr><td style="padding: 6px 8px; vertical-align: top;">Game version</td><td style="padding: 6px 8px; vertical-align: top;">Vintage Story <code>1.22.3</code></td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Voice protocol</td><td style="padding: 6px 8px; vertical-align: top;">Protocol V6; Opus is the preferred codec, and the server configuration determines whether ADPCM fallback is allowed</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Installation scope</td><td style="padding: 6px 8px; vertical-align: top;">The same version must be installed on both the client and server</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Documentation verified</td><td style="padding: 6px 8px; vertical-align: top;"><code>2026-08-14</code></td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Documentation verified</td><td style="padding: 6px 8px; vertical-align: top;"><code>2026-08-17</code></td></tr>
 </tbody></table>
 <p>SimpleVoiceChat provides proximity voice chat, whisper/normal/shout modes, custom channels, per-player local volume and muting, recording, audio processing, permission management, and capacity safeguards. Normal voice is authenticated, routed, and relayed by the server; multi-track recording is authoritatively hosted and written by the server while clients handle capture, playback, OBS markers, and downloads.</p>
 <div style="border-left: 4px solid #e03e2d; padding: 8px 12px; margin: 12px 0; background-color: #fff5f5;"><p style="color: #e03e2d; margin: 0;"><strong>Important:</strong> The current release uses protocol V6. The voice handshake may be rejected when the client and server versions do not match. Do not install multiple SimpleVoiceChat ZIP files at the same time.</p></div>
@@ -207,6 +207,10 @@
 
 <h2>12. Capacity, Configuration, and Privacy</h2>
 <table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Item</th><th style="padding: 6px 8px; text-align: left;">Default or location</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Network audio</td><td style="padding: 6px 8px; vertical-align: top;">16 kHz mono and 20 ms frames by default; Opus defaults to 20 Kbps with an adaptive 8-32 Kbps range; ADPCM fallback is disabled by default.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Listener voice streams</td><td style="padding: 6px 8px; vertical-align: top;">Eight streams per listener by default, including up to six proximity streams; the server configuration ceiling is 32 streams.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Client playback sources</td><td style="padding: 6px 8px; vertical-align: top;">Up to 32 remote logical streams and 12 OpenAL playback sources; sources are assigned by channel priority, distance, and recent activity when capacity is tight.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Voice egress budgets</td><td style="padding: 6px 8px; vertical-align: top;">512 Kbps per normal listener by default; VS Director uses a separate 4096 Kbps budget by default.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Channel members</td><td style="padding: 6px 8px; vertical-align: top;">Up to 100 members per channel.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Simultaneous channel speakers</td><td style="padding: 6px 8px; vertical-align: top;">Up to three by default; configurable on the server.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Channels per player</td><td style="padding: 6px 8px; vertical-align: top;">Up to eight explicit channels by default.</td></tr>

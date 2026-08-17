@@ -191,7 +191,7 @@
   "simplevoicechat:feedback-invite-received": "{0} 邀请你加入频道，请在弹窗中选择。",
   "simplevoicechat:feedback-invite-sent": "已向 {0} 发送频道邀请。",
   "simplevoicechat:feedback-player-channel-limit": "该玩家加入的语音频道数已达到上限。",
-  "simplevoicechat:feedback-protocol-required": "服务器要求使用语音协议 V5，请更新 SimpleVoiceChat。",
+  "simplevoicechat:feedback-protocol-required": "服务器要求使用语音协议 V6，请更新 SimpleVoiceChat。",
   "simplevoicechat:feedback-protocol-suspended": "因连续发送无效语音包，语音发送已暂停 60 秒。",
   "simplevoicechat:feedback-server-egress-limited": "服务器语音出口达到上限，部分低优先级语音已丢弃。",
   "simplevoicechat:feedback-transmit-blocked": "当前无法发送语音。",

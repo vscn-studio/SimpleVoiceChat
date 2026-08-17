@@ -167,7 +167,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 - Transmit to proximity, the selected custom channel, or both.
 - Open, password-protected, and hidden channels with Owner, Moderator, Member, Listen Only, and Banned roles.
 - Push-to-talk, voice activation, input/output device selection, gain, noise gate, per-player volume, and local mute.
-- Opus is preferred; the server may optionally allow ADPCM fallback. Compatible V5 builds are required on both sides.
+- Opus is preferred; the server may optionally allow ADPCM fallback. Compatible V6 builds are required on both sides.
 - In-memory microphone testing plus input-only, input-and-output, and server-hosted administrator multi-track WAV recording.
 - Optional client-side speech-to-chat, disabled by default and never processed by the SimpleVoiceChat server.
 - Optional runtime VS Director integration without a hard dependency or a separate integration mod.

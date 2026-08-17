@@ -191,7 +191,7 @@
   "simplevoicechat:feedback-invite-received": "{0} invited you to a channel. Choose in the prompt.",
   "simplevoicechat:feedback-invite-sent": "Channel invitation sent to {0}.",
   "simplevoicechat:feedback-player-channel-limit": "That player has reached the joined voice channel limit.",
-  "simplevoicechat:feedback-protocol-required": "This server requires voice protocol V5. Update SimpleVoiceChat.",
+  "simplevoicechat:feedback-protocol-required": "This server requires voice protocol V6. Update SimpleVoiceChat.",
   "simplevoicechat:feedback-protocol-suspended": "Voice transmission was suspended for 60 seconds after repeated invalid packets.",
   "simplevoicechat:feedback-server-egress-limited": "The server voice egress limit was reached; some lower-priority audio was dropped.",
   "simplevoicechat:feedback-transmit-blocked": "Voice sending is currently disabled.",

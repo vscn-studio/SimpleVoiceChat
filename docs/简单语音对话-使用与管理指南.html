@@ -8,7 +8,7 @@
 <tr><td style="padding: 6px 8px; vertical-align: top;">游戏版本</td><td style="padding: 6px 8px; vertical-align: top;">Vintage Story <code>1.22.3</code></td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">语音协议</td><td style="padding: 6px 8px; vertical-align: top;">协议 V6；Opus 为首选编码，是否允许 ADPCM 回退由服务器配置决定</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">安装范围</td><td style="padding: 6px 8px; vertical-align: top;">客户端和服务器均需安装同一版本</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">文档核对日期</td><td style="padding: 6px 8px; vertical-align: top;"><code>2026-08-14</code></td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">文档核对日期</td><td style="padding: 6px 8px; vertical-align: top;"><code>2026-08-17</code></td></tr>
 </tbody></table>
 <p>SimpleVoiceChat 提供接近度语音、耳语/正常/大喊模式、自定义频道、玩家本地音量与静音、录音、音频处理、权限管理和容量保护。普通语音由服务器鉴权、路由和转发；多人分轨录音由服务器权威托管并写盘，客户端只负责采集、播放、OBS 标记和下载。</p>
 <div style="border-left: 4px solid #e03e2d; padding: 8px 12px; margin: 12px 0; background-color: #fff5f5;"><p style="color: #e03e2d; margin: 0;"><strong>重要：</strong> 当前发行包使用协议 V6。客户端与服务器版本不一致时，语音握手可能被拒绝；请不要同时放置多个 SimpleVoiceChat 压缩包。</p></div>
@@ -207,6 +207,10 @@
 
 <h2>十二、容量、配置与隐私</h2>
 <table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">项目</th><th style="padding: 6px 8px; text-align: left;">默认值或位置</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;">网络音频</td><td style="padding: 6px 8px; vertical-align: top;">默认 16 kHz 单声道、20 ms 帧；Opus 默认 20 Kbps，自适应范围为 8-32 Kbps；ADPCM 回退默认关闭。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">监听语音流</td><td style="padding: 6px 8px; vertical-align: top;">服务端默认每位监听者最多 8 条流，其中接近度流默认最多 6 条；服务端配置上限为 32 条。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">客户端播放源</td><td style="padding: 6px 8px; vertical-align: top;">客户端最多维护 32 条远端逻辑流和 12 个 OpenAL 播放源；播放源不足时按频道、距离和活跃度优先级分配。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">语音出口预算</td><td style="padding: 6px 8px; vertical-align: top;">普通监听者默认 512 Kbps；VS Director 使用独立的默认 4096 Kbps 预算。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">频道成员</td><td style="padding: 6px 8px; vertical-align: top;">每个频道最多 100 人。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">频道同时发言</td><td style="padding: 6px 8px; vertical-align: top;">默认最多 3 人，服务端可调整。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">每名玩家频道数</td><td style="padding: 6px 8px; vertical-align: top;">默认最多 8 个显式频道。</td></tr>
