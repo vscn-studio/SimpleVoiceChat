@@ -584,18 +584,23 @@ public sealed class VoiceSettingsDialog : GuiDialog
             .AddVoiceSlider(value => { controller.SetOutputVolumeFromSettings(value); return true; }, ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), "outputVolume")
             .AddStaticText(SVCLang.Get("label-mic-gain"), label, ElementBounds.Fixed(labelX, y += 46, 210, 30))
             .AddVoiceSlider(value => { controller.SetMicGainFromSettings(value); return true; }, ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), "micGain")
-            .AddStaticText(SVCLang.Get("label-noise-gate"), label, ElementBounds.Fixed(labelX, y += 46, 210, 30))
-            .AddVoiceSlider(value => { controller.SetNoiseGateFromSettings(value); return true; }, ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), "noiseGate")
-            .AddStaticText(SVCLang.Get("label-voice-trigger-threshold"), label, ElementBounds.Fixed(labelX, y += 46, 210, 30))
-            .AddVoiceSlider(value => { controller.SetVoiceActivationThresholdFromSettings(value); return true; }, ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), "voiceActivationThreshold");
+            .AddStaticText(SVCLang.Get("setting-voice-noise-gate"), label, ElementBounds.Fixed(labelX, y += 46, 210, 30))
+            .AddVoiceActivationThresholdControl(
+                () => controller.MicrophoneRms,
+                value => { controller.SetNoiseGateFromSettings(value); return true; },
+                value => { controller.SetVoiceActivationThresholdFromSettings(value); return true; },
+                ElementBounds.Fixed(controlX, y, controlWidth, 58),
+                "activationThresholds");
 
         ConfigureSlider(composer, "outputVolume", (int)Math.Round(config.OutputVolume * 100), 0, 200, "%");
         ConfigureSlider(composer, "micGain", (int)Math.Round(config.MicGain * 100), 10, 400, "%");
-        ConfigureSlider(composer, "noiseGate", (int)Math.Round(config.NoiseGate * 1000), 0, 200);
-        ConfigureSlider(composer, "voiceActivationThreshold", (int)Math.Round(config.VoiceActivationThreshold * 1000),
-            Math.Max(5, (int)Math.Round(config.NoiseGate * 1000)), 200);
+        VoiceActivationThresholdControl thresholdControl =
+            (VoiceActivationThresholdControl)composer.GetElement("activationThresholds");
+        thresholdControl.Configure(
+            (int)Math.Round(config.NoiseGate * 1000),
+            (int)Math.Round(config.VoiceActivationThreshold * 1000));
 
-        y += 54;
+        y += 70;
         double recordingY = y;
         composer.AddStaticText(SVCLang.Get("label-local-recording"), label,
             ElementBounds.Fixed(labelX, recordingY + 3, 210, 30));
@@ -1604,7 +1609,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private static void DrawOverlayPanel(Context ctx, ImageSurface surface, ElementBounds bounds)
     {
         bounds.CalcWorldBounds();
-        GuiElement.RoundRectangle(ctx, bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight, GuiElement.scaled(4));
+        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
         ctx.SetSourceRGBA(0.025, 0.03, 0.04, 0.98);
         ctx.FillPreserve();
         ctx.SetSourceRGBA(0.88, 0.92, 0.98, 0.72);
@@ -1689,7 +1694,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private static void DrawPlayerCardBackground(Context ctx, ImageSurface surface, ElementBounds bounds)
     {
         bounds.CalcWorldBounds();
-        GuiElement.RoundRectangle(ctx, bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight, GuiElement.scaled(4));
+        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
         ctx.SetSourceRGBA(0.08, 0.1, 0.13, 0.94);
         ctx.FillPreserve();
         ctx.SetSourceRGBA(0.86, 0.9, 0.96, 0.5);
@@ -1700,7 +1705,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private static void DrawChannelCardBackground(Context ctx, ImageSurface surface, ElementBounds bounds)
     {
         bounds.CalcWorldBounds();
-        GuiElement.RoundRectangle(ctx, bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight, GuiElement.scaled(4));
+        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
         ctx.SetSourceRGBA(0.10, 0.12, 0.15, 0.96);
         ctx.FillPreserve();
         ctx.SetSourceRGBA(0.86, 0.90, 0.96, 0.58);

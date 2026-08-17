@@ -127,6 +127,38 @@ public sealed class CapacityTests
     }
 
     [Fact]
+    public void RelayDispatchWorkspacePreservesPriorityOrderAndReusesExactTargetArrays()
+    {
+        Dictionary<string, ServerVoiceController.RelayRecipient> recipients = new(StringComparer.Ordinal)
+        {
+            ["near"] = new(null!, VoiceRelayKind.Proximity, string.Empty, 1),
+            ["channel-a"] = new(null!, VoiceRelayKind.Channel, "a", 2),
+            ["channel-b"] = new(null!, VoiceRelayKind.Channel, "b", 2)
+        };
+        ServerVoiceController.RelayDispatchWorkspace workspace = new();
+
+        workspace.GroupRecipients(recipients);
+
+        Assert.Equal(3, workspace.Count);
+        Assert.Equal(new ServerVoiceController.RelayGroup(VoiceRelayKind.Channel, "a"), workspace[0].Key);
+        Assert.Equal(new ServerVoiceController.RelayGroup(VoiceRelayKind.Channel, "b"), workspace[1].Key);
+        Assert.Equal(new ServerVoiceController.RelayGroup(VoiceRelayKind.Proximity, string.Empty), workspace[2].Key);
+
+        ServerVoiceController.RelayDispatchGroup group = workspace[0];
+        group.AddPermittedTarget(null!);
+        group.AddPermittedTarget(null!);
+        object twoTargets = group.PreparePermittedTargets();
+        group.ClearPermittedTargets();
+        group.AddPermittedTarget(null!);
+        group.PreparePermittedTargets();
+        group.ClearPermittedTargets();
+        group.AddPermittedTarget(null!);
+        group.AddPermittedTarget(null!);
+
+        Assert.Same(twoTargets, group.PreparePermittedTargets());
+    }
+
+    [Fact]
     public void HundredPlayerSimulationRemainsBounded()
     {
         const int players = 100;

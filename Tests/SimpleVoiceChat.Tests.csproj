@@ -20,6 +20,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SimpleVoiceChat.csproj" />
+    <Reference Include="VintagestoryAPI">
+      <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
+    </Reference>
     <Reference Include="protobuf-net">
       <HintPath>$(VintageStoryPath)\Lib\protobuf-net.dll</HintPath>
     </Reference>

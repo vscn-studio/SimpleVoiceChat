@@ -1607,7 +1607,7 @@ public sealed class ServerVoiceController : IDisposable
             }
         }
 
-        SendV2Relays(fromPlayer, packet, mode, position, routeRecipients, now);
+        SendV2Relays(fromPlayer, packet, mode, position, session, routeRecipients, now);
         SendRecorderRelay(fromPlayer, packet, session.Codec, now);
         SendDirectorProximityRelays(fromPlayer, packet, session.Codec, mode, position, now);
         metrics.RecordRoute(Stopwatch.GetElapsedTime(routeStarted).TotalMilliseconds, candidateCount, now);
@@ -2123,32 +2123,27 @@ public sealed class ServerVoiceController : IDisposable
         VoiceFrameV3Packet frame,
         VoiceMode mode,
         Vec3d position,
+        VoiceClientSession session,
         Dictionary<string, RelayRecipient> recipients,
         long now)
     {
         bool budgetDropped = false;
-        foreach (IGrouping<RelayGroup, RelayRecipient> group in recipients.Values
-                     .GroupBy(recipient => new RelayGroup(recipient.RelayKind, recipient.ChannelId))
-                     .OrderByDescending(group => group.Max(recipient => recipient.Priority)))
+        RelayDispatchWorkspace dispatch = session.RelayDispatch;
+        dispatch.GroupRecipients(recipients);
+        for (int groupIndex = 0; groupIndex < dispatch.Count; groupIndex++)
         {
-            IServerPlayer[] targets = group.Select(recipient => recipient.Player).ToArray();
-            if (targets.Length == 0)
-            {
-                continue;
-            }
-
+            RelayDispatchGroup group = dispatch[groupIndex];
             int estimatedPacketBytes = frame.Payload.Length + 64;
-            List<IServerPlayer>? permittedTargets = null;
-            for (int i = 0; i < targets.Length; i++)
+            group.ClearPermittedTargets();
+            foreach (RelayRecipient recipient in group.Recipients)
             {
-                string listenerUid = targets[i].PlayerUID;
+                string listenerUid = recipient.Player.PlayerUID;
                 if (listenerEgressBudget.HasCapacity(listenerUid, estimatedPacketBytes, now)
                     && egressBudget.Available(now) + 0.0001d >= estimatedPacketBytes
                     && listenerEgressBudget.TryConsume(listenerUid, estimatedPacketBytes, now)
                     && egressBudget.TryConsume(estimatedPacketBytes, now))
                 {
-                    permittedTargets ??= new List<IServerPlayer>(targets.Length);
-                    permittedTargets.Add(targets[i]);
+                    group.AddPermittedTarget(recipient.Player);
                 }
                 else
                 {
@@ -2156,7 +2151,7 @@ public sealed class ServerVoiceController : IDisposable
                     budgetDropped = true;
                 }
             }
-            if (permittedTargets == null || permittedTargets.Count == 0)
+            if (group.PermittedTargetCount == 0)
             {
                 continue;
             }
@@ -2176,13 +2171,11 @@ public sealed class ServerVoiceController : IDisposable
                 X = (float)position.X,
                 Y = (float)position.Y,
                 Z = (float)position.Z,
-                Codec = sessionsByUid.TryGetValue(speaker.PlayerUID, out VoiceClientSession? codecSession)
-                    ? codecSession.Codec
-                    : VoiceProtocol.CodecImaAdpcm,
+                Codec = session.Codec,
                 SenderUid = speaker.PlayerUID,
                 CaptureServerTimestampMilliseconds = frame.CaptureServerTimestampMilliseconds
             };
-            IServerPlayer[] finalTargets = permittedTargets.Count == targets.Length ? targets : permittedTargets.ToArray();
+            IServerPlayer[] finalTargets = group.PreparePermittedTargets();
             voiceChannel?.SendPacket(relay, finalTargets);
             metrics.Relayed(
                 finalTargets.Length,
@@ -3163,6 +3156,7 @@ public sealed class ServerVoiceController : IDisposable
         public VoiceSequenceWindow RecorderSequenceWindow { get; } = new();
         public List<VoiceSpatialCandidate> SpatialCandidates { get; } = new(128);
         public Dictionary<string, RelayRecipient> RouteRecipients { get; } = new(128, StringComparer.Ordinal);
+        public RelayDispatchWorkspace RelayDispatch { get; } = new();
         public string SelectedChannelId { get; set; } = string.Empty;
         private Dictionary<string, long> LastFeedbackMillisecondsByCode { get; } = new(StringComparer.Ordinal);
 
@@ -3181,6 +3175,106 @@ public sealed class ServerVoiceController : IDisposable
             }
             LastFeedbackMillisecondsByCode[code] = nowMilliseconds;
             return true;
+        }
+    }
+
+    internal sealed class RelayDispatchWorkspace
+    {
+        private readonly List<RelayDispatchGroup> groups = new(2);
+
+        public int Count { get; private set; }
+
+        public RelayDispatchGroup this[int index] => groups[index];
+
+        public void GroupRecipients(Dictionary<string, RelayRecipient> recipients)
+        {
+            Count = 0;
+            foreach (RelayRecipient recipient in recipients.Values)
+            {
+                RelayGroup key = new(recipient.RelayKind, recipient.ChannelId);
+                RelayDispatchGroup? group = null;
+                for (int i = 0; i < Count; i++)
+                {
+                    if (groups[i].Key == key)
+                    {
+                        group = groups[i];
+                        break;
+                    }
+                }
+
+                if (group == null)
+                {
+                    if (Count == groups.Count)
+                    {
+                        groups.Add(new RelayDispatchGroup());
+                    }
+                    group = groups[Count++];
+                    group.Reset(key);
+                }
+                group.Add(recipient);
+            }
+
+            // Match the previous stable OrderByDescending priority without its
+            // grouping, iterator, and sorting allocations.
+            for (int i = 1; i < Count; i++)
+            {
+                RelayDispatchGroup current = groups[i];
+                int insertAt = i;
+                while (insertAt > 0 && groups[insertAt - 1].Priority < current.Priority)
+                {
+                    groups[insertAt] = groups[insertAt - 1];
+                    insertAt--;
+                }
+                groups[insertAt] = current;
+            }
+        }
+    }
+
+    internal sealed class RelayDispatchGroup
+    {
+        private readonly List<IServerPlayer> permittedTargets = new(128);
+        private IServerPlayer[] exactTargets = Array.Empty<IServerPlayer>();
+        private IServerPlayer[] previousExactTargets = Array.Empty<IServerPlayer>();
+
+        public RelayGroup Key { get; private set; }
+        public int Priority { get; private set; }
+        public List<RelayRecipient> Recipients { get; } = new(128);
+        public int PermittedTargetCount => permittedTargets.Count;
+
+        public void Reset(RelayGroup key)
+        {
+            Key = key;
+            Priority = int.MinValue;
+            Recipients.Clear();
+            permittedTargets.Clear();
+        }
+
+        public void Add(RelayRecipient recipient)
+        {
+            Recipients.Add(recipient);
+            Priority = Math.Max(Priority, recipient.Priority);
+        }
+
+        public void ClearPermittedTargets() => permittedTargets.Clear();
+
+        public void AddPermittedTarget(IServerPlayer player) => permittedTargets.Add(player);
+
+        public IServerPlayer[] PreparePermittedTargets()
+        {
+            if (exactTargets.Length != permittedTargets.Count)
+            {
+                if (previousExactTargets.Length == permittedTargets.Count)
+                {
+                    (exactTargets, previousExactTargets) = (previousExactTargets, exactTargets);
+                }
+                else
+                {
+                    previousExactTargets = exactTargets;
+                    exactTargets = new IServerPlayer[permittedTargets.Count];
+                }
+            }
+            permittedTargets.CopyTo(exactTargets, 0);
+            return exactTargets;
         }
     }
 
@@ -3248,8 +3342,8 @@ public sealed class ServerVoiceController : IDisposable
         }
     }
 
-    private readonly record struct RelayRecipient(IServerPlayer Player, VoiceRelayKind RelayKind, string ChannelId, int Priority);
-    private readonly record struct RelayGroup(VoiceRelayKind RelayKind, string ChannelId);
+    internal readonly record struct RelayRecipient(IServerPlayer Player, VoiceRelayKind RelayKind, string ChannelId, int Priority);
+    internal readonly record struct RelayGroup(VoiceRelayKind RelayKind, string ChannelId);
     private readonly record struct RecorderRecordingSession(
         string OwnerUid,
         string OwnerName,
