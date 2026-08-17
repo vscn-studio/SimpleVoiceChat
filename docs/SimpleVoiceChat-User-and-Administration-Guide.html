@@ -4,7 +4,7 @@
 <th style="padding: 6px 8px; text-align: left;">Current Release</th>
 </tr></thead><tbody>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Mod name</td><td style="padding: 6px 8px; vertical-align: top;">SimpleVoiceChat</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Mod version</td><td style="padding: 6px 8px; vertical-align: top;"><code>1.2.0</code></td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Mod version</td><td style="padding: 6px 8px; vertical-align: top;"><code>1.2.1</code></td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Game version</td><td style="padding: 6px 8px; vertical-align: top;">Vintage Story <code>1.22.3</code></td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Voice protocol</td><td style="padding: 6px 8px; vertical-align: top;">Protocol V5; Opus is the preferred codec, and the server configuration determines whether ADPCM fallback is allowed</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Installation scope</td><td style="padding: 6px 8px; vertical-align: top;">The same version must be installed on both the client and server</td></tr>
@@ -17,7 +17,7 @@
 <ol>
 <li>Shut down the Vintage Story client and server.</li>
 <li>Delete old SimpleVoiceChat ZIP files from the Mods directory, leaving only the version you intend to use.</li>
-<li>Place <code>SimpleVoiceChat-v1.2.0.zip</code> unchanged in the <code>Mods</code> directory on both the client and server. Do not extract the mod archive.</li>
+<li>Place <code>SimpleVoiceChat-v1.2.1.zip</code> unchanged in the <code>Mods</code> directory on both the client and server. Do not extract the mod archive.</li>
 <li>Start the server first, then start the client and join the world.</li>
 <li>On first use, the chat box prompts you to press <code>'</code> to open settings. The prompt itself does not open a window.</li>
 <li>Press <code>'</code> to open the initial setup wizard. On the welcome page, you can choose "Skip Initial Setup and Open Settings," select "Cancel" to close the wizard, or select "Confirm" to begin configuration.</li>
@@ -229,7 +229,7 @@
 <tr><td style="padding: 6px 8px; vertical-align: top;">The seventh row is missing from a list</td><td style="padding: 6px 8px; vertical-align: top;">Channel and player lists display up to six rows per page. Use the paginator at the bottom to change pages.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Cannot join a channel</td><td style="padding: 6px 8px; vertical-align: top;">Check whether the channel is locked, the password is correct, you are banned, or you have reached the limit of eight channels per player.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Channel speaking slots are full</td><td style="padding: 6px 8px; vertical-align: top;">The channel has reached its simultaneous-speaker limit. Try again later. Listen Only and muted players cannot speak.</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Protocol V5 incompatibility message</td><td style="padding: 6px 8px; vertical-align: top;">The client and server must both use compatible protocol V5 builds. Install <code>1.2.0</code> on both sides and remove older archives.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Protocol V5 incompatibility message</td><td style="padding: 6px 8px; vertical-align: top;">The client and server must both use compatible protocol V5 builds. Install <code>1.2.1</code> on both sides and remove older archives.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Microphone Test does not create a file</td><td style="padding: 6px 8px; vertical-align: top;">This is by design. "Microphone Test" on the Settings page records only in memory. To save a file, use the record icon on the home page.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;"><code>Ctrl + F9</code> has no usable Start button or remains at <code>0/3</code></td><td style="padding: 6px 8px; vertical-align: top;">Enter the world and confirm that the voice handshake completed, the recording client has <code>controlserver</code>, and <code>EnableRecorderCapture</code> is <code>true</code> on the current server. Run <code>/svc reload</code> or restart after editing the configuration. Single-player mode tries the reliable control channel after one second; if the count still does not increase, check client/server versions and game logs.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;"><code>SimpleVoiceChat Player Voice</code> exists, but no per-player WAV appears</td><td style="padding: 6px 8px; vertical-align: top;">The OBS source is only a mixed monitoring bus. Start server-hosted multi-track recording, wait for participant readiness, have each player actually transmit voice, then stop and wait for download. Use <code>/svc recording list</code> and <code>/svc recording download &lt;session-id&gt;</code> for recovered or previously completed sessions.</td></tr>

@@ -5,6 +5,8 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <VintageStoryPath Condition="'$(VintageStoryPath)' == '' and '$(VINTAGE_STORY)' != ''">$(VINTAGE_STORY)</VintageStoryPath>
+    <VintageStoryPath Condition="'$(VintageStoryPath)' == ''">E:\vintagestory\Vintagestory</VintageStoryPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,5 +20,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SimpleVoiceChat.csproj" />
+    <Reference Include="protobuf-net">
+      <HintPath>$(VintageStoryPath)\Lib\protobuf-net.dll</HintPath>
+    </Reference>
   </ItemGroup>
 </Project>

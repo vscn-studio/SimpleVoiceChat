@@ -321,7 +321,7 @@ public sealed class ServerVoiceController : IDisposable
                     }
                     VoiceDiagnosticsPacket diag = BuildDiagnosticsSnapshot();
                     return TextCommandResult.Success(
-                        SVCLang.Get("server-diagnostics", diag.HandshakenClients, diag.ActiveTalkers, diag.Channels, diag.ReceivedPackets, diag.RelayedPackets, diag.RelayedBytes, diag.DroppedRateLimit, diag.DroppedInvalid, diag.DroppedNoSlot, diag.DroppedBudget, diag.P95FanOut.ToString("0.0"), diag.P95RouteMilliseconds.ToString("0.000"), diag.ActiveListenerStreams));
+                        SVCLang.Get("server-diagnostics", diag.HandshakenClients, diag.ActiveTalkers, diag.Channels, diag.ReceivedPackets, diag.RelayedPackets, diag.RelayedBytes, diag.EstimatedRelayedIpv4UdpBytes, diag.DroppedRateLimit, diag.DroppedInvalid, diag.DroppedNoSlot, diag.DroppedBudget, diag.P95FanOut.ToString("0.0"), diag.P95RouteMilliseconds.ToString("0.000"), diag.ActiveListenerStreams));
                 }
 
             case "metrics":
@@ -2184,7 +2184,11 @@ public sealed class ServerVoiceController : IDisposable
             };
             IServerPlayer[] finalTargets = permittedTargets.Count == targets.Length ? targets : permittedTargets.ToArray();
             voiceChannel?.SendPacket(relay, finalTargets);
-            metrics.Relayed(finalTargets.Length, estimatedPacketBytes, now);
+            metrics.Relayed(
+                finalTargets.Length,
+                estimatedPacketBytes,
+                VoicePacketSizeEstimator.EstimateIpv4UdpBytes(relay),
+                now);
         }
         if (budgetDropped
             && sessionsByUid.TryGetValue(speaker.PlayerUID, out VoiceClientSession? feedbackSession)
@@ -2284,7 +2288,7 @@ public sealed class ServerVoiceController : IDisposable
                 continue;
             }
 
-            voiceChannel?.SendPacket(new DirectorVoiceRelayFrameV3Packet
+            DirectorVoiceRelayFrameV3Packet relay = new()
             {
                 SpeakerUid = speaker.PlayerUID,
                 SpeakerEntityId = speaker.Entity.EntityId,
@@ -2301,8 +2305,9 @@ public sealed class ServerVoiceController : IDisposable
                 ReferenceDistance = referenceDistance,
                 RolloffFactor = rolloffFactor,
                 SpeakerName = speaker.PlayerName
-            }, target);
-            metrics.Relayed(1, estimatedPacketBytes, now);
+            };
+            voiceChannel?.SendPacket(relay, target);
+            metrics.Relayed(1, estimatedPacketBytes, VoicePacketSizeEstimator.EstimateIpv4UdpBytes(relay), now);
             listenerCount++;
         }
     }

@@ -102,7 +102,8 @@ public sealed class RecorderVoiceCapture : IDisposable
         {
             samples = Array.Empty<short>();
             timestamp = 0L;
-            if (decoder == null || !encodedFrames.TryDequeue(out EncodedJitterFrame encoded))
+            if (decoder == null
+                || !encodedFrames.TryDequeue(codec == VoiceProtocol.CodecOpus, out EncodedJitterFrame encoded))
             {
                 return false;
             }

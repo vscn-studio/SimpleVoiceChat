@@ -12,6 +12,7 @@ public sealed class VoiceMetrics
     private long receivedPackets;
     private long relayedPackets;
     private long relayedBytes;
+    private long estimatedRelayedIpv4UdpBytes;
     private long droppedRateLimit;
     private long droppedInvalid;
     private long droppedNoSlot;
@@ -27,6 +28,20 @@ public sealed class VoiceMetrics
     }
 
     public void Relayed(int recipients, int estimatedPacketBytes, long? nowMilliseconds = null)
+        => RecordRelayed(recipients, estimatedPacketBytes, estimatedPacketBytes, nowMilliseconds);
+
+    public void Relayed(
+        int recipients,
+        int budgetedPacketBytes,
+        int estimatedIpv4UdpPacketBytes,
+        long nowMilliseconds)
+        => RecordRelayed(recipients, budgetedPacketBytes, estimatedIpv4UdpPacketBytes, nowMilliseconds);
+
+    private void RecordRelayed(
+        int recipients,
+        int budgetedPacketBytes,
+        int estimatedIpv4UdpPacketBytes,
+        long? nowMilliseconds)
     {
         if (recipients <= 0)
         {
@@ -35,12 +50,15 @@ public sealed class VoiceMetrics
 
         lock (sync)
         {
-            long bytes = (long)recipients * Math.Max(0, estimatedPacketBytes);
+            long bytes = (long)recipients * Math.Max(0, budgetedPacketBytes);
+            long estimatedIpv4UdpBytes = (long)recipients * Math.Max(0, estimatedIpv4UdpPacketBytes);
             relayedPackets += recipients;
             relayedBytes += bytes;
+            estimatedRelayedIpv4UdpBytes += estimatedIpv4UdpBytes;
             MetricBucket bucket = GetBucket(Now(nowMilliseconds));
             bucket.RelayedPackets += recipients;
             bucket.RelayedBytes += bytes;
+            bucket.EstimatedRelayedIpv4UdpBytes += estimatedIpv4UdpBytes;
             bucket.AddFanOut(recipients);
         }
     }
@@ -79,6 +97,7 @@ public sealed class VoiceMetrics
                 ReceivedPackets = receivedPackets,
                 RelayedPackets = relayedPackets,
                 RelayedBytes = relayedBytes,
+                EstimatedRelayedIpv4UdpBytes = estimatedRelayedIpv4UdpBytes,
                 DroppedRateLimit = droppedRateLimit,
                 DroppedInvalid = droppedInvalid,
                 DroppedNoSlot = droppedNoSlot,
@@ -89,6 +108,7 @@ public sealed class VoiceMetrics
                 RollingReceivedPackets = rollingBuckets.Sum(bucket => bucket.ReceivedPackets),
                 RollingRelayedPackets = rollingBuckets.Sum(bucket => bucket.RelayedPackets),
                 RollingRelayedBytes = rollingBuckets.Sum(bucket => bucket.RelayedBytes),
+                RollingEstimatedRelayedIpv4UdpBytes = rollingBuckets.Sum(bucket => bucket.EstimatedRelayedIpv4UdpBytes),
                 RollingDroppedPackets = rollingBuckets.Sum(bucket => bucket.DroppedPackets),
                 ActiveListenerStreams = Math.Max(0, activeListenerStreams),
                 AverageFanOut = Average(fanOut),
@@ -182,6 +202,7 @@ public sealed class VoiceMetrics
         public long ReceivedPackets { get; set; }
         public long RelayedPackets { get; set; }
         public long RelayedBytes { get; set; }
+        public long EstimatedRelayedIpv4UdpBytes { get; set; }
         public long DroppedPackets { get; set; }
         public List<double> FanOutSamples { get; } = new(SamplesPerSecond);
         public List<double> RouteTimeSamples { get; } = new(SamplesPerSecond);

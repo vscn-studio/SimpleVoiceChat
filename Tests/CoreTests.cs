@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text;
+using ProtoBuf;
 using SimpleVoiceChat.Audio;
 using SimpleVoiceChat.Config;
 using SimpleVoiceChat.Integration;
@@ -688,7 +689,7 @@ public sealed class CoreTests
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
         JsonElement dependencies = document.RootElement.GetProperty("dependencies");
 
-        Assert.Equal("1.2.0", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("1.2.1", document.RootElement.GetProperty("version").GetString());
         Assert.True(dependencies.TryGetProperty("game", out _));
         Assert.False(dependencies.TryGetProperty("vsdirector", out _));
         Assert.DoesNotContain(
@@ -786,6 +787,139 @@ public sealed class CoreTests
         Assert.Equal((short)2, second[0]);
         Assert.Equal((short)3, third[0]);
         Assert.False(buffer.TryDequeue(out _));
+    }
+
+    [Fact]
+    public void EncodedJitterBufferDoesNotReuseFutureFrameWithoutFecSupport()
+    {
+        EncodedJitterBuffer buffer = CreateStartedEncodedJitterBuffer();
+        byte[] futurePayload = { 13 };
+        buffer.Enqueue(13, futurePayload, 60);
+        buffer.Enqueue(14, new byte[] { 14 }, 80);
+
+        Assert.True(buffer.TryDequeue(supportsFec: false, out EncodedJitterFrame missing));
+        Assert.Equal((ushort)12, missing.Sequence);
+        Assert.True(missing.Concealment);
+        Assert.False(missing.UseFec);
+        Assert.Empty(missing.Payload);
+        Assert.Equal(1, buffer.ConcealedFrames);
+        Assert.Equal(0, buffer.FecFrames);
+
+        Assert.True(buffer.TryDequeue(supportsFec: false, out EncodedJitterFrame future));
+        Assert.Equal((ushort)13, future.Sequence);
+        Assert.Same(futurePayload, future.Payload);
+        Assert.False(future.Concealment);
+    }
+
+    [Fact]
+    public void EncodedJitterBufferKeepsOpusFecBehavior()
+    {
+        EncodedJitterBuffer buffer = CreateStartedEncodedJitterBuffer();
+        byte[] futurePayload = { 13 };
+        buffer.Enqueue(13, futurePayload, 60);
+        buffer.Enqueue(14, new byte[] { 14 }, 80);
+
+        Assert.True(buffer.TryDequeue(supportsFec: true, out EncodedJitterFrame missing));
+        Assert.Equal((ushort)12, missing.Sequence);
+        Assert.True(missing.Concealment);
+        Assert.True(missing.UseFec);
+        Assert.Same(futurePayload, missing.Payload);
+        Assert.Equal(0, buffer.ConcealedFrames);
+        Assert.Equal(1, buffer.FecFrames);
+
+        Assert.True(buffer.TryDequeue(supportsFec: true, out EncodedJitterFrame future));
+        Assert.Equal((ushort)13, future.Sequence);
+        Assert.Same(futurePayload, future.Payload);
+        Assert.False(future.Concealment);
+    }
+
+    [Fact]
+    public void RelayPacketSizeEstimatorMatchesProtobufSerialization()
+    {
+        VoiceRelayFrameV3Packet packet = new()
+        {
+            SenderUidHash = -123456789,
+            SenderEntityId = 12345,
+            SessionId = 42,
+            Sequence = 321,
+            Mode = VoiceMode.Shout,
+            RelayKind = VoiceRelayKind.Channel,
+            ChannelId = "channel-7",
+            Level = 128,
+            Flags = 3,
+            Payload = Enumerable.Range(0, 50).Select(value => (byte)value).ToArray(),
+            X = 10.5f,
+            Y = 64f,
+            Z = -3.25f,
+            Codec = VoiceProtocol.CodecOpus,
+            SenderUid = "player-uid-0123456789abcdef",
+            CaptureServerTimestampMilliseconds = 1_234_567_890
+        };
+
+        using MemoryStream stream = new();
+        Serializer.Serialize(stream, packet);
+
+        Assert.Equal(stream.Length, VoicePacketSizeEstimator.EstimateSerializedBytes(packet));
+        Assert.Equal(stream.Length + VoicePacketSizeEstimator.Ipv4UdpHeaderBytes,
+            VoicePacketSizeEstimator.EstimateIpv4UdpBytes(packet));
+    }
+
+    [Fact]
+    public void RelayPacketSizeEstimatorHandlesLengthBoundariesAndUtf8()
+    {
+        VoiceRelayFrameV3Packet packet = new()
+        {
+            Payload = new byte[VoiceConstants.MaxUdpPacketBytes - 64],
+            ChannelId = new string('c', VoiceProtocol.MaxControlStringLength),
+            SenderUid = string.Concat(Enumerable.Repeat("玩家", 32))
+        };
+
+        using MemoryStream stream = new();
+        Serializer.Serialize(stream, packet);
+
+        Assert.Equal(stream.Length, VoicePacketSizeEstimator.EstimateSerializedBytes(packet));
+        Assert.Equal(stream.Length + VoicePacketSizeEstimator.Ipv4UdpHeaderBytes,
+            VoicePacketSizeEstimator.EstimateIpv4UdpBytes(packet));
+    }
+
+    [Fact]
+    public void DirectorRelayPacketSizeEstimatorMatchesProtobufSerialization()
+    {
+        DirectorVoiceRelayFrameV3Packet packet = new()
+        {
+            SpeakerUid = "player-uid-0123456789abcdef",
+            SpeakerEntityId = 12345,
+            SessionId = 42,
+            Sequence = 321,
+            Mode = VoiceMode.Talk,
+            Payload = Enumerable.Range(0, 50).Select(value => (byte)value).ToArray(),
+            X = 10.5f,
+            Y = 64f,
+            Z = -3.25f,
+            Dimension = -1,
+            Codec = VoiceProtocol.CodecOpus,
+            MaxDistance = 40f,
+            ReferenceDistance = 4f,
+            RolloffFactor = 1.2f,
+            SpeakerName = "Alice"
+        };
+
+        using MemoryStream stream = new();
+        Serializer.Serialize(stream, packet);
+
+        Assert.Equal(stream.Length, VoicePacketSizeEstimator.EstimateSerializedBytes(packet));
+        Assert.Equal(stream.Length + VoicePacketSizeEstimator.Ipv4UdpHeaderBytes,
+            VoicePacketSizeEstimator.EstimateIpv4UdpBytes(packet));
+    }
+
+    private static EncodedJitterBuffer CreateStartedEncodedJitterBuffer()
+    {
+        EncodedJitterBuffer buffer = new(adaptive: false);
+        buffer.Enqueue(10, new byte[] { 10 }, 0);
+        buffer.Enqueue(11, new byte[] { 11 }, 20);
+        Assert.True(buffer.TryDequeue(supportsFec: true, out _));
+        Assert.True(buffer.TryDequeue(supportsFec: true, out _));
+        return buffer;
     }
 
     [Fact]

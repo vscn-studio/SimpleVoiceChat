@@ -83,7 +83,7 @@ public sealed class EncodedJitterBuffer
         TrimOverflow();
     }
 
-    public bool TryDequeue(out EncodedJitterFrame frame)
+    public bool TryDequeue(bool supportsFec, out EncodedJitterFrame frame)
     {
         frame = default;
         if (!initialized || frames.Count == 0)
@@ -122,7 +122,7 @@ public sealed class EncodedJitterBuffer
             return true;
         }
 
-        if (distance == 1)
+        if (distance == 1 && supportsFec)
         {
             FecFrames++;
             frame = new EncodedJitterFrame(nextSequence, frames[first], true, true);

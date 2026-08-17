@@ -809,7 +809,7 @@ public sealed class OpenAlPlaybackService : IDisposable
         {
             while (Decoder != null
                 && DecodedEncodedFrames.Count < maximumQueuedFrames
-                && EncodedBuffer.TryDequeue(out EncodedJitterFrame encoded))
+                && EncodedBuffer.TryDequeue(DecoderCodec == VoiceProtocol.CodecOpus, out EncodedJitterFrame encoded))
             {
                 short[] samples = new short[VoiceConstants.SamplesPerFrame];
                 if (!VoiceDecoderSafety.DecodeOrSilence(Decoder, encoded.Payload, samples, encoded.UseFec))

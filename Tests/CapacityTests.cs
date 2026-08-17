@@ -109,7 +109,7 @@ public sealed class CapacityTests
     {
         VoiceMetrics metrics = new();
         metrics.Received(0);
-        metrics.Relayed(4, 100, 0);
+        metrics.Relayed(4, 100, 150, 0);
         metrics.RecordRoute(1.25, 12, 0);
         metrics.DropNoSlot(0);
 
@@ -117,6 +117,7 @@ public sealed class CapacityTests
         Assert.Equal(1, current.RollingReceivedPackets);
         Assert.Equal(4, current.RollingRelayedPackets);
         Assert.Equal(400, current.RollingRelayedBytes);
+        Assert.Equal(600, current.RollingEstimatedRelayedIpv4UdpBytes);
         Assert.Equal(4, current.P95FanOut);
         Assert.Equal(1.25, current.P95RouteMilliseconds);
 

@@ -671,7 +671,7 @@ public sealed class ClientVoiceController : IDisposable
         controlChannel.SendPacket(new VoiceHelloPacket
         {
             ProtocolVersion = VoiceProtocol.CurrentVersion,
-            ModVersion = "1.2.0",
+            ModVersion = "1.2.1",
             SupportedCodecs = new[] { VoiceProtocol.CodecOpus, VoiceProtocol.CodecImaAdpcm },
             Capabilities = (int)(VoiceCapability.ProtocolV4
                 | VoiceCapability.ChannelDeltas
@@ -917,10 +917,14 @@ public sealed class ClientVoiceController : IDisposable
         {
             return;
         }
+        long rollingEstimatedBytes = packet.RollingEstimatedRelayedIpv4UdpBytes > 0
+            ? packet.RollingEstimatedRelayedIpv4UdpBytes
+            : packet.RollingRelayedBytes;
         lastDiagnostics = SVCLang.Get(
             "diagnostics-detail",
             packet.RollingRelayedPackets,
             packet.RollingRelayedBytes,
+            rollingEstimatedBytes,
             packet.RollingDroppedPackets,
             packet.P95FanOut.ToString("0.0"),
             packet.P95RouteMilliseconds.ToString("0.000"),

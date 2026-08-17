@@ -691,7 +691,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
             metadata = default;
             if (decoder == null
                 || !hasMetadata
-                || !encodedFrames.TryDequeue(out EncodedJitterFrame encoded))
+                || !encodedFrames.TryDequeue(codec == VoiceProtocol.CodecOpus, out EncodedJitterFrame encoded))
             {
                 return false;
             }

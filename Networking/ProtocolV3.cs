@@ -685,4 +685,12 @@ public sealed class VoiceDiagnosticsPacket
 
     [ProtoMember(20)]
     public int PendingInvites;
+
+    /// <summary>Estimated protobuf payload plus IPv4 and UDP headers.</summary>
+    [ProtoMember(21)]
+    public long EstimatedRelayedIpv4UdpBytes;
+
+    /// <summary>Rolling 60-second estimate of protobuf payload plus IPv4 and UDP headers.</summary>
+    [ProtoMember(22)]
+    public long RollingEstimatedRelayedIpv4UdpBytes;
 }
