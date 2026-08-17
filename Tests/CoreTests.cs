@@ -66,6 +66,27 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void ServerGuidedBitrateAccountsForFanOutLossAndBudgetPressure()
+    {
+        ServerBitrateDecision lowFanOut = ServerAdaptiveBitrateController.Evaluate(32_000, 2, 0, 0);
+        ServerBitrateDecision crowded = ServerAdaptiveBitrateController.Evaluate(32_000, 20, 10, 0.8);
+
+        Assert.Equal(32_000, lowFanOut.TargetBitrate);
+        Assert.Equal(8_000, crowded.TargetBitrate);
+        Assert.Equal(10, crowded.PacketLossPercent);
+    }
+
+    [Fact]
+    public void TokenBucketPressureReportsRemainingBurstCapacity()
+    {
+        VoiceTokenBucket bucket = new(100, 100, 0);
+
+        Assert.Equal(0, bucket.Pressure(0), precision: 3);
+        Assert.True(bucket.TryConsume(50, 0));
+        Assert.Equal(0.5, bucket.Pressure(0), precision: 3);
+    }
+
+    [Fact]
     public void PlaybackStreamLimitAllowsThirtyTwoSources()
     {
         SimpleVoiceChatServerConfig config = new()
@@ -101,7 +122,7 @@ public sealed class CoreTests
 
         config.Normalize();
 
-        Assert.Equal(8, config.ConfigVersion);
+        Assert.Equal(9, config.ConfigVersion);
         Assert.Equal(32, config.MaxDirectorStreamsPerListener);
         Assert.Equal(4096, config.MaxDirectorEgressKbps);
     }
@@ -117,10 +138,10 @@ public sealed class CoreTests
     }
 
     [Fact]
-    public void ProtocolVersionFiveRejectsOlderVersions()
+    public void ProtocolVersionSixRejectsOlderVersions()
     {
-        Assert.Equal(5, VoiceProtocol.CurrentVersion);
-        Assert.True(VoiceProtocol.IsCompatible(5));
+        Assert.Equal(6, VoiceProtocol.CurrentVersion);
+        Assert.True(VoiceProtocol.IsCompatible(6));
         Assert.False(VoiceProtocol.IsCompatible(4));
         Assert.False(VoiceProtocol.IsCompatible(2));
         Assert.False(VoiceProtocol.IsCompatible(3));
@@ -367,7 +388,7 @@ public sealed class CoreTests
         config.Normalize();
 
         PersistentVoiceChannelConfig channel = Assert.Single(config.PersistentChannels);
-        Assert.Equal(8, config.ConfigVersion);
+        Assert.Equal(9, config.ConfigVersion);
         Assert.Equal("channel-1", channel.Id);
         Assert.Equal(2, config.NextChannelNumber);
         Assert.NotEqual("legacy-general", channel.Id);
@@ -578,13 +599,13 @@ public sealed class CoreTests
 
         existing.Normalize();
 
-        Assert.Equal(6, existing.ConfigVersion);
+        Assert.Equal(7, existing.ConfigVersion);
         Assert.True(existing.InitialSetupCompleted);
         Assert.True(existing.InitialSetupPromptShown);
 
         SimpleVoiceChatClientConfig firstInstall = new();
         firstInstall.Normalize();
-        Assert.Equal(6, firstInstall.ConfigVersion);
+        Assert.Equal(7, firstInstall.ConfigVersion);
         Assert.False(firstInstall.InitialSetupCompleted);
         Assert.False(firstInstall.InitialSetupPromptShown);
     }

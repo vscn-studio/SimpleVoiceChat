@@ -688,7 +688,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
                 metadataBySequence.Remove(metadataBySequence.Keys.First());
             }
 
-            encodedFrames.Enqueue(packet.Sequence, packet.Payload.ToArray(), arrivalMilliseconds);
+            encodedFrames.Enqueue(packet.Sequence, packet.Payload, arrivalMilliseconds);
             LastActivityMilliseconds = arrivalMilliseconds;
         }
 

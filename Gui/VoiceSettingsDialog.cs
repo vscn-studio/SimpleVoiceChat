@@ -79,6 +79,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     {
         "inputDevice",
         "outputDevice",
+        "opusBitrate",
         "quick-channel",
         "quick-transmit",
         "speech-recognition-provider",
@@ -576,6 +577,10 @@ public sealed class VoiceSettingsDialog : GuiDialog
         string[] outputValues = controller.GetOutputDeviceValues();
         string[] outputNames = ClientVoiceController.GetOutputDeviceNames(outputValues);
         string selectedOutput = config.OutputDeviceName ?? string.Empty;
+        string[] bitrateValues = { "0", "8", "12", "16", "20", "24", "32" };
+        string[] bitrateNames = bitrateValues
+            .Select(value => value == "0" ? SVCLang.Get("bitrate-auto") : SVCLang.Get("bitrate-kbps", value))
+            .ToArray();
 
         composer
             .AddStaticText(SVCLang.Get("label-input-device"), label, ElementBounds.Fixed(labelX, y + 3, 210, 30))
@@ -586,6 +591,14 @@ public sealed class VoiceSettingsDialog : GuiDialog
             .AddVoiceSlider(value => { controller.SetOutputVolumeFromSettings(value); return true; }, ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), "outputVolume")
             .AddStaticText(SVCLang.Get("label-mic-gain"), label, ElementBounds.Fixed(labelX, y += 46, 210, 30))
             .AddVoiceSlider(value => { controller.SetMicGainFromSettings(value); return true; }, ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), "micGain")
+            .AddStaticText(SVCLang.Get("label-opus-bitrate"), label, ElementBounds.Fixed(labelX, y += 46, 210, 30))
+            .AddVoiceDropDown(
+                bitrateValues,
+                bitrateNames,
+                Math.Max(0, Array.IndexOf(bitrateValues, config.PreferredOpusBitrateKbps.ToString())),
+                OnPreferredOpusBitrateChanged,
+                ElementBounds.Fixed(controlX, y, controlWidth, controlHeight),
+                "opusBitrate")
             .AddStaticText(SVCLang.Get("setting-voice-noise-gate"), label, ElementBounds.Fixed(labelX, y += 46, 210, 30))
             .AddVoiceActivationThresholdControl(
                 () => controller.MicrophoneRms,
@@ -1107,6 +1120,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
             DiagnosticValue(diagnostics, packet => packet.RollingDroppedPackets.ToString()));
         AddStatusRow(composer, leftX, 538, labelWidth, valueWidth, "current-status-p95",
             DiagnosticValue(diagnostics, packet => $"{packet.P95FanOut:0.0} / {packet.P95RouteMilliseconds:0.000} ms"));
+        AddStatusRow(composer, leftX, 566, labelWidth, valueWidth, "current-status-relay-alloc",
+            DiagnosticValue(diagnostics, packet => $"{packet.RollingRelayPacketAllocations} / {FormatBytes(packet.RollingRelaySerializationAllocatedBytes)}"));
 
         AddStatusSection(composer, rightX, 80, SVCLang.Get("current-status-section-audio"));
         AddStatusRow(composer, rightX, 112, labelWidth, valueWidth, "current-status-capture",
@@ -1122,7 +1137,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         AddStatusRow(composer, rightX, 276, labelWidth, valueWidth, "current-status-ns-aec",
             $"{State(status.NoiseSuppressionAvailable)} / {State(status.EchoCancellationAvailable)}");
         AddStatusRow(composer, rightX, 304, labelWidth, valueWidth, "current-status-playback",
-            status.PlaybackStatus, 54);
+            $"{status.PlaybackStatus}\n{status.EncodedFrameAllocationCount} / {FormatBytes(status.EncodedFrameAllocatedBytes)}", 54);
 
         AddStatusSection(composer, rightX, 372, SVCLang.Get("current-status-section-voice"));
         AddStatusRow(composer, rightX, 404, labelWidth, valueWidth, "current-status-mode",
@@ -1805,6 +1820,15 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private void OnOutputDeviceChanged(string value, bool selected)
     {
         if (selected) controller.SetOutputDeviceFromSettings(value);
+    }
+
+    private void OnPreferredOpusBitrateChanged(string value, bool selected)
+    {
+        if (selected)
+        {
+            controller.SetPreferredOpusBitrateFromSettings(value);
+            QueueCompose();
+        }
     }
 
     private void OnChannelChanged(string value, bool selected)

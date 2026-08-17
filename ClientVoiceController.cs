@@ -43,7 +43,9 @@ internal readonly record struct VoiceCurrentStatusSnapshot(
     bool GlobalMuted,
     bool TransmitBlocked,
     bool IsRecording,
-    VoiceRecordingMode? RecordingMode);
+    VoiceRecordingMode? RecordingMode,
+    long EncodedFrameAllocationCount,
+    long EncodedFrameAllocatedBytes);
 
 public sealed class ClientVoiceController : IDisposable
 {
@@ -139,11 +141,14 @@ public sealed class ClientVoiceController : IDisposable
     private int nextSessionId = 1;
     private int nextVoiceProbeNonce = 1;
     private long lastVoiceProbeSentMs;
+    private long lastNetworkQualitySentMs;
     private long lastDiagnosticsRequestMs;
     private long lastRecorderClockControlProbeSentMs;
     private long lastRecorderParticipantStateSentMs;
     private long voiceHandshakeAcceptedMs;
     private long lastCaptureRecoveryAttemptMs;
+    private long encodedFrameAllocationCount;
+    private long encodedFrameAllocatedBytes;
     private long transmitBlockedUntilMs;
     private bool serverTransmitBlocked;
     private bool channelTransmitBlocked;
@@ -297,6 +302,8 @@ public sealed class ClientVoiceController : IDisposable
             .RegisterMessageType<VoiceDiagnosticsPacket>()
             .RegisterMessageType<VoicePingPacket>()
             .RegisterMessageType<VoicePongPacket>()
+            .RegisterMessageType<VoiceNetworkQualityPacket>()
+            .RegisterMessageType<VoiceBitrateControlPacket>()
             .SetMessageHandler<ServerVoiceConfigPacket>(OnServerConfig)
             .SetMessageHandler<VoiceWelcomePacket>(OnVoiceWelcome)
             .SetMessageHandler<ChannelSnapshotPacket>(OnChannelSnapshot)
@@ -305,6 +312,7 @@ public sealed class ClientVoiceController : IDisposable
             .SetMessageHandler<TalkerStateDeltaPacket>(OnTalkerStateDelta)
             .SetMessageHandler<VoiceFeedbackPacket>(OnVoiceFeedback)
             .SetMessageHandler<VoiceDiagnosticsPacket>(OnVoiceDiagnostics)
+            .SetMessageHandler<VoiceBitrateControlPacket>(OnVoiceBitrateControl)
             .SetMessageHandler<RecorderVoiceTimelinePacket>(OnRecorderVoiceTimelinePacket)
             .SetMessageHandler<RecorderCaptureStatePacket>(OnRecorderCaptureStatePacket)
             .SetMessageHandler<RecorderSessionStatusPacket>(OnRecorderSessionStatusPacket)
@@ -715,7 +723,10 @@ public sealed class ClientVoiceController : IDisposable
                 | VoiceCapability.Opus
                 | VoiceCapability.Diagnostics
                 | VoiceCapability.ProtocolV5
-                | VoiceCapability.ServerHostedRecording)
+                | VoiceCapability.ServerHostedRecording
+                | VoiceCapability.ProtocolV6
+                | VoiceCapability.ServerGuidedBitrate),
+            PreferredOpusBitrateKbps = config.PreferredOpusBitrateKbps
         });
     }
 
@@ -765,12 +776,24 @@ public sealed class ClientVoiceController : IDisposable
         lastDiagnostics = string.Empty;
         lastDiagnosticsPacket = null;
         lastVoiceProbeSentMs = 0;
+        lastNetworkQualitySentMs = 0;
         lastRecorderClockControlProbeSentMs = 0;
         lastRecorderParticipantStateSentMs = 0;
         voiceEncoder?.Dispose();
+        int configuredMaximum = config.PreferredOpusBitrateKbps > 0
+            ? config.PreferredOpusBitrateKbps * 1_000
+            : serverConfig.MaxOpusBitrateKbps > 0 ? serverConfig.MaxOpusBitrateKbps * 1_000 : 32_000;
         int encoderBitrate = packet.Bitrate > 0 ? packet.Bitrate : 20_000;
-        adaptiveBitrate.Reset(encoderBitrate, capi.World.ElapsedMilliseconds);
+        adaptiveBitrate.Reset(configuredMaximum, capi.World.ElapsedMilliseconds);
+        if (packet.Codec == VoiceProtocol.CodecOpus && packet.Bitrate > 0)
+        {
+            adaptiveBitrate.SetServerGuidance(packet.Bitrate, 5, capi.World.ElapsedMilliseconds);
+        }
         voiceEncoder = voiceHandshakeAccepted ? VoiceCodecFactory.CreateEncoder(negotiatedCodec, encoderBitrate) : null;
+        if (voiceEncoder is INetworkAdaptiveVoiceEncoder adaptiveEncoder)
+        {
+            adaptiveEncoder.ConfigureNetwork(adaptiveBitrate.CurrentBitrate, adaptiveBitrate.PacketLossPercent);
+        }
         if (!voiceHandshakeAccepted && !string.IsNullOrWhiteSpace(packet.Message))
         {
             capi.ShowChatMessage($"Simple Voice Chat: {SVCLang.Get("feedback-" + packet.Message)}");
@@ -976,6 +999,27 @@ public sealed class ClientVoiceController : IDisposable
     private void OnVoicePong(VoicePongPacket packet)
     {
         AcceptRecorderClockSample(packet, voiceProbeTracker);
+    }
+
+    private void OnVoiceBitrateControl(VoiceBitrateControlPacket packet)
+    {
+        if (!lifecycle.IsStarted
+            || !voiceHandshakeAccepted
+            || packet.ConnectionEpoch != connectionEpoch
+            || negotiatedCodec != VoiceProtocol.CodecOpus)
+        {
+            return;
+        }
+
+        adaptiveBitrate.SetServerGuidance(
+            packet.TargetBitrate,
+            packet.PacketLossPercent,
+            capi.World.ElapsedMilliseconds);
+        if (voiceEncoder is INetworkAdaptiveVoiceEncoder encoder)
+        {
+            encoder.ConfigureNetwork(adaptiveBitrate.CurrentBitrate, adaptiveBitrate.PacketLossPercent);
+        }
+        settingsDialog?.RefreshData();
     }
 
     private void OnControlVoicePong(VoicePongPacket packet)
@@ -1371,6 +1415,24 @@ public sealed class ClientVoiceController : IDisposable
     {
         config.MicGain = Math.Clamp(value / 100f, 0.1f, 4f);
         SaveConfig();
+    }
+
+    internal void SetPreferredOpusBitrateFromSettings(string value)
+    {
+        if (!int.TryParse(value, out int kbps))
+        {
+            kbps = 0;
+        }
+        config.PreferredOpusBitrateKbps = SimpleVoiceChatClientConfig.NormalizePreferredOpusBitrate(kbps);
+        SaveConfig();
+        if (voiceEncoder is INetworkAdaptiveVoiceEncoder encoder && negotiatedCodec == VoiceProtocol.CodecOpus)
+        {
+            int maximum = config.PreferredOpusBitrateKbps > 0
+                ? config.PreferredOpusBitrateKbps * 1_000
+                : Math.Max(8_000, serverConfig.MaxOpusBitrateKbps * 1_000);
+            adaptiveBitrate.SetMaximum(maximum, capi.World.ElapsedMilliseconds);
+            encoder.ConfigureNetwork(adaptiveBitrate.CurrentBitrate, adaptiveBitrate.PacketLossPercent);
+        }
     }
 
     internal void SetNoiseGateFromSettings(int value)
@@ -2052,7 +2114,9 @@ public sealed class ClientVoiceController : IDisposable
             globalMuted,
             serverTransmitBlocked || channelTransmitBlocked || now < transmitBlockedUntilMs,
             IsRecording,
-            RecordingMode);
+            RecordingMode,
+            encodedFrameAllocationCount,
+            encodedFrameAllocatedBytes);
     }
 
     private void OnVoiceRelayFrameV3(VoiceRelayFrameV3Packet packet)
@@ -2419,8 +2483,24 @@ public sealed class ClientVoiceController : IDisposable
 
     private void UpdateAdaptiveBitrate(long nowMilliseconds)
     {
-        if (voiceEncoder is not INetworkAdaptiveVoiceEncoder encoder
-            || !adaptiveBitrate.IsEvaluationDue(nowMilliseconds))
+        if (voiceEncoder is not INetworkAdaptiveVoiceEncoder encoder)
+        {
+            return;
+        }
+
+        if (controlChannel?.Connected == true
+            && nowMilliseconds - lastNetworkQualitySentMs >= VoiceProbeIntervalMilliseconds)
+        {
+            lastNetworkQualitySentMs = nowMilliseconds;
+            controlChannel.SendPacket(new VoiceNetworkQualityPacket
+            {
+                ConnectionEpoch = connectionEpoch,
+                RoundTripMilliseconds = voiceProbeTracker.SmoothedRttMilliseconds,
+                ProbeLossPercent = voiceProbeTracker.LossPercent
+            });
+        }
+
+        if (!adaptiveBitrate.IsEvaluationDue(nowMilliseconds))
         {
             return;
         }
@@ -2771,7 +2851,10 @@ public sealed class ClientVoiceController : IDisposable
             peakMicLevel = Math.Max(peakMicLevel, NormalizeVoiceLevel(stats.Rms, mode));
             lastVoiceLevelMs = capi.World.ElapsedMilliseconds;
 
+            long allocationBefore = GC.GetAllocatedBytesForCurrentThread();
             byte[] payload = voiceEncoder?.Encode(captureBuffer) ?? Array.Empty<byte>();
+            encodedFrameAllocationCount++;
+            encodedFrameAllocatedBytes += GC.GetAllocatedBytesForCurrentThread() - allocationBefore;
             if (payload.Length == 0)
             {
                 continue;

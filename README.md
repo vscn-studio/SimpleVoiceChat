@@ -1,8 +1,8 @@
 # SimpleVoiceChat / 简单语音对话
 
-SimpleVoiceChat `1.2.3` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, server-hosted multi-track recording, moderation, optional speech-to-chat, and optional VS Director capture.
+SimpleVoiceChat `1.2.4` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, server-hosted multi-track recording, moderation, optional speech-to-chat, and optional VS Director capture.
 
-SimpleVoiceChat `1.2.3` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、服务器托管多人分轨录音、管理功能、可选语音转文字聊天以及可选 VS Director 录制集成。
+SimpleVoiceChat `1.2.4` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、服务器托管多人分轨录音、管理功能、可选语音转文字聊天以及可选 VS Director 录制集成。
 
 - [中文说明](#中文说明)
 - [English](#english)
@@ -17,7 +17,7 @@ SimpleVoiceChat `1.2.3` 是适用于 Vintage Story `1.22.3` 的客户端/服务�
 - 可将声音发送到接近度范围、当前频道或两者。
 - 自定义频道支持开放、密码和隐藏可见性，以及所有者、主持人、成员、只听和封禁角色。
 - 支持按键说话、语音触发通话（自由麦）、输入/输出设备选择、增益、噪声门、玩家单独音量与静音。
-- 首选 Opus 编码；服务器可选择是否允许 ADPCM 回退。客户端和服务器必须使用协议 V5 兼容版本。
+- 首选 Opus 编码；服务器可选择是否允许 ADPCM 回退。客户端和服务器必须使用协议 V6 兼容版本。
 - 可在本机进行麦克风试听，并主动保存仅输入或输入+输出 WAV；多人分轨由服务器权威托管。
 - 语音识别默认关闭，完全由玩家在客户端配置，不经过 SimpleVoiceChat 服务端。
 - VS Director 是可选集成，不是前置模组，也不需要单独的集成模组。
@@ -26,7 +26,7 @@ SimpleVoiceChat `1.2.3` 是适用于 Vintage Story `1.22.3` 的客户端/服务�
 
 1. 关闭 Vintage Story 客户端和服务器。
 2. 删除 `Mods` 目录中的旧版 SimpleVoiceChat 压缩包，避免同时加载多个版本。
-3. 将 `SimpleVoiceChat-v1.2.3.zip` 原样放入客户端和服务器的 `Mods` 目录，不要解压模组包。
+3. 将 `SimpleVoiceChat-v1.2.4.zip` 原样放入客户端和服务器的 `Mods` 目录，不要解压模组包。
 4. 启动服务器，然后启动客户端。首次按 `'` 会打开设置向导。
 
 SimpleVoiceChat 不依赖 Simple Voice Chat、VS Director 或 `SimpleVoiceChat_VSDirectorIntegration` 等其他模组。单独安装即可使用基本语音功能。
@@ -176,7 +176,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 
 1. Stop the Vintage Story client and server.
 2. Remove older SimpleVoiceChat archives from each `Mods` directory so that only one version can load.
-3. Place `SimpleVoiceChat-v1.2.3.zip` unchanged in the client and server `Mods` directories. Do not extract the mod archive.
+3. Place `SimpleVoiceChat-v1.2.4.zip` unchanged in the client and server `Mods` directories. Do not extract the mod archive.
 4. Start the server and client. Press `'` to open the first-run setup wizard.
 
 SimpleVoiceChat does not require Simple Voice Chat, VS Director, or `SimpleVoiceChat_VSDirectorIntegration`. The base voice features work with this package alone.

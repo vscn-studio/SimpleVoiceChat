@@ -15,6 +15,7 @@ public sealed class OpenAlPlaybackService : IDisposable
     private const int TargetQueuedBuffers = 5;
     private const int StreamBufferCount = 8;
     private const int MaxRemoteStreams = 32;
+    private const int MaxPlaybackSourceSlots = 12;
     private const int RecordingBufferCount = 4;
     private const int RecordingChunkFrames = 8;
 
@@ -22,6 +23,9 @@ public sealed class OpenAlPlaybackService : IDisposable
     private readonly SimpleVoiceChatClientConfig clientConfig;
     private readonly Dictionary<long, RemoteVoiceStream> streams = new();
     private readonly Queue<RemoteVoiceStream> inactiveStreams = new();
+    private readonly List<PlaybackSourceSlot> sourceSlots = new(MaxPlaybackSourceSlots);
+    private readonly List<RemoteVoiceStream> sourceCandidates = new(MaxRemoteStreams);
+    private readonly SourcePriorityComparer sourcePriorityComparer;
     private readonly Queue<EncodedVoiceFrame> pendingEncodedFrames = new();
     private readonly object gate = new();
     private readonly CancellationTokenSource decodeCancellation = new();
@@ -36,7 +40,8 @@ public sealed class OpenAlPlaybackService : IDisposable
     private bool sourceLimitWarningShown;
     private bool disposed;
     private int activeStreamLimit = 8;
-    private int sourceAllocationCeiling = MaxRemoteStreams;
+    private int sourceAllocationCeiling = MaxPlaybackSourceSlots;
+    private long lastSourceRebalanceMilliseconds;
     private RecordedAudioClip? pendingRecordingClip;
     private RecordedAudioClip? recordingClip;
     private readonly Queue<int> recordingFreeBuffers = new();
@@ -63,6 +68,7 @@ public sealed class OpenAlPlaybackService : IDisposable
     {
         this.capi = capi;
         this.clientConfig = clientConfig;
+        sourcePriorityComparer = new SourcePriorityComparer(this);
     }
 
     public bool Initialize()
@@ -180,7 +186,9 @@ public sealed class OpenAlPlaybackService : IDisposable
             packet.Mode,
             packet.RelayKind != VoiceRelayKind.Proximity,
             new Vec3f(packet.X, packet.Y, packet.Z),
-            packet.Payload.ToArray(),
+            // Network packets are fully deserialized before handlers run; the
+            // jitter buffer can retain this immutable payload directly.
+            packet.Payload,
             codec,
             Math.Clamp(gainMultiplier, 0f, 2f),
             packet.CaptureServerTimestampMilliseconds);
@@ -228,7 +236,6 @@ public sealed class OpenAlPlaybackService : IDisposable
                             continue;
                         }
 
-                        UpdateStream(pair.Value, serverConfig);
                     }
 
                     if (remove != null)
@@ -239,6 +246,12 @@ public sealed class OpenAlPlaybackService : IDisposable
                             streams.Remove(entityId);
                             ReleaseStream(stream);
                         }
+                    }
+
+                    RebalanceSourceSlots(now);
+                    foreach (RemoteVoiceStream stream in streams.Values)
+                    {
+                        UpdateStream(stream, serverConfig);
                     }
                 }
             }
@@ -340,12 +353,17 @@ public sealed class OpenAlPlaybackService : IDisposable
                 concealedFrames,
                 fecFrames,
                 inactiveStreams.Count,
-                Math.Min(activeStreamLimit, sourceAllocationCeiling));
+                sourceSlots.Count);
         }
     }
 
     private void UpdateStream(RemoteVoiceStream stream, ServerVoiceConfigPacket serverConfig)
     {
+        if (stream.Source == 0)
+        {
+            return;
+        }
+
         RecycleProcessedBuffers(stream);
         QueuePendingBuffers(stream, serverConfig);
 
@@ -459,30 +477,7 @@ public sealed class OpenAlPlaybackService : IDisposable
         }
         else
         {
-            if (streams.Count + inactiveStreams.Count >= sourceAllocationCeiling)
-            {
-                return null;
-            }
             stream = new RemoteVoiceStream(entityId, clientConfig.AdaptiveJitterBuffer);
-            try
-            {
-                stream.Initialize(hasEffectsExtension);
-                if (stream.Source == 0)
-                {
-                    throw new InvalidOperationException("OpenAL returned an invalid voice source.");
-                }
-            }
-            catch (Exception ex)
-            {
-                stream.Dispose();
-                sourceAllocationCeiling = streams.Count + inactiveStreams.Count;
-                if (!sourceLimitWarningShown)
-                {
-                    sourceLimitWarningShown = true;
-                    capi.Logger.Warning("SimpleVoiceChat: could not allocate another playback source: {0}", ex.Message);
-                }
-                return null;
-            }
         }
         streams[entityId] = stream;
         return stream;
@@ -491,6 +486,7 @@ public sealed class OpenAlPlaybackService : IDisposable
     private void ReleaseStream(RemoteVoiceStream stream)
     {
         stream.Deactivate();
+        stream.UnbindSource();
         inactiveStreams.Enqueue(stream);
     }
 
@@ -561,6 +557,115 @@ public sealed class OpenAlPlaybackService : IDisposable
                 }
             }
         }
+    }
+
+    private void RebalanceSourceSlots(long nowMilliseconds)
+    {
+        if (nowMilliseconds - lastSourceRebalanceMilliseconds < 100
+            && sourceSlots.Count > 0)
+        {
+            return;
+        }
+        lastSourceRebalanceMilliseconds = nowMilliseconds;
+
+        sourceCandidates.Clear();
+        foreach (RemoteVoiceStream stream in streams.Values)
+        {
+            if (nowMilliseconds - stream.LastPacketMilliseconds <= 3_000)
+            {
+                sourceCandidates.Add(stream);
+            }
+        }
+        sourcePriorityComparer.NowMilliseconds = nowMilliseconds;
+        sourceCandidates.Sort(sourcePriorityComparer);
+
+        int desired = Math.Min(Math.Min(MaxPlaybackSourceSlots, sourceAllocationCeiling), sourceCandidates.Count);
+        while (sourceSlots.Count < desired)
+        {
+            PlaybackSourceSlot slot = new();
+            try
+            {
+                slot.Initialize(hasEffectsExtension);
+                sourceSlots.Add(slot);
+            }
+            catch (Exception ex)
+            {
+                slot.Dispose();
+                sourceAllocationCeiling = sourceSlots.Count;
+                if (!sourceLimitWarningShown)
+                {
+                    sourceLimitWarningShown = true;
+                    capi.Logger.Warning("SimpleVoiceChat: could not allocate another playback source: {0}", ex.Message);
+                }
+                break;
+            }
+        }
+
+        for (int i = 0; i < sourceSlots.Count; i++)
+        {
+            PlaybackSourceSlot slot = sourceSlots[i];
+            if (slot.Stream != null && !ContainsCandidate(slot.Stream, desired))
+            {
+                slot.Stream.UnbindSource();
+            }
+        }
+
+        for (int i = 0; i < desired && i < sourceSlots.Count; i++)
+        {
+            RemoteVoiceStream stream = sourceCandidates[i];
+            if (stream.SourceSlot != null)
+            {
+                continue;
+            }
+
+            PlaybackSourceSlot? free = sourceSlots.FirstOrDefault(slot => slot.Stream == null);
+            if (free == null)
+            {
+                continue;
+            }
+            stream.BindSource(free);
+        }
+    }
+
+    private bool ContainsCandidate(RemoteVoiceStream stream, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            if (ReferenceEquals(sourceCandidates[i], stream))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int CompareSourcePriority(RemoteVoiceStream left, RemoteVoiceStream right)
+    {
+        int leftScore = GetSourcePriority(left);
+        int rightScore = GetSourcePriority(right);
+        return rightScore.CompareTo(leftScore);
+    }
+
+    private int GetSourcePriority(RemoteVoiceStream stream)
+    {
+        long age = Math.Max(0, sourcePriorityComparer.NowMilliseconds - stream.LastPacketMilliseconds);
+        int score = age < 250 ? 10_000 : age < 750 ? 3_000 : 0;
+        if (stream.ChannelRelay)
+        {
+            score += 1_500;
+        }
+
+        Entity listenerEntity = capi.World.Player.Entity;
+        Vec3d listener = listenerEntity.Pos.XYZ;
+        double distanceSquared = (stream.Position.X - listener.X) * (stream.Position.X - listener.X)
+            + (stream.Position.Y - listener.Y) * (stream.Position.Y - listener.Y)
+            + (stream.Position.Z - listener.Z) * (stream.Position.Z - listener.Z);
+        score += (int)Math.Clamp(2_000d - distanceSquared * 8d, -2_000d, 2_000d);
+        if (stream.SourceSlot != null)
+        {
+            score += 250;
+        }
+        return score;
     }
 
     private bool TryGetNextSamples(RemoteVoiceStream stream, ServerVoiceConfigPacket serverConfig, out DecodedVoiceFrame decoded)
@@ -729,7 +834,10 @@ public sealed class OpenAlPlaybackService : IDisposable
                 {
                     foreach (RemoteVoiceStream stream in streams.Values)
                     {
-                        stream.DecodeAvailableFrames(TargetQueuedBuffers + 2, capi.World.ElapsedMilliseconds);
+                        if (stream.SourceSlot != null)
+                        {
+                            stream.DecodeAvailableFrames(TargetQueuedBuffers + 2, capi.World.ElapsedMilliseconds);
+                        }
                     }
                 }
             }
@@ -778,6 +886,11 @@ public sealed class OpenAlPlaybackService : IDisposable
             {
                 stream.Dispose();
             }
+            foreach (PlaybackSourceSlot slot in sourceSlots)
+            {
+                slot.Dispose();
+            }
+            sourceSlots.Clear();
         }
         decodeSignal.Dispose();
         decodeCancellation.Dispose();
@@ -833,6 +946,103 @@ public sealed class OpenAlPlaybackService : IDisposable
         }
     }
 
+    private sealed class PlaybackSourceSlot : IDisposable
+    {
+        public RemoteVoiceStream? Stream { get; set; }
+        public int Source { get; private set; }
+        public Queue<int> FreeBuffers { get; } = new();
+        public int QueuedBuffers { get; set; }
+        public float LastLowPassGainHf { get; set; } = 1f;
+        public int LowPassFilter { get; private set; }
+
+        public void Initialize(bool hasEffectsExtension)
+        {
+            Source = AL.GenSource();
+            AL.Source(Source, ALSourceb.Looping, false);
+            AL.Source(Source, ALSourcef.Gain, 1f);
+            AL.Source(Source, ALSourcef.ReferenceDistance, 2f);
+            AL.Source(Source, ALSourcef.RolloffFactor, 1f);
+            if (hasEffectsExtension)
+            {
+                LowPassFilter = ALC.EFX.GenFilter();
+                ALC.EFX.Filter(LowPassFilter, FilterInteger.FilterType, 1);
+                ALC.EFX.Filter(LowPassFilter, FilterFloat.LowpassGain, 1f);
+                ALC.EFX.Filter(LowPassFilter, FilterFloat.LowpassGainHF, 1f);
+            }
+
+            foreach (int buffer in AL.GenBuffers(StreamBufferCount))
+            {
+                FreeBuffers.Enqueue(buffer);
+            }
+        }
+
+        public void PrepareForBinding()
+        {
+            StopAndClear();
+            LastLowPassGainHf = 1f;
+            if (Source != 0)
+            {
+                AL.Source(Source, ALSourcei.EfxDirectFilter, 0);
+            }
+        }
+
+        private void StopAndClear()
+        {
+            if (Source == 0)
+            {
+                QueuedBuffers = 0;
+                return;
+            }
+
+            AL.SourceStop(Source);
+            int queued = AL.GetSource(Source, ALGetSourcei.BuffersQueued);
+            while (queued-- > 0)
+            {
+                FreeBuffers.Enqueue(AL.SourceUnqueueBuffer(Source));
+            }
+            QueuedBuffers = 0;
+        }
+
+        public void Dispose()
+        {
+            StopAndClear();
+            if (Source != 0)
+            {
+                AL.DeleteSource(Source);
+                Source = 0;
+            }
+            if (LowPassFilter != 0)
+            {
+                ALC.EFX.DeleteFilter(LowPassFilter);
+                LowPassFilter = 0;
+            }
+            while (FreeBuffers.Count > 0)
+            {
+                AL.DeleteBuffer(FreeBuffers.Dequeue());
+            }
+            Stream = null;
+        }
+    }
+
+    private sealed class SourcePriorityComparer : IComparer<RemoteVoiceStream>
+    {
+        private readonly OpenAlPlaybackService owner;
+
+        public SourcePriorityComparer(OpenAlPlaybackService owner)
+        {
+            this.owner = owner;
+        }
+
+        public long NowMilliseconds { get; set; }
+
+        public int Compare(RemoteVoiceStream? left, RemoteVoiceStream? right)
+        {
+            if (left == null) return right == null ? 0 : 1;
+            if (right == null) return -1;
+            return owner.CompareSourcePriority(left, right);
+        }
+    }
+
     private sealed class RemoteVoiceStream : IDisposable
     {
         public RemoteVoiceStream(long entityId, bool adaptiveJitter)
@@ -843,8 +1053,10 @@ public sealed class OpenAlPlaybackService : IDisposable
 
         public long EntityId { get; private set; }
         public string SpeakerUid { get; set; } = string.Empty;
-        public int Source { get; private set; }
-        public Queue<int> FreeBuffers { get; } = new();
+        private static readonly Queue<int> EmptyBuffers = new();
+        public PlaybackSourceSlot? SourceSlot { get; private set; }
+        public int Source => SourceSlot?.Source ?? 0;
+        public Queue<int> FreeBuffers => SourceSlot?.FreeBuffers ?? EmptyBuffers;
         public JitterBuffer Buffer { get; } = new();
         public EncodedJitterBuffer EncodedBuffer { get; }
         public Queue<DecodedVoiceFrame> DecodedEncodedFrames { get; } = new();
@@ -853,7 +1065,17 @@ public sealed class OpenAlPlaybackService : IDisposable
         public IVoiceDecoder? Decoder { get; private set; }
         public int DecoderCodec { get; private set; }
         public long DecodeErrors { get; set; }
-        public int QueuedBuffers { get; set; }
+        public int QueuedBuffers
+        {
+            get => SourceSlot?.QueuedBuffers ?? 0;
+            set
+            {
+                if (SourceSlot != null)
+                {
+                    SourceSlot.QueuedBuffers = value;
+                }
+            }
+        }
         public int SessionId { get; private set; } = -1;
         public long LastPacketMilliseconds { get; set; }
         public long LastDecodedTimestampMilliseconds { get; set; }
@@ -862,13 +1084,24 @@ public sealed class OpenAlPlaybackService : IDisposable
         public bool ChannelRelay { get; set; }
         public float ExternalGain { get; set; } = 1f;
         public VoiceEffectsProcessor Effects { get; } = new();
-        public float LastLowPassGainHf { get; set; } = 1f;
-        public int LowPassFilter { get; private set; }
+        public float LastLowPassGainHf
+        {
+            get => SourceSlot?.LastLowPassGainHf ?? 1f;
+            set
+            {
+                if (SourceSlot != null)
+                {
+                    SourceSlot.LastLowPassGainHf = value;
+                }
+            }
+        }
+        public int LowPassFilter => SourceSlot?.LowPassFilter ?? 0;
         public long LastEnvironmentMilliseconds { get; set; } = -1;
         public VoiceEnvironmentSnapshot CachedEnvironment { get; set; } = new(1f, 1f, 0f);
 
         public void Activate(long entityId, bool adaptiveJitter)
         {
+            UnbindSource();
             EntityId = entityId;
             EncodedBuffer.SetAdaptive(adaptiveJitter);
             SessionId = -1;
@@ -882,6 +1115,35 @@ public sealed class OpenAlPlaybackService : IDisposable
             DecodeErrors = 0;
             LastEnvironmentMilliseconds = -1;
             CachedEnvironment = new VoiceEnvironmentSnapshot(1f, 1f, 0f);
+        }
+
+        public void BindSource(PlaybackSourceSlot slot)
+        {
+            if (ReferenceEquals(SourceSlot, slot))
+            {
+                return;
+            }
+            UnbindSource();
+            slot.PrepareForBinding();
+            slot.Stream = this;
+            SourceSlot = slot;
+            ClearDecodedFrames();
+            EncodedBuffer.Reset();
+            CaptureTimestamps.Clear();
+            TimestampTimeline.Reset();
+        }
+
+        public void UnbindSource()
+        {
+            if (SourceSlot == null)
+            {
+                return;
+            }
+            PlaybackSourceSlot slot = SourceSlot;
+            slot.PrepareForBinding();
+            slot.Stream = null;
+            SourceSlot = null;
+            ClearDecodedFrames();
         }
 
         public void EnsureDecoder(int codec)
@@ -928,28 +1190,6 @@ public sealed class OpenAlPlaybackService : IDisposable
                         PcmFramePool.Shared.Return(samples);
                     }
                 }
-            }
-        }
-
-        public void Initialize(bool hasEffectsExtension)
-        {
-            Source = AL.GenSource();
-            AL.Source(Source, ALSourceb.Looping, false);
-            AL.Source(Source, ALSourcef.Gain, 1f);
-            AL.Source(Source, ALSourcef.ReferenceDistance, 2f);
-            AL.Source(Source, ALSourcef.RolloffFactor, 1f);
-            if (hasEffectsExtension)
-            {
-                LowPassFilter = ALC.EFX.GenFilter();
-                ALC.EFX.Filter(LowPassFilter, FilterInteger.FilterType, 1);
-                ALC.EFX.Filter(LowPassFilter, FilterFloat.LowpassGain, 1f);
-                ALC.EFX.Filter(LowPassFilter, FilterFloat.LowpassGainHF, 1f);
-            }
-
-            int[] buffers = AL.GenBuffers(StreamBufferCount);
-            foreach (int buffer in buffers)
-            {
-                FreeBuffers.Enqueue(buffer);
             }
         }
 
@@ -1013,24 +1253,7 @@ public sealed class OpenAlPlaybackService : IDisposable
 
         public void Dispose()
         {
-            if (Source != 0)
-            {
-                AL.SourceStop(Source);
-                int queued = AL.GetSource(Source, ALGetSourcei.BuffersQueued);
-                while (queued-- > 0)
-                {
-                    int buffer = AL.SourceUnqueueBuffer(Source);
-                    FreeBuffers.Enqueue(buffer);
-                }
-                AL.DeleteSource(Source);
-                Source = 0;
-            }
-
-            if (LowPassFilter != 0)
-            {
-                ALC.EFX.DeleteFilter(LowPassFilter);
-                LowPassFilter = 0;
-            }
+            UnbindSource();
 
             Decoder?.Dispose();
             Decoder = null;
@@ -1039,10 +1262,6 @@ public sealed class OpenAlPlaybackService : IDisposable
             CaptureTimestamps.Clear();
             TimestampTimeline.Reset();
 
-            while (FreeBuffers.Count > 0)
-            {
-                AL.DeleteBuffer(FreeBuffers.Dequeue());
-            }
         }
 
         private void ClearDecodedFrames()

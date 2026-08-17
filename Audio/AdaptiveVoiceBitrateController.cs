@@ -8,6 +8,7 @@ internal sealed class AdaptiveVoiceBitrateController
     private static readonly int[] BitrateSteps = { 8_000, 12_000, 16_000, 20_000, 24_000, 32_000 };
 
     private int maximumBitrate = 20_000;
+    private int serverCeiling = 20_000;
     private int healthyEvaluations;
     private int impairedEvaluations;
     private long lastEvaluationMilliseconds;
@@ -22,12 +23,35 @@ internal sealed class AdaptiveVoiceBitrateController
     internal void Reset(int maximum, long nowMilliseconds)
     {
         maximumBitrate = Math.Clamp(maximum, 8_000, 32_000);
+        serverCeiling = maximumBitrate;
         CurrentBitrate = maximumBitrate;
         PacketLossPercent = 5;
         healthyEvaluations = 0;
         impairedEvaluations = 0;
         lastEvaluationMilliseconds = nowMilliseconds;
         lastBitrateChangeMilliseconds = nowMilliseconds;
+    }
+
+    internal void SetMaximum(int maximum, long nowMilliseconds)
+    {
+        maximumBitrate = Math.Clamp(maximum, 8_000, 32_000);
+        serverCeiling = Math.Min(serverCeiling, maximumBitrate);
+        if (CurrentBitrate > EffectiveMaximum)
+        {
+            SetBitrate(EffectiveMaximum, nowMilliseconds);
+        }
+    }
+
+    internal void SetServerGuidance(int targetBitrate, int packetLossPercent, long nowMilliseconds)
+    {
+        serverCeiling = Math.Clamp(targetBitrate, 8_000, 32_000);
+        PacketLossPercent = Math.Clamp(Math.Max(PacketLossPercent, packetLossPercent), 2, 20);
+        if (CurrentBitrate > EffectiveMaximum)
+        {
+            healthyEvaluations = 0;
+            impairedEvaluations = 0;
+            SetBitrate(EffectiveMaximum, nowMilliseconds);
+        }
     }
 
     internal bool Update(
@@ -42,10 +66,16 @@ internal sealed class AdaptiveVoiceBitrateController
         }
         lastEvaluationMilliseconds = nowMilliseconds;
 
+        bool changed = false;
+        if (CurrentBitrate > EffectiveMaximum)
+        {
+            changed = SetBitrate(EffectiveMaximum, nowMilliseconds);
+        }
+
         int nextPacketLoss = roundTripMilliseconds < 0
             ? 5
             : Math.Clamp((int)Math.Round(lossPercent), 2, 20);
-        bool changed = nextPacketLoss != PacketLossPercent;
+        changed |= nextPacketLoss != PacketLossPercent;
         PacketLossPercent = nextPacketLoss;
 
         // Wait for the first probe result so connection startup does not look like packet loss.
@@ -126,11 +156,13 @@ internal sealed class AdaptiveVoiceBitrateController
     {
         foreach (int step in BitrateSteps)
         {
-            if (step > CurrentBitrate && step <= maximumBitrate)
+            if (step > CurrentBitrate && step <= EffectiveMaximum)
             {
                 return step;
             }
         }
-        return maximumBitrate > CurrentBitrate ? maximumBitrate : CurrentBitrate;
+        return EffectiveMaximum > CurrentBitrate ? EffectiveMaximum : CurrentBitrate;
     }
+
+    private int EffectiveMaximum => Math.Min(maximumBitrate, serverCeiling);
 }

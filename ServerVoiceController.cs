@@ -121,6 +121,8 @@ public sealed class ServerVoiceController : IDisposable
             .RegisterMessageType<VoiceDiagnosticsPacket>()
             .RegisterMessageType<VoicePingPacket>()
             .RegisterMessageType<VoicePongPacket>()
+            .RegisterMessageType<VoiceNetworkQualityPacket>()
+            .RegisterMessageType<VoiceBitrateControlPacket>()
             .SetMessageHandler<ClientVoiceStatePacket>(OnClientState)
             .SetMessageHandler<MutePlayerPacket>(OnMutePlayer)
             .SetMessageHandler<AdminVoiceControlPacket>(OnAdminVoiceControl)
@@ -131,7 +133,8 @@ public sealed class ServerVoiceController : IDisposable
             .SetMessageHandler<RecorderUploadFramePacket>(OnRecorderUploadFrame)
             .SetMessageHandler<RecorderFileRequestPacket>(OnRecorderFileRequest)
             .SetMessageHandler<ChannelCommandPacket>(OnChannelCommand)
-            .SetMessageHandler<VoicePingPacket>(OnControlVoicePing);
+            .SetMessageHandler<VoicePingPacket>(OnControlVoicePing)
+            .SetMessageHandler<VoiceNetworkQualityPacket>(OnVoiceNetworkQuality);
 
         voiceChannel = sapi.Network.RegisterUdpChannel(VoiceConstants.VoiceChannelName)
             .RegisterMessageType<VoiceFrameV3Packet>()
@@ -859,11 +862,16 @@ public sealed class ServerVoiceController : IDisposable
             return;
         }
 
+        int preferredMaximum = packet.PreferredOpusBitrateKbps is >= 8 and <= 32
+            ? packet.PreferredOpusBitrateKbps
+            : config.MaxOpusBitrateKbps;
         VoiceClientSession session = new(
             Random.Shared.Next(1, int.MaxValue),
             selectedCodec,
             config,
-            now);
+            now,
+            preferredMaximum,
+            (packet.Capabilities & (int)VoiceCapability.ServerGuidedBitrate) != 0);
         sessionsByUid[player.PlayerUID] = session;
         onlinePlayersByUid[player.PlayerUID] = player;
         UpdateSpatialEntry(player);
@@ -880,7 +888,9 @@ public sealed class ServerVoiceController : IDisposable
             Codec = selectedCodec,
             SampleRate = VoiceConstants.SampleRate,
             FrameMilliseconds = VoiceConstants.FrameMilliseconds,
-            Bitrate = selectedCodec == VoiceProtocol.CodecOpus ? 20_000 : 32_800,
+            Bitrate = selectedCodec == VoiceProtocol.CodecOpus
+                ? config.DefaultOpusBitrateKbps * 1_000
+                : 32_800,
             ConnectionEpoch = session.ConnectionEpoch,
             MaxStreamsPerListener = config.MaxStreamsPerListener,
             AllowContinuousTalk = config.AllowContinuousTalk,
@@ -924,6 +934,26 @@ public sealed class ServerVoiceController : IDisposable
         {
             controlChannel?.SendPacket(pong, player);
         }
+    }
+
+    private void OnVoiceNetworkQuality(IServerPlayer player, VoiceNetworkQualityPacket packet)
+    {
+        long now = sapi.World.ElapsedMilliseconds;
+        if (!lifecycle.IsStarted
+            || !sessionsByUid.TryGetValue(player.PlayerUID, out VoiceClientSession? session)
+            || !session.QualityRate.TryConsume(1, now)
+            || packet.ConnectionEpoch != session.ConnectionEpoch)
+        {
+            return;
+        }
+
+        session.ReportedRoundTripMilliseconds = double.IsFinite(packet.RoundTripMilliseconds)
+            ? Math.Clamp(packet.RoundTripMilliseconds, -1d, 60_000d)
+            : -1d;
+        session.ReportedProbeLossPercent = double.IsFinite(packet.ProbeLossPercent)
+            ? Math.Clamp(packet.ProbeLossPercent, 0d, 100d)
+            : 0d;
+        session.LastQualityMilliseconds = now;
     }
 
     private bool TryCreateVoicePong(IServerPlayer player, VoicePingPacket packet, out VoicePongPacket pong)
@@ -1607,6 +1637,7 @@ public sealed class ServerVoiceController : IDisposable
             }
         }
 
+        SendBitrateControl(fromPlayer, session, routeRecipients, now);
         SendV2Relays(fromPlayer, packet, mode, position, session, routeRecipients, now);
         SendRecorderRelay(fromPlayer, packet, session.Codec, now);
         SendDirectorProximityRelays(fromPlayer, packet, session.Codec, mode, position, now);
@@ -2021,7 +2052,8 @@ public sealed class ServerVoiceController : IDisposable
                 continue;
             }
 
-            voiceChannel?.SendPacket(new RecorderVoiceRelayFrameV3Packet
+            long packetAllocationBefore = GC.GetAllocatedBytesForCurrentThread();
+            RecorderVoiceRelayFrameV3Packet relay = new()
             {
                 SpeakerUid = speaker.PlayerUID,
                 SpeakerEntityId = speaker.Entity.EntityId,
@@ -2032,7 +2064,14 @@ public sealed class ServerVoiceController : IDisposable
                 SpeakerName = speaker.PlayerName,
                 ServerTimestampMilliseconds = MonotonicClock.NowMilliseconds,
                 CaptureServerTimestampMilliseconds = frame.CaptureServerTimestampMilliseconds
-            }, listener);
+            };
+            long packetAllocationBytes = GC.GetAllocatedBytesForCurrentThread() - packetAllocationBefore;
+            long serializationAllocationBefore = GC.GetAllocatedBytesForCurrentThread();
+            voiceChannel?.SendPacket(relay, listener);
+            metrics.RecordRelayAllocation(
+                packetAllocationBytes > 0 ? 1 : 0,
+                GC.GetAllocatedBytesForCurrentThread() - serializationAllocationBefore,
+                now);
             listenerCount++;
         }
     }
@@ -2118,6 +2157,65 @@ public sealed class ServerVoiceController : IDisposable
         recipients[recipientUid] = new RelayRecipient(recipient, relayKind, channelId, priority);
     }
 
+    private void SendBitrateControl(
+        IServerPlayer speaker,
+        VoiceClientSession session,
+        Dictionary<string, RelayRecipient> recipients,
+        long now)
+    {
+        if (!config.EnableAdaptiveBitrate
+            || session.Codec != VoiceProtocol.CodecOpus
+            || !session.SupportsServerGuidedBitrate
+            || controlChannel == null)
+        {
+            return;
+        }
+
+        List<double> losses = session.ListenerLossSamples;
+        losses.Clear();
+        foreach (RelayRecipient recipient in recipients.Values)
+        {
+            if (sessionsByUid.TryGetValue(recipient.Player.PlayerUID, out VoiceClientSession? listener)
+                && now - listener.LastQualityMilliseconds <= 5_000L)
+            {
+                losses.Add(listener.ReportedProbeLossPercent);
+            }
+        }
+
+        double p75Loss = 0d;
+        if (losses.Count > 0)
+        {
+            losses.Sort();
+            int index = Math.Clamp((int)Math.Ceiling(losses.Count * 0.75d) - 1, 0, losses.Count - 1);
+            p75Loss = losses[index];
+        }
+
+        ServerBitrateDecision decision = ServerAdaptiveBitrateController.Evaluate(
+            session.MaximumOpusBitrateKbps * 1_000,
+            recipients.Count,
+            p75Loss,
+            egressBudget.Pressure(now));
+        bool lower = session.LastGuidedBitrate <= 0 || decision.TargetBitrate < session.LastGuidedBitrate;
+        long interval = lower ? 1_000L : 5_000L;
+        if (session.LastGuidedBitrate == decision.TargetBitrate
+            && now - session.LastBitrateControlMilliseconds < interval)
+        {
+            return;
+        }
+
+        session.LastGuidedBitrate = decision.TargetBitrate;
+        session.LastBitrateControlMilliseconds = now;
+        controlChannel.SendPacket(new VoiceBitrateControlPacket
+        {
+            ConnectionEpoch = session.ConnectionEpoch,
+            TargetBitrate = decision.TargetBitrate,
+            PacketLossPercent = decision.PacketLossPercent,
+            FanOut = recipients.Count,
+            ListenerLossP75 = p75Loss,
+            EgressBudgetPressure = egressBudget.Pressure(now)
+        }, speaker);
+    }
+
     private void SendV2Relays(
         IServerPlayer speaker,
         VoiceFrameV3Packet frame,
@@ -2156,6 +2254,7 @@ public sealed class ServerVoiceController : IDisposable
                 continue;
             }
 
+            long packetAllocationBefore = GC.GetAllocatedBytesForCurrentThread();
             VoiceRelayFrameV3Packet relay = new()
             {
                 SenderUidHash = Audio.VoiceMath.StableUidHash(speaker.PlayerUID),
@@ -2175,8 +2274,12 @@ public sealed class ServerVoiceController : IDisposable
                 SenderUid = speaker.PlayerUID,
                 CaptureServerTimestampMilliseconds = frame.CaptureServerTimestampMilliseconds
             };
+            long packetAllocationBytes = GC.GetAllocatedBytesForCurrentThread() - packetAllocationBefore;
             IServerPlayer[] finalTargets = group.PreparePermittedTargets();
+            long serializationAllocationBefore = GC.GetAllocatedBytesForCurrentThread();
             voiceChannel?.SendPacket(relay, finalTargets);
+            long serializationAllocationBytes = GC.GetAllocatedBytesForCurrentThread() - serializationAllocationBefore;
+            metrics.RecordRelayAllocation(packetAllocationBytes > 0 ? 1 : 0, serializationAllocationBytes, now);
             metrics.Relayed(
                 finalTargets.Length,
                 estimatedPacketBytes,
@@ -2281,6 +2384,7 @@ public sealed class ServerVoiceController : IDisposable
                 continue;
             }
 
+            long packetAllocationBefore = GC.GetAllocatedBytesForCurrentThread();
             DirectorVoiceRelayFrameV3Packet relay = new()
             {
                 SpeakerUid = speaker.PlayerUID,
@@ -2299,7 +2403,13 @@ public sealed class ServerVoiceController : IDisposable
                 RolloffFactor = rolloffFactor,
                 SpeakerName = speaker.PlayerName
             };
+            long packetAllocationBytes = GC.GetAllocatedBytesForCurrentThread() - packetAllocationBefore;
+            long serializationAllocationBefore = GC.GetAllocatedBytesForCurrentThread();
             voiceChannel?.SendPacket(relay, target);
+            metrics.RecordRelayAllocation(
+                packetAllocationBytes > 0 ? 1 : 0,
+                GC.GetAllocatedBytesForCurrentThread() - serializationAllocationBefore,
+                now);
             metrics.Relayed(1, estimatedPacketBytes, VoicePacketSizeEstimator.EstimateIpv4UdpBytes(relay), now);
             listenerCount++;
         }
@@ -3128,10 +3238,18 @@ public sealed class ServerVoiceController : IDisposable
 
     private sealed class VoiceClientSession
     {
-        public VoiceClientSession(int connectionEpoch, int codec, SimpleVoiceChatServerConfig config, long nowMilliseconds)
+        public VoiceClientSession(
+            int connectionEpoch,
+            int codec,
+            SimpleVoiceChatServerConfig config,
+            long nowMilliseconds,
+            int preferredMaximumOpusBitrateKbps,
+            bool supportsServerGuidedBitrate)
         {
             ConnectionEpoch = connectionEpoch;
             Codec = codec;
+            MaximumOpusBitrateKbps = Math.Clamp(preferredMaximumOpusBitrateKbps, 8, config.MaxOpusBitrateKbps);
+            SupportsServerGuidedBitrate = supportsServerGuidedBitrate;
             PacketRate = new VoiceTokenBucket(1, 1, nowMilliseconds);
             ByteRate = new VoiceTokenBucket(1, 1, nowMilliseconds);
             ApplyRateLimits(config, nowMilliseconds);
@@ -3141,6 +3259,7 @@ public sealed class ServerVoiceController : IDisposable
             StateRate = new VoiceTokenBucket(2, 5, nowMilliseconds);
             MuteRate = new VoiceTokenBucket(20, 256, nowMilliseconds);
             PingRate = new VoiceTokenBucket(8, 8, nowMilliseconds);
+            QualityRate = new VoiceTokenBucket(1, 2, nowMilliseconds);
             RecorderStateRate = new VoiceTokenBucket(2, 4, nowMilliseconds);
             RecorderPacketRate = new VoiceTokenBucket(100, 120, nowMilliseconds);
             RecorderByteRate = new VoiceTokenBucket(65_536, 81_920, nowMilliseconds);
@@ -3148,6 +3267,13 @@ public sealed class ServerVoiceController : IDisposable
 
         public int ConnectionEpoch { get; }
         public int Codec { get; }
+        public int MaximumOpusBitrateKbps { get; }
+        public bool SupportsServerGuidedBitrate { get; }
+        public double ReportedRoundTripMilliseconds { get; set; } = -1d;
+        public double ReportedProbeLossPercent { get; set; }
+        public long LastQualityMilliseconds { get; set; }
+        public long LastBitrateControlMilliseconds { get; set; }
+        public int LastGuidedBitrate { get; set; }
         public VoiceTokenBucket PacketRate { get; private set; }
         public VoiceTokenBucket ByteRate { get; private set; }
         public VoiceTokenBucket NewSessionRate { get; }
@@ -3156,12 +3282,14 @@ public sealed class ServerVoiceController : IDisposable
         public VoiceTokenBucket StateRate { get; }
         public VoiceTokenBucket MuteRate { get; }
         public VoiceTokenBucket PingRate { get; }
+        public VoiceTokenBucket QualityRate { get; }
         public VoiceTokenBucket RecorderStateRate { get; }
         public VoiceTokenBucket RecorderPacketRate { get; }
         public VoiceTokenBucket RecorderByteRate { get; }
         public VoiceSequenceWindow SequenceWindow { get; } = new();
         public VoiceSequenceWindow RecorderSequenceWindow { get; } = new();
         public List<VoiceSpatialCandidate> SpatialCandidates { get; } = new(128);
+        public List<double> ListenerLossSamples { get; } = new(128);
         public Dictionary<string, RelayRecipient> RouteRecipients { get; } = new(128, StringComparer.Ordinal);
         public RelayDispatchWorkspace RelayDispatch { get; } = new();
         public string SelectedChannelId { get; set; } = string.Empty;

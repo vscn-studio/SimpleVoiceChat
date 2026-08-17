@@ -17,6 +17,8 @@ public sealed class VoiceMetrics
     private long droppedInvalid;
     private long droppedNoSlot;
     private long droppedBudget;
+    private long relayPacketAllocations;
+    private long relaySerializationAllocatedBytes;
 
     public void Received(long? nowMilliseconds = null)
     {
@@ -73,6 +75,23 @@ public sealed class VoiceMetrics
         }
     }
 
+    public void RecordRelayAllocation(long packetAllocations, long serializationAllocatedBytes, long? nowMilliseconds = null)
+    {
+        if (packetAllocations <= 0 && serializationAllocatedBytes <= 0)
+        {
+            return;
+        }
+
+        lock (sync)
+        {
+            relayPacketAllocations += Math.Max(0, packetAllocations);
+            relaySerializationAllocatedBytes += Math.Max(0, serializationAllocatedBytes);
+            MetricBucket bucket = GetBucket(Now(nowMilliseconds));
+            bucket.RelayPacketAllocations += Math.Max(0, packetAllocations);
+            bucket.RelaySerializationAllocatedBytes += Math.Max(0, serializationAllocatedBytes);
+        }
+    }
+
     public void DropRateLimit(long? nowMilliseconds = null) => Drop(DropReason.RateLimit, nowMilliseconds);
     public void DropInvalid(long? nowMilliseconds = null) => Drop(DropReason.Invalid, nowMilliseconds);
     public void DropNoSlot(long? nowMilliseconds = null) => Drop(DropReason.NoSlot, nowMilliseconds);
@@ -115,7 +134,11 @@ public sealed class VoiceMetrics
                 P95FanOut = Percentile(fanOut, 0.95),
                 P95RouteMilliseconds = Percentile(routeTimes, 0.95),
                 AverageSpatialCandidates = Average(spatialCandidates),
-                PendingInvites = Math.Max(0, pendingInvites)
+                PendingInvites = Math.Max(0, pendingInvites),
+                RelayPacketAllocations = relayPacketAllocations,
+                RelaySerializationAllocatedBytes = relaySerializationAllocatedBytes,
+                RollingRelayPacketAllocations = rollingBuckets.Sum(bucket => bucket.RelayPacketAllocations),
+                RollingRelaySerializationAllocatedBytes = rollingBuckets.Sum(bucket => bucket.RelaySerializationAllocatedBytes)
             };
         }
     }
@@ -204,6 +227,8 @@ public sealed class VoiceMetrics
         public long RelayedBytes { get; set; }
         public long EstimatedRelayedIpv4UdpBytes { get; set; }
         public long DroppedPackets { get; set; }
+        public long RelayPacketAllocations { get; set; }
+        public long RelaySerializationAllocatedBytes { get; set; }
         public List<double> FanOutSamples { get; } = new(SamplesPerSecond);
         public List<double> RouteTimeSamples { get; } = new(SamplesPerSecond);
         public List<double> SpatialCandidateSamples { get; } = new(SamplesPerSecond);

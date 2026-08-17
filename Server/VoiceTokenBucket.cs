@@ -47,6 +47,12 @@ public sealed class VoiceTokenBucket
         return tokens;
     }
 
+    public double Pressure(long nowMilliseconds)
+    {
+        Refill(nowMilliseconds);
+        return capacity <= 0d ? 1d : Math.Clamp(1d - tokens / capacity, 0d, 1d);
+    }
+
     private void Refill(long nowMilliseconds)
     {
         if (nowMilliseconds <= lastRefillMilliseconds)
