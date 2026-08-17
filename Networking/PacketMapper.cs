@@ -24,7 +24,11 @@ public static class PacketMapper
             AllowContinuousTalk = config.AllowContinuousTalk,
             ServerInstanceId = config.ServerInstanceId,
             EnableDirectorProximityCapture = config.EnableDirectorProximityCapture,
-            EnableRecorderCapture = config.EnableRecorderCapture
+            EnableRecorderCapture = config.EnableRecorderCapture,
+            DefaultOpusBitrateKbps = config.DefaultOpusBitrateKbps,
+            MaxOpusBitrateKbps = config.MaxOpusBitrateKbps,
+            EnableAdaptiveBitrate = config.EnableAdaptiveBitrate,
+            AllowAdpcmFallback = config.AllowAdpcmFallback
         };
     }
 }

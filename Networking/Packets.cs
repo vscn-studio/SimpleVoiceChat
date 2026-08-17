@@ -72,6 +72,18 @@ public sealed class ServerVoiceConfigPacket
     [ProtoMember(17)]
     public bool EnableRecorderCapture;
 
+    [ProtoMember(18)]
+    public int DefaultOpusBitrateKbps;
+
+    [ProtoMember(19)]
+    public int MaxOpusBitrateKbps;
+
+    [ProtoMember(20)]
+    public bool EnableAdaptiveBitrate;
+
+    [ProtoMember(21)]
+    public bool AllowAdpcmFallback;
+
     public float GetRange(VoiceMode mode)
     {
         return mode switch

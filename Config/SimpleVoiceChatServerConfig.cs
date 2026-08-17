@@ -2,12 +2,15 @@ namespace SimpleVoiceChat.Config;
 
 public sealed class SimpleVoiceChatServerConfig
 {
-    private const int CurrentConfigVersion = 8;
+    private const int CurrentConfigVersion = 9;
 
     public int ConfigVersion { get; set; } = 1;
     public string ServerInstanceId { get; set; } = string.Empty;
     public bool Enabled { get; set; } = true;
     public bool AllowAdpcmFallback { get; set; } = false;
+    public int DefaultOpusBitrateKbps { get; set; } = 20;
+    public int MaxOpusBitrateKbps { get; set; } = 32;
+    public bool EnableAdaptiveBitrate { get; set; } = true;
     public bool AllowWhisper { get; set; } = true;
     public bool AllowShout { get; set; } = true;
     public bool ForceImmersive { get; set; } = false;
@@ -85,6 +88,10 @@ public sealed class SimpleVoiceChatServerConfig
         {
             ConfigVersion = 8;
         }
+        if (ConfigVersion < 9)
+        {
+            ConfigVersion = 9;
+        }
         ConfigVersion = Math.Max(CurrentConfigVersion, ConfigVersion);
         if (!Guid.TryParse(ServerInstanceId, out Guid serverInstanceId) || serverInstanceId == Guid.Empty)
         {
@@ -92,6 +99,8 @@ public sealed class SimpleVoiceChatServerConfig
         }
         ServerInstanceId = serverInstanceId.ToString("N");
         MaxRange = Math.Clamp(MaxRange, 1f, 128f);
+        MaxOpusBitrateKbps = Math.Clamp(MaxOpusBitrateKbps, 8, 32);
+        DefaultOpusBitrateKbps = Math.Clamp(DefaultOpusBitrateKbps, 8, MaxOpusBitrateKbps);
         WhisperRange = Math.Clamp(WhisperRange, 1f, MaxRange);
         TalkRange = Math.Clamp(TalkRange, 1f, MaxRange);
         ShoutRange = Math.Clamp(ShoutRange, 1f, MaxRange);

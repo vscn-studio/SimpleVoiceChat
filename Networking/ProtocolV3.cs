@@ -4,7 +4,7 @@ namespace SimpleVoiceChat.Networking;
 
 public static class VoiceProtocol
 {
-    public const int CurrentVersion = 5;
+    public const int CurrentVersion = 6;
     public const string GeneratedChannelIdPrefix = "channel-";
     public const int CodecImaAdpcm = 1;
     public const int CodecOpus = 2;
@@ -55,7 +55,9 @@ public enum VoiceCapability
     Diagnostics = 1 << 4,
     ChannelMemberPaging = 1 << 5,
     ProtocolV5 = 1 << 6,
-    ServerHostedRecording = 1 << 7
+    ServerHostedRecording = 1 << 7,
+    ProtocolV6 = 1 << 8,
+    ServerGuidedBitrate = 1 << 9
 }
 
 public enum ChannelMemberDeltaKind
@@ -78,6 +80,10 @@ public sealed class VoiceHelloPacket
 
     [ProtoMember(4)]
     public int Capabilities;
+
+    /// <summary>Zero selects the server default; otherwise this is the client's Opus ceiling in kbps.</summary>
+    [ProtoMember(5)]
+    public int PreferredOpusBitrateKbps;
 }
 
 [ProtoContract]
@@ -153,6 +159,25 @@ public sealed class VoicePongPacket
 
     [ProtoMember(4)]
     public long ServerTimestampMilliseconds;
+}
+
+[ProtoContract]
+public sealed class VoiceNetworkQualityPacket
+{
+    [ProtoMember(1)] public int ConnectionEpoch;
+    [ProtoMember(2)] public double RoundTripMilliseconds;
+    [ProtoMember(3)] public double ProbeLossPercent;
+}
+
+[ProtoContract]
+public sealed class VoiceBitrateControlPacket
+{
+    [ProtoMember(1)] public int ConnectionEpoch;
+    [ProtoMember(2)] public int TargetBitrate;
+    [ProtoMember(3)] public int PacketLossPercent;
+    [ProtoMember(4)] public int FanOut;
+    [ProtoMember(5)] public double ListenerLossP75;
+    [ProtoMember(6)] public double EgressBudgetPressure;
 }
 
 [ProtoContract]
@@ -693,4 +718,16 @@ public sealed class VoiceDiagnosticsPacket
     /// <summary>Rolling 60-second estimate of protobuf payload plus IPv4 and UDP headers.</summary>
     [ProtoMember(22)]
     public long RollingEstimatedRelayedIpv4UdpBytes;
+
+    [ProtoMember(23)]
+    public long RelayPacketAllocations;
+
+    [ProtoMember(24)]
+    public long RelaySerializationAllocatedBytes;
+
+    [ProtoMember(25)]
+    public long RollingRelayPacketAllocations;
+
+    [ProtoMember(26)]
+    public long RollingRelaySerializationAllocatedBytes;
 }

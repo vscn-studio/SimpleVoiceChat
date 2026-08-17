@@ -13,7 +13,7 @@ public sealed class SimpleVoiceChatClientConfig
     public const string DeepgramSpeechRecognitionModel = "nova-3";
     public const string DeepgramSpeechRecognitionEndpoint = "https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true";
 
-    private const int CurrentConfigVersion = 6;
+    private const int CurrentConfigVersion = 7;
     private const int MaxServerProfiles = 128;
 
     public int ConfigVersion { get; set; } = CurrentConfigVersion;
@@ -35,6 +35,7 @@ public sealed class SimpleVoiceChatClientConfig
     public bool EnableOcclusionEffects { get; set; } = true;
     public bool PerformanceMode { get; set; } = false;
     public bool AdaptiveJitterBuffer { get; set; } = true;
+    public int PreferredOpusBitrateKbps { get; set; }
     public bool EnableNoiseSuppression { get; set; } = false;
     public bool EnableEchoCancellation { get; set; } = false;
     public bool EnableSpeechRecognition { get; set; } = false;
@@ -89,6 +90,7 @@ public sealed class SimpleVoiceChatClientConfig
             VoiceActivationThreshold = NoiseGate;
         }
         ChannelOutputVolume = Math.Clamp(ChannelOutputVolume, 0f, 2f);
+        PreferredOpusBitrateKbps = NormalizePreferredOpusBitrate(PreferredOpusBitrateKbps);
         ShowHudIndicator = ShowMicrophoneHud;
         PlayerVolumeOverrides ??= new Dictionary<string, float>(StringComparer.Ordinal);
         PlayerVolumeOverrides = PlayerVolumeOverrides
@@ -153,8 +155,17 @@ public sealed class SimpleVoiceChatClientConfig
             ConfigVersion = 6;
         }
 
+        if (ConfigVersion < 7)
+        {
+            PreferredOpusBitrateKbps = 0;
+            ConfigVersion = 7;
+        }
+
         ConfigVersion = Math.Max(CurrentConfigVersion, ConfigVersion);
     }
+
+    internal static int NormalizePreferredOpusBitrate(int value)
+        => value is 8 or 12 or 16 or 20 or 24 or 32 ? value : 0;
 
     internal bool SelectSpeechRecognitionProvider(string? value)
     {
