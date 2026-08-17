@@ -13,6 +13,37 @@ using Vintagestory.API.MathTools;
 
 namespace SimpleVoiceChat;
 
+internal readonly record struct VoiceCurrentStatusSnapshot(
+    bool ServerEnabled,
+    bool ControlConnected,
+    bool HandshakeAccepted,
+    bool UdpResponsive,
+    int ProtocolVersion,
+    int Codec,
+    int ConnectionEpoch,
+    int MaxStreamsPerListener,
+    double RoundTripMilliseconds,
+    double ProbeLossPercent,
+    VoiceDiagnosticsPacket? Diagnostics,
+    bool CaptureAvailable,
+    string CaptureFailure,
+    string InputDevice,
+    string OutputDevice,
+    string PlaybackStatus,
+    string ProcessingBackend,
+    bool NoiseSuppressionAvailable,
+    bool EchoCancellationAvailable,
+    VoiceMode Mode,
+    bool VoiceActivationEnabled,
+    VoiceTransmitTarget TransmitTarget,
+    string SelectedChannelName,
+    string SelectedChannelId,
+    bool LocalMuted,
+    bool GlobalMuted,
+    bool TransmitBlocked,
+    bool IsRecording,
+    VoiceRecordingMode? RecordingMode);
+
 public sealed class ClientVoiceController : IDisposable
 {
     private const int SettingsMemberPageSize = 8;
@@ -102,6 +133,7 @@ public sealed class ClientVoiceController : IDisposable
     private string pendingInviteKey = string.Empty;
     private long pendingInviteDeadlineMs;
     private string lastDiagnostics = string.Empty;
+    private VoiceDiagnosticsPacket? lastDiagnosticsPacket;
     private int nextSessionId = 1;
     private int nextVoiceProbeNonce = 1;
     private long lastVoiceProbeSentMs;
@@ -727,6 +759,8 @@ public sealed class ClientVoiceController : IDisposable
         recorderCaptureState = null;
         recorderSessionStatus = null;
         multiTrackStartPending = false;
+        lastDiagnostics = string.Empty;
+        lastDiagnosticsPacket = null;
         lastVoiceProbeSentMs = 0;
         lastRecorderClockControlProbeSentMs = 0;
         lastRecorderParticipantStateSentMs = 0;
@@ -920,6 +954,7 @@ public sealed class ClientVoiceController : IDisposable
         long rollingEstimatedBytes = packet.RollingEstimatedRelayedIpv4UdpBytes > 0
             ? packet.RollingEstimatedRelayedIpv4UdpBytes
             : packet.RollingRelayedBytes;
+        lastDiagnosticsPacket = packet;
         lastDiagnostics = SVCLang.Get(
             "diagnostics-detail",
             packet.RollingRelayedPackets,
@@ -1965,6 +2000,48 @@ public sealed class ClientVoiceController : IDisposable
     internal void RequestSettingsRefresh()
     {
         SendChannelCommand("request");
+    }
+
+    internal void RequestDiagnosticsFromSettings()
+    {
+        lastDiagnosticsPacket = null;
+        SendChannelCommand("diagnostics");
+    }
+
+    internal VoiceCurrentStatusSnapshot BuildCurrentStatusSnapshot()
+    {
+        long now = capi.World.ElapsedMilliseconds;
+        ChannelInfoPacket? selectedChannel = channelInfos.FirstOrDefault(channel => channel.ChannelId == config.SelectedChannelId);
+        return new VoiceCurrentStatusSnapshot(
+            serverConfig.Enabled,
+            controlChannel?.Connected == true,
+            voiceHandshakeAccepted,
+            voiceProbeTracker.IsResponsive(now, VoiceProbeTimeoutMilliseconds),
+            VoiceProtocol.CurrentVersion,
+            negotiatedCodec,
+            connectionEpoch,
+            serverConfig.MaxStreamsPerListener,
+            voiceProbeTracker.SmoothedRttMilliseconds,
+            voiceProbeTracker.LossPercent,
+            lastDiagnosticsPacket,
+            capture?.IsAvailable == true,
+            capture?.FailureReason ?? string.Empty,
+            string.IsNullOrWhiteSpace(config.InputDeviceName) ? SVCLang.Get("default-microphone") : config.InputDeviceName,
+            string.IsNullOrWhiteSpace(config.OutputDeviceName) ? SVCLang.Get("default-speaker") : config.OutputDeviceName,
+            playback?.BuildDebugStatus() ?? SVCLang.Get("summary-playback-uninitialized"),
+            VoiceProcessingCapabilities.BackendName,
+            VoiceProcessingCapabilities.NoiseSuppressionAvailable,
+            VoiceProcessingCapabilities.EchoCancellationAvailable,
+            mode,
+            config.PreferVoiceActivation,
+            config.TransmitTarget,
+            selectedChannel?.Name ?? SVCLang.Get("channel-none"),
+            config.SelectedChannelId,
+            localMuted,
+            globalMuted,
+            serverTransmitBlocked || channelTransmitBlocked || now < transmitBlockedUntilMs,
+            IsRecording,
+            RecordingMode);
     }
 
     private void OnVoiceRelayFrameV3(VoiceRelayFrameV3Packet packet)

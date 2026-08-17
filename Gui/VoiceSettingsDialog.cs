@@ -49,7 +49,8 @@ internal enum VoiceSettingsOverlay
     OwnerLeave,
     JoinChannel,
     ConfirmChannelAction,
-    MultiTrackRecording
+    MultiTrackRecording,
+    CurrentStatus
 }
 
 internal static class VoiceSettingsNavigation
@@ -116,7 +117,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private const double WindowWidth = 940;
     // The home page is sized to its quick-control row rather than the wider
-    // settings pages: three icon buttons, two selectors, four gaps, and margins.
+    // settings pages: five icon buttons, two selectors, six gaps, and margins.
     private const double HomeWindowWidth = 640;
     private const double WindowHeight = 650;
     private const double ContentLeft = 14;
@@ -143,6 +144,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private static readonly AssetLocation PlayersAsset = new("simplevoicechat", "gui/svc_players.png");
     private static readonly AssetLocation RecordingAsset = new("simplevoicechat", "gui/svc_record_vinyl.png");
     private static readonly AssetLocation RecordingStopAsset = new("simplevoicechat", "gui/svc_record_stop.png");
+    private static readonly AssetLocation StatusAsset = new("simplevoicechat", "gui/svc_status.png");
 
     private readonly ClientVoiceController controller;
     private readonly SimpleVoiceChatClientConfig config;
@@ -644,7 +646,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         const double quickY = 104;
         const double quickIconSize = 42;
         const double quickGap = 6;
-        const int quickIconCount = 4;
+        const int quickIconCount = 5;
         double navigationGap = (activeContentWidth - ContentLeft * 2 - buttonWidth * 4) / 3d;
 
         // Keep both quick selectors inside the compact home window.  Their
@@ -706,6 +708,14 @@ public sealed class VoiceSettingsDialog : GuiDialog
             recordingIcon,
             _ => controller.ToggleRecordingFromSettings());
         composer.AddInteractiveElement(recordingButton, "quick-recording");
+        x += quickIconSize + quickGap;
+
+        VoiceSettingsImageButton statusButton = new(
+            composer.Api,
+            ElementBounds.Fixed(x, quickY, quickIconSize, quickIconSize),
+            StatusAsset,
+            _ => OpenCurrentStatusOverlay());
+        composer.AddInteractiveElement(statusButton, "quick-current-status");
         x += quickIconSize + quickGap;
 
         VoiceSettingsChannelOption[] channels = controller.BuildChannelOptions();
@@ -1035,7 +1045,166 @@ public sealed class VoiceSettingsDialog : GuiDialog
             case VoiceSettingsOverlay.ConfirmChannelAction:
                 AddConfirmChannelActionOverlay(composer);
                 break;
+            case VoiceSettingsOverlay.CurrentStatus:
+                AddCurrentStatusOverlay(composer);
+                break;
         }
+    }
+
+    private void AddCurrentStatusOverlay(GuiComposer composer)
+    {
+        const double x = 40;
+        const double y = 25;
+        const double width = 860;
+        const double height = 600;
+        const double leftX = 70;
+        const double rightX = 490;
+        const double labelWidth = 150;
+        const double valueWidth = 230;
+        VoiceCurrentStatusSnapshot status = controller.BuildCurrentStatusSnapshot();
+        VoiceDiagnosticsPacket? diagnostics = status.Diagnostics;
+
+        AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("current-status-title"));
+        AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "current-status-close");
+
+        AddStatusSection(composer, leftX, 80, SVCLang.Get("current-status-section-connection"));
+        AddStatusRow(composer, leftX, 112, labelWidth, valueWidth, "current-status-server",
+            State(status.ServerEnabled));
+        AddStatusRow(composer, leftX, 140, labelWidth, valueWidth, "current-status-control",
+            State(status.ControlConnected));
+        AddStatusRow(composer, leftX, 168, labelWidth, valueWidth, "current-status-handshake",
+            Ready(status.HandshakeAccepted));
+        AddStatusRow(composer, leftX, 196, labelWidth, valueWidth, "current-status-udp",
+            Ready(status.UdpResponsive));
+        AddStatusRow(composer, leftX, 224, labelWidth, valueWidth, "current-status-protocol-codec",
+            $"V{status.ProtocolVersion} / {CodecName(status.Codec)}");
+        AddStatusRow(composer, leftX, 252, labelWidth, valueWidth, "current-status-epoch-streams",
+            $"{status.ConnectionEpoch} / {status.MaxStreamsPerListener}");
+
+        AddStatusSection(composer, leftX, 282, SVCLang.Get("current-status-section-network"));
+        AddStatusRow(composer, leftX, 314, labelWidth, valueWidth, "current-status-snapshot",
+            diagnostics == null ? SVCLang.Get("current-status-waiting") : SVCLang.Get("state-ready"));
+        AddStatusRow(composer, leftX, 342, labelWidth, valueWidth, "current-status-rtt-loss",
+            $"{FormatRoundTrip(status.RoundTripMilliseconds)} / {status.ProbeLossPercent:0}%");
+        AddStatusRow(composer, leftX, 370, labelWidth, valueWidth, "current-status-clients-talkers",
+            DiagnosticValue(diagnostics, packet => $"{packet.HandshakenClients} / {packet.ActiveTalkers}"));
+        AddStatusRow(composer, leftX, 398, labelWidth, valueWidth, "current-status-channels-invites",
+            DiagnosticValue(diagnostics, packet => $"{packet.Channels} / {packet.PendingInvites}"));
+        AddStatusRow(composer, leftX, 426, labelWidth, valueWidth, "current-status-listener-streams",
+            DiagnosticValue(diagnostics, packet => packet.ActiveListenerStreams.ToString()));
+        AddStatusRow(composer, leftX, 454, labelWidth, valueWidth, "current-status-packets",
+            DiagnosticValue(diagnostics, packet => $"{packet.RollingReceivedPackets} / {packet.RollingRelayedPackets}"));
+        AddStatusRow(composer, leftX, 482, labelWidth, valueWidth, "current-status-bytes",
+            DiagnosticValue(diagnostics, packet => $"{FormatBytes(packet.RollingRelayedBytes)} / {FormatBytes(packet.RollingEstimatedRelayedIpv4UdpBytes > 0 ? packet.RollingEstimatedRelayedIpv4UdpBytes : packet.RollingRelayedBytes)}"));
+        AddStatusRow(composer, leftX, 510, labelWidth, valueWidth, "current-status-dropped",
+            DiagnosticValue(diagnostics, packet => packet.RollingDroppedPackets.ToString()));
+        AddStatusRow(composer, leftX, 538, labelWidth, valueWidth, "current-status-p95",
+            DiagnosticValue(diagnostics, packet => $"{packet.P95FanOut:0.0} / {packet.P95RouteMilliseconds:0.000} ms"));
+
+        AddStatusSection(composer, rightX, 80, SVCLang.Get("current-status-section-audio"));
+        AddStatusRow(composer, rightX, 112, labelWidth, valueWidth, "current-status-capture",
+            Ready(status.CaptureAvailable));
+        AddStatusRow(composer, rightX, 140, labelWidth, valueWidth, "current-status-capture-error",
+            string.IsNullOrWhiteSpace(status.CaptureFailure) ? SVCLang.Get("current-status-none") : Truncate(status.CaptureFailure, 34));
+        AddStatusRow(composer, rightX, 168, labelWidth, valueWidth, "label-input-device",
+            Truncate(status.InputDevice, 34), 40);
+        AddStatusRow(composer, rightX, 208, labelWidth, valueWidth, "label-output-device",
+            Truncate(status.OutputDevice, 34), 40);
+        AddStatusRow(composer, rightX, 248, labelWidth, valueWidth, "current-status-processing",
+            Truncate(status.ProcessingBackend, 34));
+        AddStatusRow(composer, rightX, 276, labelWidth, valueWidth, "current-status-ns-aec",
+            $"{State(status.NoiseSuppressionAvailable)} / {State(status.EchoCancellationAvailable)}");
+        AddStatusRow(composer, rightX, 304, labelWidth, valueWidth, "current-status-playback",
+            status.PlaybackStatus, 54);
+
+        AddStatusSection(composer, rightX, 372, SVCLang.Get("current-status-section-voice"));
+        AddStatusRow(composer, rightX, 404, labelWidth, valueWidth, "current-status-mode",
+            ModeName(status.Mode));
+        AddStatusRow(composer, rightX, 432, labelWidth, valueWidth, "current-status-control-mode",
+            SVCLang.Get(status.VoiceActivationEnabled ? "mode-voice-activation" : "mode-push-to-talk"));
+        AddStatusRow(composer, rightX, 460, labelWidth, valueWidth, "label-transmit-target",
+            SVCLang.Get("transmit-" + TransmitCode(status.TransmitTarget)));
+        AddStatusRow(composer, rightX, 488, labelWidth, valueWidth, "current-status-channel",
+            Truncate(status.SelectedChannelName, 34));
+        AddStatusRow(composer, rightX, 516, labelWidth, valueWidth, "current-status-channel-id",
+            string.IsNullOrWhiteSpace(status.SelectedChannelId) ? "--" : Truncate(status.SelectedChannelId, 34));
+        AddStatusRow(composer, rightX, 544, labelWidth, valueWidth, "current-status-mute-deafen",
+            $"{State(status.LocalMuted)} / {State(status.GlobalMuted)}");
+        AddStatusRow(composer, rightX, 572, labelWidth, valueWidth, "current-status-transmit-recording",
+            $"{Ready(!status.TransmitBlocked)} / {RecordingName(status)}");
+    }
+
+    private static void AddStatusSection(GuiComposer composer, double x, double y, string title)
+    {
+        composer.AddStaticText(
+            title,
+            CairoFont.WhiteSmallishText().WithFontSize(15).WithColor(new[] { 1.0, 1.0, 1.0, 1.0 }),
+            ElementBounds.Fixed(x, y, 380, 24));
+    }
+
+    private static void AddStatusRow(
+        GuiComposer composer,
+        double x,
+        double y,
+        double labelWidth,
+        double valueWidth,
+        string labelKey,
+        string value,
+        double height = 26)
+    {
+        composer.AddStaticText(
+                SVCLang.Get(labelKey),
+                CairoFont.WhiteDetailText().WithFontSize(12).WithColor(new[] { 0.68, 0.72, 0.79, 1.0 }),
+                ElementBounds.Fixed(x, y, labelWidth, height))
+            .AddStaticText(
+                value,
+                CairoFont.WhiteSmallText().WithFontSize(13).WithColor(new[] { 0.96, 0.97, 1.0, 1.0 }),
+                ElementBounds.Fixed(x + labelWidth, y, valueWidth, height));
+    }
+
+    private static string DiagnosticValue(VoiceDiagnosticsPacket? diagnostics, System.Func<VoiceDiagnosticsPacket, string> value)
+    {
+        return diagnostics == null ? "--" : value(diagnostics);
+    }
+
+    private static string State(bool enabled) => SVCLang.Get(enabled ? "state-on" : "state-off");
+
+    private static string Ready(bool ready) => SVCLang.Get(ready ? "state-ready" : "state-unavailable");
+
+    private static string CodecName(int codec) => codec == VoiceProtocol.CodecOpus ? "Opus" : "ADPCM";
+
+    private static string FormatRoundTrip(double milliseconds) => milliseconds < 0 ? "-- ms" : $"{milliseconds:0} ms";
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes >= 1024L * 1024L * 1024L) return $"{bytes / (1024d * 1024d * 1024d):0.0} GiB";
+        if (bytes >= 1024L * 1024L) return $"{bytes / (1024d * 1024d):0.0} MiB";
+        if (bytes >= 1024L) return $"{bytes / 1024d:0.0} KiB";
+        return $"{bytes} B";
+    }
+
+    private static string ModeName(VoiceMode mode)
+    {
+        return SVCLang.Get(mode switch
+        {
+            VoiceMode.Whisper => "mode-whisper",
+            VoiceMode.Shout => "mode-shout",
+            _ => "mode-talk"
+        });
+    }
+
+    private static string RecordingName(VoiceCurrentStatusSnapshot status)
+    {
+        if (!status.IsRecording || status.RecordingMode == null)
+        {
+            return SVCLang.Get("state-off");
+        }
+        return SVCLang.Get(status.RecordingMode switch
+        {
+            VoiceRecordingMode.InputOnly => "recording-mode-input",
+            VoiceRecordingMode.InputAndOutput => "recording-mode-input-output",
+            _ => "recording-mode-multitrack"
+        });
     }
 
     private void AddRecordingModeOverlay(GuiComposer composer)
@@ -1435,7 +1604,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private static void DrawOverlayPanel(Context ctx, ImageSurface surface, ElementBounds bounds)
     {
         bounds.CalcWorldBounds();
-        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
+        GuiElement.RoundRectangle(ctx, bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight, GuiElement.scaled(4));
         ctx.SetSourceRGBA(0.025, 0.03, 0.04, 0.98);
         ctx.FillPreserve();
         ctx.SetSourceRGBA(0.88, 0.92, 0.98, 0.72);
@@ -1520,7 +1689,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private static void DrawPlayerCardBackground(Context ctx, ImageSurface surface, ElementBounds bounds)
     {
         bounds.CalcWorldBounds();
-        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
+        GuiElement.RoundRectangle(ctx, bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight, GuiElement.scaled(4));
         ctx.SetSourceRGBA(0.08, 0.1, 0.13, 0.94);
         ctx.FillPreserve();
         ctx.SetSourceRGBA(0.86, 0.9, 0.96, 0.5);
@@ -1531,7 +1700,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private static void DrawChannelCardBackground(Context ctx, ImageSurface surface, ElementBounds bounds)
     {
         bounds.CalcWorldBounds();
-        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
+        GuiElement.RoundRectangle(ctx, bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight, GuiElement.scaled(4));
         ctx.SetSourceRGBA(0.10, 0.12, 0.15, 0.96);
         ctx.FillPreserve();
         ctx.SetSourceRGBA(0.86, 0.90, 0.96, 0.58);
@@ -1754,6 +1923,14 @@ public sealed class VoiceSettingsDialog : GuiDialog
         overlayChannelId = config.SelectedChannelId;
         overlayAction = "invite";
         overlay = VoiceSettingsOverlay.Player;
+        QueueCompose();
+    }
+
+    private void OpenCurrentStatusOverlay()
+    {
+        overlayStack.Clear();
+        overlay = VoiceSettingsOverlay.CurrentStatus;
+        controller.RequestDiagnosticsFromSettings();
         QueueCompose();
     }
 
