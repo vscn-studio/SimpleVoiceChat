@@ -17,6 +17,13 @@ public interface IVoiceDecoder : IDisposable
     void Reset();
 }
 
+public interface INetworkAdaptiveVoiceEncoder
+{
+    int Bitrate { get; }
+    int PacketLossPercent { get; }
+    void ConfigureNetwork(int bitrate, int packetLossPercent);
+}
+
 public static class VoiceDecoderSafety
 {
     public static bool DecodeOrSilence(
@@ -77,7 +84,7 @@ public static class VoiceCodecFactory
     }
 }
 
-public sealed class OpusVoiceEncoder : IVoiceEncoder
+public sealed class OpusVoiceEncoder : IVoiceEncoder, INetworkAdaptiveVoiceEncoder
 {
     private const int MaxPayloadBytes = 200;
     private readonly IOpusEncoder encoder;
@@ -96,6 +103,22 @@ public sealed class OpusVoiceEncoder : IVoiceEncoder
     }
 
     public int CodecId => Networking.VoiceProtocol.CodecOpus;
+    public int Bitrate => encoder.Bitrate;
+    public int PacketLossPercent => encoder.PacketLossPercent;
+
+    public void ConfigureNetwork(int bitrate, int packetLossPercent)
+    {
+        int boundedBitrate = Math.Clamp(bitrate, 8_000, 32_000);
+        int boundedPacketLoss = Math.Clamp(packetLossPercent, 0, 20);
+        if (encoder.Bitrate != boundedBitrate)
+        {
+            encoder.Bitrate = boundedBitrate;
+        }
+        if (encoder.PacketLossPercent != boundedPacketLoss)
+        {
+            encoder.PacketLossPercent = boundedPacketLoss;
+        }
+    }
 
     public byte[] Encode(ReadOnlySpan<short> samples)
     {

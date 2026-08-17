@@ -147,25 +147,33 @@ public sealed class ServerHostedRecordingService : IDisposable
             long streamSessionKey = ((long)connectionEpoch << 32) | unchecked((uint)voiceSessionId);
             HostedTrack track = GetOrCreateTrack(speakerUid, speakerName, codec);
             track.ObservePacket(streamSessionKey, sequence, captureServerTimestampMilliseconds <= 0);
-            if (!track.TryDecode(codec, streamSessionKey, payload, out short[] samples))
+            short[] samples = PcmFramePool.Shared.Rent();
+            try
             {
-                track.DecodeFailures++;
-                return;
-            }
+                if (!track.TryDecode(codec, streamSessionKey, payload, samples))
+                {
+                    track.DecodeFailures++;
+                    return;
+                }
 
-            long targetFrame = (timestamp - state.StartServerTimestampMilliseconds) * VoiceConstants.SampleRate / 1000L;
-            if (!track.Writer.TryWriteAt(targetFrame, samples))
-            {
-                track.LateFrames++;
-                return;
-            }
+                long targetFrame = (timestamp - state.StartServerTimestampMilliseconds) * VoiceConstants.SampleRate / 1000L;
+                if (!track.Writer.TryWriteAt(targetFrame, samples))
+                {
+                    track.LateFrames++;
+                    return;
+                }
 
-            track.DecodedFrames++;
-            state.LastServerTimestampMilliseconds = Math.Max(state.LastServerTimestampMilliseconds, timestamp);
-            if (receivedServerTimestampMilliseconds - lastCheckpointMilliseconds >= checkpointIntervalMilliseconds)
+                track.DecodedFrames++;
+                state.LastServerTimestampMilliseconds = Math.Max(state.LastServerTimestampMilliseconds, timestamp);
+                if (receivedServerTimestampMilliseconds - lastCheckpointMilliseconds >= checkpointIntervalMilliseconds)
+                {
+                    lastCheckpointMilliseconds = receivedServerTimestampMilliseconds;
+                    WriteState(flushTracks: true);
+                }
+            }
+            finally
             {
-                lastCheckpointMilliseconds = receivedServerTimestampMilliseconds;
-                WriteState(flushTracks: true);
+                PcmFramePool.Shared.Return(samples);
             }
         }
     }
@@ -731,7 +739,11 @@ public sealed class ServerHostedRecordingService : IDisposable
             lastSequence = sequence;
         }
 
-        internal bool TryDecode(int nextCodec, long nextStreamSessionKey, ReadOnlySpan<byte> payload, out short[] samples)
+        internal bool TryDecode(
+            int nextCodec,
+            long nextStreamSessionKey,
+            ReadOnlySpan<byte> payload,
+            Span<short> samples)
         {
             if (nextCodec != codec)
             {
@@ -745,7 +757,6 @@ public sealed class ServerHostedRecordingService : IDisposable
                 decoderStreamSessionKey = nextStreamSessionKey;
                 decoder.Reset();
             }
-            samples = new short[VoiceConstants.SamplesPerFrame];
             return VoiceDecoderSafety.DecodeOrSilence(decoder, payload, samples);
         }
 

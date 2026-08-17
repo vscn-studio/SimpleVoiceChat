@@ -102,9 +102,9 @@ public sealed class SimpleVoiceChatServerConfig
         MaxListenerEgressKbps = Math.Clamp(MaxListenerEgressKbps, 64, 2_048);
         MaxDirectorEgressKbps = Math.Clamp(MaxDirectorEgressKbps, 512, 8_192);
         SpatialCellSize = Math.Clamp(SpatialCellSize, 4, 64);
-        MaxStreamsPerListener = Math.Clamp(MaxStreamsPerListener, 1, 12);
+        MaxStreamsPerListener = Math.Clamp(MaxStreamsPerListener, 1, 32);
         MaxProximityStreams = Math.Clamp(MaxProximityStreams, 1, MaxStreamsPerListener);
-        MaxChannelTalkers = Math.Clamp(MaxChannelTalkers, 1, MaxStreamsPerListener);
+        MaxChannelTalkers = Math.Clamp(MaxChannelTalkers, 1, Math.Min(MaxStreamsPerListener, 12));
         MaxChannelMembers = Math.Clamp(MaxChannelMembers, 2, 100);
         MaxDirectorListeners = Math.Clamp(MaxDirectorListeners, 1, 8);
         MaxDirectorStreamsPerListener = Math.Clamp(MaxDirectorStreamsPerListener, 1, 64);

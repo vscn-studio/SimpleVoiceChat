@@ -20,6 +20,7 @@ internal readonly record struct VoiceCurrentStatusSnapshot(
     bool UdpResponsive,
     int ProtocolVersion,
     int Codec,
+    int EncoderBitrate,
     int ConnectionEpoch,
     int MaxStreamsPerListener,
     double RoundTripMilliseconds,
@@ -74,6 +75,7 @@ public sealed class ClientVoiceController : IDisposable
     private readonly short[] captureBuffer = new short[VoiceConstants.SamplesPerFrame];
     private readonly VoiceCapturePreprocessor capturePreprocessor = new();
     private readonly VoiceProbeTracker voiceProbeTracker = new();
+    private readonly AdaptiveVoiceBitrateController adaptiveBitrate = new();
     private readonly VoiceProbeTracker recorderClockControlProbeTracker = new();
     private ServerVoiceConfigPacket serverConfig = new()
     {
@@ -137,6 +139,7 @@ public sealed class ClientVoiceController : IDisposable
     private int nextSessionId = 1;
     private int nextVoiceProbeNonce = 1;
     private long lastVoiceProbeSentMs;
+    private long lastDiagnosticsRequestMs;
     private long lastRecorderClockControlProbeSentMs;
     private long lastRecorderParticipantStateSentMs;
     private long voiceHandshakeAcceptedMs;
@@ -765,7 +768,9 @@ public sealed class ClientVoiceController : IDisposable
         lastRecorderClockControlProbeSentMs = 0;
         lastRecorderParticipantStateSentMs = 0;
         voiceEncoder?.Dispose();
-        voiceEncoder = voiceHandshakeAccepted ? VoiceCodecFactory.CreateEncoder(negotiatedCodec, packet.Bitrate) : null;
+        int encoderBitrate = packet.Bitrate > 0 ? packet.Bitrate : 20_000;
+        adaptiveBitrate.Reset(encoderBitrate, capi.World.ElapsedMilliseconds);
+        voiceEncoder = voiceHandshakeAccepted ? VoiceCodecFactory.CreateEncoder(negotiatedCodec, encoderBitrate) : null;
         if (!voiceHandshakeAccepted && !string.IsNullOrWhiteSpace(packet.Message))
         {
             capi.ShowChatMessage($"Simple Voice Chat: {SVCLang.Get("feedback-" + packet.Message)}");
@@ -2005,6 +2010,7 @@ public sealed class ClientVoiceController : IDisposable
     internal void RequestDiagnosticsFromSettings()
     {
         lastDiagnosticsPacket = null;
+        lastDiagnosticsRequestMs = capi.World.ElapsedMilliseconds;
         SendChannelCommand("diagnostics");
     }
 
@@ -2019,6 +2025,11 @@ public sealed class ClientVoiceController : IDisposable
             voiceProbeTracker.IsResponsive(now, VoiceProbeTimeoutMilliseconds),
             VoiceProtocol.CurrentVersion,
             negotiatedCodec,
+            !voiceHandshakeAccepted
+                ? 0
+                : voiceEncoder is INetworkAdaptiveVoiceEncoder adaptiveEncoder
+                    ? adaptiveEncoder.Bitrate
+                    : negotiatedCodec == VoiceProtocol.CodecImaAdpcm ? 32_800 : 0,
             connectionEpoch,
             serverConfig.MaxStreamsPerListener,
             voiceProbeTracker.SmoothedRttMilliseconds,
@@ -2384,6 +2395,9 @@ public sealed class ClientVoiceController : IDisposable
             SendHello();
         }
         UpdateVoiceProbe();
+        long now = capi.World.ElapsedMilliseconds;
+        UpdateAdaptiveBitrate(now);
+        UpdateSettingsDiagnostics(now);
         UpdateRecorderClockControlFallback();
         SendRecorderParticipantState(force: false);
         directorVoice?.UpdateListener(controlChannel);
@@ -2401,6 +2415,45 @@ public sealed class ClientVoiceController : IDisposable
             lastRemoteVoiceLevel = 0f;
         }
         hud?.Refresh();
+    }
+
+    private void UpdateAdaptiveBitrate(long nowMilliseconds)
+    {
+        if (voiceEncoder is not INetworkAdaptiveVoiceEncoder encoder
+            || !adaptiveBitrate.IsEvaluationDue(nowMilliseconds))
+        {
+            return;
+        }
+
+        bool udpResponsive = voiceProbeTracker.IsResponsive(nowMilliseconds, VoiceProbeTimeoutMilliseconds);
+        double roundTripMilliseconds = voiceProbeTracker.SmoothedRttMilliseconds;
+        if (roundTripMilliseconds < 0
+            && !udpResponsive
+            && nowMilliseconds - voiceHandshakeAcceptedMs >= VoiceProbeTimeoutMilliseconds)
+        {
+            roundTripMilliseconds = VoiceProbeTimeoutMilliseconds;
+        }
+        if (adaptiveBitrate.Update(
+                nowMilliseconds,
+                udpResponsive,
+                roundTripMilliseconds,
+                voiceProbeTracker.LossPercent))
+        {
+            encoder.ConfigureNetwork(adaptiveBitrate.CurrentBitrate, adaptiveBitrate.PacketLossPercent);
+        }
+    }
+
+    private void UpdateSettingsDiagnostics(long nowMilliseconds)
+    {
+        if (settingsDialog?.IsCurrentStatusOpen != true
+            || nowMilliseconds - lastDiagnosticsRequestMs < 1_000)
+        {
+            return;
+        }
+
+        lastDiagnosticsRequestMs = nowMilliseconds;
+        SendChannelCommand("diagnostics");
+        settingsDialog.RefreshData();
     }
 
     private void UpdateVoiceProbe()

@@ -2542,13 +2542,20 @@ public sealed class ServerVoiceController : IDisposable
         {
             return;
         }
-        RefreshOnlinePlayerSnapshot();
+        foreach (IServerPlayer player in onlinePlayersByUid.Values)
+        {
+            UpdateSpatialEntry(player);
+        }
     }
 
     private void RefreshOnlinePlayerSnapshot()
     {
-        foreach (IServerPlayer player in sapi.World.AllOnlinePlayers.OfType<IServerPlayer>())
+        foreach (IPlayer onlinePlayer in sapi.World.AllOnlinePlayers)
         {
+            if (onlinePlayer is not IServerPlayer player)
+            {
+                continue;
+            }
             onlinePlayersByUid[player.PlayerUID] = player;
             UpdateSpatialEntry(player);
         }

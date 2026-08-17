@@ -2,6 +2,7 @@ namespace SimpleVoiceChat.Server;
 
 public sealed class VoiceSpatialIndex
 {
+    private const double MinimumPositionDeltaSquared = 0.0025d;
     private readonly int cellSize;
     private readonly Dictionary<Cell, HashSet<string>> membersByCell = new();
     private readonly Dictionary<string, Entry> entriesByUid = new(StringComparer.Ordinal);
@@ -15,9 +16,22 @@ public sealed class VoiceSpatialIndex
 
     public void Update(string uid, double x, double y, double z)
     {
+        UpdateIfMoved(uid, x, y, z);
+    }
+
+    internal bool UpdateIfMoved(string uid, double x, double y, double z)
+    {
         Cell nextCell = GetCell(x, z);
         if (entriesByUid.TryGetValue(uid, out Entry current))
         {
+            double dx = current.X - x;
+            double dy = current.Y - y;
+            double dz = current.Z - z;
+            if (current.Cell == nextCell
+                && dx * dx + dy * dy + dz * dz < MinimumPositionDeltaSquared)
+            {
+                return false;
+            }
             if (current.Cell != nextCell)
             {
                 RemoveFromCell(uid, current.Cell);
@@ -30,6 +44,7 @@ public sealed class VoiceSpatialIndex
         }
 
         entriesByUid[uid] = new Entry(nextCell, x, y, z);
+        return true;
     }
 
     public bool Remove(string uid)

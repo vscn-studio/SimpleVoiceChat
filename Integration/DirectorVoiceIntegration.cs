@@ -115,14 +115,21 @@ internal sealed class DirectorVoiceIntegration : IDisposable
             DirectorVoiceStream stream = streams[speakerUid];
             while (remaining > 0 && stream.TryDecode(out short[] samples, out DirectorVoiceFrameMetadata metadata))
             {
-                remaining--;
-                DirectorVoiceSource source = GetSource(speakerUid, metadata.SpeakerName);
-                object spatialization = director.CreateSpatialization(
-                    new DirectorVoicePositionData(metadata.X, metadata.Y, metadata.Z, metadata.Dimension),
-                    metadata.MaxDistance,
-                    metadata.ReferenceDistance,
-                    metadata.RolloffFactor);
-                source.Submit(samples, VoiceConstants.SampleRate, spatialization, metadata.TimestampMilliseconds);
+                try
+                {
+                    remaining--;
+                    DirectorVoiceSource source = GetSource(speakerUid, metadata.SpeakerName);
+                    object spatialization = director.CreateSpatialization(
+                        new DirectorVoicePositionData(metadata.X, metadata.Y, metadata.Z, metadata.Dimension),
+                        metadata.MaxDistance,
+                        metadata.ReferenceDistance,
+                        metadata.RolloffFactor);
+                    source.Submit(samples, VoiceConstants.SampleRate, spatialization, metadata.TimestampMilliseconds);
+                }
+                finally
+                {
+                    PcmFramePool.Shared.Return(samples);
+                }
             }
 
             if (now - stream.LastActivityMilliseconds <= StreamIdleMilliseconds)
@@ -140,13 +147,13 @@ internal sealed class DirectorVoiceIntegration : IDisposable
     }
 
     internal void SubmitLocalFrame(
-        ReadOnlySpan<short> samples,
+        short[] samples,
         long timestampMilliseconds,
         VoiceMode mode,
         VoiceTransmitTarget transmitTarget,
         ServerVoiceConfigPacket serverConfig)
     {
-        if (disposed || samples.IsEmpty || !TryGetReflection(out DirectorReflection director))
+        if (disposed || samples.Length == 0 || !TryGetReflection(out DirectorReflection director))
         {
             return;
         }
@@ -186,7 +193,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
             range,
             CalculateReferenceDistance(range),
             CalculateRolloff(range));
-        source.Submit(samples.ToArray(), VoiceConstants.SampleRate, spatialization, timestampMilliseconds);
+        source.Submit(samples, VoiceConstants.SampleRate, spatialization, timestampMilliseconds);
     }
 
     internal bool CanCaptureLocalFrame(
@@ -705,7 +712,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
                 TimestampMilliseconds = timestampTimeline.Resolve(encoded.Sequence, metadata.ArrivalMilliseconds)
             };
 
-            samples = new short[VoiceConstants.SamplesPerFrame];
+            samples = PcmFramePool.Shared.Rent();
             VoiceDecoderSafety.DecodeOrSilence(decoder, encoded.Payload, samples, encoded.UseFec);
             return true;
         }

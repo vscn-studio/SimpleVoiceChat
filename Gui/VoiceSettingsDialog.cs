@@ -198,6 +198,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
     public override double DrawOrder => 0.48;
     public override double InputOrder => 0.3;
 
+    internal bool IsCurrentStatusOpen => IsOpened() && overlay == VoiceSettingsOverlay.CurrentStatus;
+
     public override void OnMouseDown(MouseEvent args)
     {
         if (!args.Handled)
@@ -1082,7 +1084,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         AddStatusRow(composer, leftX, 196, labelWidth, valueWidth, "current-status-udp",
             Ready(status.UdpResponsive));
         AddStatusRow(composer, leftX, 224, labelWidth, valueWidth, "current-status-protocol-codec",
-            $"V{status.ProtocolVersion} / {CodecName(status.Codec)}");
+            $"V{status.ProtocolVersion} / {CodecName(status.Codec)} / {FormatBitrate(status.EncoderBitrate)}");
         AddStatusRow(composer, leftX, 252, labelWidth, valueWidth, "current-status-epoch-streams",
             $"{status.ConnectionEpoch} / {status.MaxStreamsPerListener}");
 
@@ -1177,6 +1179,9 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private static string Ready(bool ready) => SVCLang.Get(ready ? "state-ready" : "state-unavailable");
 
     private static string CodecName(int codec) => codec == VoiceProtocol.CodecOpus ? "Opus" : "ADPCM";
+
+    private static string FormatBitrate(int bitrate)
+        => bitrate > 0 ? $"{bitrate / 1000d:0.#} kbps" : "--";
 
     private static string FormatRoundTrip(double milliseconds) => milliseconds < 0 ? "-- ms" : $"{milliseconds:0} ms";
 

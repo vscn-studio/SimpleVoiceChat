@@ -13,6 +13,76 @@ namespace SimpleVoiceChat.Tests;
 public sealed class CoreTests
 {
     [Fact]
+    public void PcmFramePoolReusesExactClearedFramesWithinCapacity()
+    {
+        PcmFramePool pool = new(1);
+        short[] frame = pool.Rent();
+        frame[0] = 123;
+
+        pool.Return(frame);
+        pool.Return(new short[VoiceConstants.SamplesPerFrame]);
+        short[] reused = pool.Rent();
+
+        Assert.Same(frame, reused);
+        Assert.Equal(VoiceConstants.SamplesPerFrame, reused.Length);
+        Assert.Equal((short)0, reused[0]);
+        Assert.Equal(0, pool.RetainedCount);
+    }
+
+    [Fact]
+    public void AdaptiveBitrateWaitsForProbeAndUsesHysteresis()
+    {
+        AdaptiveVoiceBitrateController controller = new();
+        controller.Reset(20_000, 0);
+
+        Assert.False(controller.Update(1_000, false, -1, 0));
+        Assert.Equal(20_000, controller.CurrentBitrate);
+
+        controller.Update(2_000, true, 250, 10);
+        Assert.True(controller.Update(3_000, true, 250, 10));
+        Assert.Equal(16_000, controller.CurrentBitrate);
+
+        Assert.True(controller.Update(5_000, false, 450, 20));
+        Assert.Equal(12_000, controller.CurrentBitrate);
+        Assert.Equal(20, controller.PacketLossPercent);
+
+        for (int second = 6; second <= 15; second++)
+        {
+            controller.Update(second * 1_000L, true, 60, 0);
+        }
+        Assert.Equal(16_000, controller.CurrentBitrate);
+        Assert.Equal(2, controller.PacketLossPercent);
+    }
+
+    [Fact]
+    public void OpusEncoderAppliesRuntimeNetworkSettings()
+    {
+        using OpusVoiceEncoder encoder = new(20_000);
+
+        encoder.ConfigureNetwork(12_000, 14);
+
+        Assert.Equal(12_000, encoder.Bitrate);
+        Assert.Equal(14, encoder.PacketLossPercent);
+    }
+
+    [Fact]
+    public void PlaybackStreamLimitAllowsThirtyTwoSources()
+    {
+        SimpleVoiceChatServerConfig config = new()
+        {
+            MaxStreamsPerListener = 64,
+            MaxProximityStreams = 64,
+            MaxChannelTalkers = 64
+        };
+
+        config.Normalize();
+
+        Assert.Equal(32, config.MaxStreamsPerListener);
+        Assert.Equal(32, config.MaxProximityStreams);
+        Assert.Equal(12, config.MaxChannelTalkers);
+    }
+
+    [Fact]
     public void DirectorReplayCaptureRegionUsesChunkBoundaries()
     {
         Assert.True(DirectorVoiceCaptureRegion.Contains(159d, 159d, 0, 16d, 16d, 0, 4));

@@ -36,7 +36,14 @@ public sealed class RecorderVoiceCapture : IDisposable
         {
             while (stream.TryDecode(nowMilliseconds, out short[] samples, out long timestamp))
             {
-                FrameCaptured?.Invoke(uid, stream.SpeakerName, samples, timestamp);
+                try
+                {
+                    FrameCaptured?.Invoke(uid, stream.SpeakerName, samples, timestamp);
+                }
+                finally
+                {
+                    PcmFramePool.Shared.Return(samples);
+                }
             }
 
             if (nowMilliseconds - stream.LastActivityMilliseconds > 3_000)
@@ -115,7 +122,7 @@ public sealed class RecorderVoiceCapture : IDisposable
                     : nowMilliseconds;
             arrivalsBySequence.Remove(encoded.Sequence);
             timestamp = timeline.Resolve(encoded.Sequence, initial);
-            samples = new short[VoiceConstants.SamplesPerFrame];
+            samples = PcmFramePool.Shared.Rent();
             VoiceDecoderSafety.DecodeOrSilence(decoder, encoded.Payload, samples, encoded.UseFec);
             return true;
         }

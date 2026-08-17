@@ -8,6 +8,21 @@ namespace SimpleVoiceChat.Tests;
 public sealed class CapacityTests
 {
     [Fact]
+    public void SpatialIndexSkipsTinyMovesButRefreshesMeaningfulAndCrossCellMoves()
+    {
+        VoiceSpatialIndex spatial = new(16);
+
+        Assert.True(spatial.UpdateIfMoved("player", 1, 2, 1));
+        Assert.False(spatial.UpdateIfMoved("player", 1.02, 2, 1.02));
+        Assert.True(spatial.UpdateIfMoved("player", 1.10, 2, 1));
+        Assert.True(spatial.UpdateIfMoved("player", 16.01, 2, 1));
+
+        List<VoiceSpatialCandidate> candidates = new();
+        spatial.Query(16.01, 2, 1, 0.01, candidates);
+        Assert.Single(candidates);
+    }
+
+    [Fact]
     public void ChannelRolesControlTransmissionAndModeration()
     {
         ChannelService channels = new();
