@@ -60,7 +60,7 @@ voiceChat.ClientSettingsExtensions.RegisterButton(
     new VoiceSettingsExtensionButton(
         "example.button", "Example", () =&gt; OpenExample(),
         order: 100, preferredWidth: 160));</code></pre>
-<p>模组也可以注册独立扩展窗口。SimpleVoiceChat 统一提供居中面板、标题、关闭按钮、内容裁剪和 4px 圆角背景：</p>
+<p>模组也可以注册独立扩展窗口。SimpleVoiceChat 统一提供居中面板、标题、关闭按钮、内容裁剪和 4px 圆角背景；扩展按钮和其他控件保持直角：</p>
 <pre><code>voiceChat.ClientSettingsExtensions.RegisterWindow(
     new VoiceSettingsExtensionWindow(
         "example.window", "Example",

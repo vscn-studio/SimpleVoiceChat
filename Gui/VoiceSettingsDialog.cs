@@ -1914,7 +1914,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private static void DrawPlayerCardBackground(Context ctx, ImageSurface surface, ElementBounds bounds)
     {
         bounds.CalcWorldBounds();
-        GuiElement.RoundRectangle(ctx, bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight, GuiElement.scaled(4));
+        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
         ctx.SetSourceRGBA(0.08, 0.1, 0.13, 0.94);
         ctx.FillPreserve();
         ctx.SetSourceRGBA(0.86, 0.9, 0.96, 0.5);
@@ -1925,7 +1925,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private static void DrawChannelCardBackground(Context ctx, ImageSurface surface, ElementBounds bounds)
     {
         bounds.CalcWorldBounds();
-        GuiElement.RoundRectangle(ctx, bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight, GuiElement.scaled(4));
+        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
         ctx.SetSourceRGBA(0.10, 0.12, 0.15, 0.96);
         ctx.FillPreserve();
         ctx.SetSourceRGBA(0.86, 0.90, 0.96, 0.58);

@@ -61,7 +61,7 @@ voiceChat.ClientSettingsExtensions.RegisterButton(
         preferredWidth: 160));
 ```
 
-也可以注册与主窗口风格一致的独立扩展窗口。窗口由 SimpleVoiceChat 居中显示，提供标题、关闭按钮、内容裁剪和 4px 圆角背景；第三方模组只负责在 `Compose` 回调中添加内容：
+也可以注册与主窗口风格一致的独立扩展窗口。窗口由 SimpleVoiceChat 居中显示，提供标题、关闭按钮、内容裁剪和 4px 圆角背景；扩展按钮和其他控件保持直角。第三方模组只负责在 `Compose` 回调中添加内容：
 
 ```csharp
 voiceChat.ClientSettingsExtensions.RegisterWindow(
@@ -243,7 +243,7 @@ voiceChat.ClientSettingsExtensions.RegisterButton(
         preferredWidth: 160));
 ```
 
-Mods may also register an independently opened window. SimpleVoiceChat supplies the centered panel, title, close button, clipping, and the same 4px rounded background; the mod only composes the content:
+Mods may also register an independently opened window. SimpleVoiceChat supplies the centered panel, title, close button, clipping, and the same 4px rounded background; extension buttons and other controls remain square, and the mod only composes the content:
 
 ```csharp
 voiceChat.ClientSettingsExtensions.RegisterWindow(

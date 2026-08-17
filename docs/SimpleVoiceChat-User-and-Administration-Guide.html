@@ -60,7 +60,7 @@ voiceChat.ClientSettingsExtensions.RegisterButton(
     new VoiceSettingsExtensionButton(
         "example.button", "Example", () =&gt; OpenExample(),
         order: 100, preferredWidth: 160));</code></pre>
-<p>A mod can also register an independent extension window. SimpleVoiceChat supplies the centered panel, title, close button, clipping, and the common 4px rounded background:</p>
+<p>A mod can also register an independent extension window. SimpleVoiceChat supplies the centered panel, title, close button, clipping, and the common 4px rounded background; extension buttons and other controls remain square:</p>
 <pre><code>voiceChat.ClientSettingsExtensions.RegisterWindow(
     new VoiceSettingsExtensionWindow(
         "example.window", "Example",

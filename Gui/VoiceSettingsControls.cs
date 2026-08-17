@@ -237,7 +237,7 @@ internal sealed class VoiceSettingsTextButton : GuiElementTextButton
         int height = Math.Max(1, Bounds.OuterHeightInt);
         using ImageSurface surface = new(Format.Argb32, width, height);
         using Context context = new(surface);
-        GuiElement.RoundRectangle(context, 0, 0, width, height, GuiElement.scaled(4));
+        context.Rectangle(0, 0, width, height);
         if (pressedState)
         {
             context.SetSourceRGBA(1.0, 1.0, 1.0, 0.98);
@@ -345,7 +345,7 @@ internal sealed class VoiceSettingsExtensionButtonElement : GuiElementControl
         double width = Bounds.OuterWidth;
         double height = Bounds.OuterHeight;
         bool pressedState = pressed && Enabled;
-        GuiElement.RoundRectangle(context, 0, 0, width, height, GuiElement.scaled(4));
+        context.Rectangle(0, 0, width, height);
         context.SetSourceRGBA(
             pressedState ? 1.0 : 0.62,
             pressedState ? 1.0 : 0.66,
@@ -479,7 +479,7 @@ internal sealed class VoiceSettingsLevelMeter : GuiElementControl
     public override void ComposeElements(Context ctx, ImageSurface surface)
     {
         Bounds.CalcWorldBounds();
-        GuiElement.RoundRectangle(ctx, Bounds.drawX, Bounds.drawY, Bounds.InnerWidth, Bounds.InnerHeight, GuiElement.scaled(4));
+        ctx.Rectangle(Bounds.drawX, Bounds.drawY, Bounds.InnerWidth, Bounds.InnerHeight);
         ctx.SetSourceRGBA(0.15, 0.18, 0.22, 0.98);
         ctx.FillPreserve();
         ctx.SetSourceRGBA(0.84, 0.89, 0.96, 0.72);
@@ -689,7 +689,7 @@ internal sealed class VoiceActivationThresholdControl : GuiElementControl
         int triggerThreshold)
     {
         context.SetSourceRGBA(0.15, 0.18, 0.22, 0.98);
-        GuiElement.RoundRectangle(context, left, top, width, height, GuiElement.scaled(4));
+        context.Rectangle(left, top, width, height);
         context.FillPreserve();
         context.SetSourceRGBA(0.84, 0.89, 0.96, 0.72);
         context.LineWidth = GuiElement.scaled(1);
@@ -698,7 +698,7 @@ internal sealed class VoiceActivationThresholdControl : GuiElementControl
         if (levelFraction > 0.001)
         {
             context.SetSourceRGBA(0.88, 0.91, 0.95, 0.72);
-            GuiElement.RoundRectangle(context, left + 1, top + 1, Math.Max(0, (width - 2) * levelFraction), height - 2, GuiElement.scaled(4));
+            context.Rectangle(left + 1, top + 1, Math.Max(0, (width - 2) * levelFraction), height - 2);
             context.Fill();
         }
 
@@ -767,7 +767,7 @@ internal sealed class VoiceSettingsKeyBinding : GuiElementControl
         using ImageSurface surface = new(Format.Argb32, width, height);
         using Context context = new(surface);
         bool pressedState = capturing && Enabled;
-        GuiElement.RoundRectangle(context, 0, 0, width, height, GuiElement.scaled(4));
+        context.Rectangle(0, 0, width, height);
         context.SetSourceRGBA(
             pressedState ? 1.0 : 0.15,
             pressedState ? 1.0 : 0.18,
@@ -1067,7 +1067,7 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
             pressedState ? 1.0 : 0.21,
             pressedState ? 1.0 : 0.25,
             Enabled ? pressedState ? 0.98 : 0.96 : 0.45);
-        GuiElement.RoundRectangle(context, 0, 0, width, height, GuiElement.scaled(4));
+        context.Rectangle(0, 0, width, height);
         context.FillPreserve();
         context.SetSourceRGBA(
             pressedState ? 0.02 : 0.88,
@@ -1118,7 +1118,7 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
         using ImageSurface surface = new(Format.Argb32, popupWidth, popupHeight);
         using Context context = new(surface);
         context.SetSourceRGBA(0.02, 0.025, 0.032, 0.98);
-        GuiElement.RoundRectangle(context, 0, 0, popupWidth, popupHeight, GuiElement.scaled(4));
+        context.Rectangle(0, 0, popupWidth, popupHeight);
         context.FillPreserve();
         context.SetSourceRGBA(0.9, 0.94, 1.0, 0.82);
         context.LineWidth = GuiElement.scaled(1);
@@ -1130,13 +1130,13 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
             if (i == selectedIndex)
             {
                 context.SetSourceRGBA(0.18, 0.24, 0.31, 0.96);
-                GuiElement.RoundRectangle(context, 1, i * rowHeight + 1, popupWidth - 2, rowHeight - 2, GuiElement.scaled(4));
+                context.Rectangle(1, i * rowHeight + 1, popupWidth - 2, rowHeight - 2);
                 context.Fill();
             }
             if (i == hoveredIndex)
             {
                 context.SetSourceRGBA(0.34, 0.39, 0.46, 0.94);
-                GuiElement.RoundRectangle(context, 1, i * rowHeight + 1, popupWidth - 2, rowHeight - 2, GuiElement.scaled(4));
+                context.Rectangle(1, i * rowHeight + 1, popupWidth - 2, rowHeight - 2);
                 context.Fill();
             }
 
@@ -1219,7 +1219,7 @@ internal sealed class VoiceSettingsIconButton : GuiElementControl
     {
         using ImageSurface surface = new(Format.Argb32, Bounds.OuterWidthInt, Bounds.OuterHeightInt);
         using Context ctx = new(surface);
-        GuiElement.RoundRectangle(ctx, 0, 0, Bounds.OuterWidth, Bounds.OuterHeight, GuiElement.scaled(4));
+        ctx.Rectangle(0, 0, Bounds.OuterWidth, Bounds.OuterHeight);
         bool pressedState = pressed && Enabled;
         ctx.SetSourceRGBA(
             pressedState ? 1.0 : 0.62,
@@ -1453,7 +1453,7 @@ internal sealed class VoiceSettingsImageButton : GuiElementControl
         using Context ctx = new(surface);
         double width = Bounds.OuterWidth;
         double height = Bounds.OuterHeight;
-        GuiElement.RoundRectangle(ctx, 0, 0, width, height, GuiElement.scaled(4));
+        ctx.Rectangle(0, 0, width, height);
         bool pressedState = pressed && Enabled;
         ctx.SetSourceRGBA(
             pressedState ? 1.0 : 0.62,
@@ -1588,7 +1588,7 @@ internal sealed class VoiceSettingsCheckBox : GuiElementControl
         using Context ctx = new(surface);
         double width = Bounds.OuterWidth;
         double height = Bounds.OuterHeight;
-        GuiElement.RoundRectangle(ctx, 0, 0, width, height, GuiElement.scaled(4));
+        ctx.Rectangle(0, 0, width, height);
         bool pressedState = pressed && Enabled;
         ctx.SetSourceRGBA(
             pressedState ? 1.0 : 0.22,
@@ -1727,7 +1727,7 @@ internal sealed class VoiceSettingsMuteButton : GuiElementControl
         using Context ctx = new(surface);
         double width = Bounds.OuterWidth;
         double height = Bounds.OuterHeight;
-        GuiElement.RoundRectangle(ctx, 0, 0, width, height, GuiElement.scaled(4));
+        ctx.Rectangle(0, 0, width, height);
         bool pressedState = pressed && Enabled;
         ctx.SetSourceRGBA(
             pressedState ? 1.0 : 0.62,
@@ -1894,7 +1894,7 @@ internal sealed class VoiceSettingsIconToggleButton : GuiElementControl
         using Context ctx = new(surface);
         double width = Bounds.OuterWidth;
         double height = Bounds.OuterHeight;
-        GuiElement.RoundRectangle(ctx, 0, 0, width, height, GuiElement.scaled(4));
+        ctx.Rectangle(0, 0, width, height);
         bool pressedState = pressed && Enabled;
         ctx.SetSourceRGBA(
             pressedState ? 1.0 : 0.62,

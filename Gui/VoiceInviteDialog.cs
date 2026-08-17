@@ -167,8 +167,8 @@ public sealed class VoiceInviteDialog : GuiDialog
             g += 0.08;
             b += 0.08;
         }
-        FillRound(ctx, x, y, ButtonWidth, ButtonHeight, 4, r, g, b, 0.98);
-        StrokeRound(ctx, x + 0.5, y + 0.5, ButtonWidth - 1, ButtonHeight - 1, 4, 0.52, 0.57, 0.6, hovered ? 0.95 : 0.62);
+        FillRound(ctx, x, y, ButtonWidth, ButtonHeight, 0, r, g, b, 0.98);
+        StrokeRound(ctx, x + 0.5, y + 0.5, ButtonWidth - 1, ButtonHeight - 1, 0, 0.52, 0.57, 0.6, hovered ? 0.95 : 0.62);
 
         CairoFont font = CairoFont.WhiteSmallText().WithFontSize(12f);
         font.WithColor(new[] { 0.94, 0.95, 0.96, 1.0 }).SetupContext(ctx);
@@ -206,7 +206,14 @@ public sealed class VoiceInviteDialog : GuiDialog
     private static void FillRound(Context ctx, double x, double y, double width, double height, double radius, double r, double g, double b, double a)
     {
         ctx.SetSourceRGBA(r, g, b, a);
-        GuiElement.RoundRectangle(ctx, x, y, width, height, radius);
+        if (radius <= 0)
+        {
+            ctx.Rectangle(x, y, width, height);
+        }
+        else
+        {
+            GuiElement.RoundRectangle(ctx, x, y, width, height, radius);
+        }
         ctx.Fill();
     }
 
@@ -214,7 +221,14 @@ public sealed class VoiceInviteDialog : GuiDialog
     {
         ctx.SetSourceRGBA(r, g, b, a);
         ctx.LineWidth = 1;
-        GuiElement.RoundRectangle(ctx, x, y, width, height, radius);
+        if (radius <= 0)
+        {
+            ctx.Rectangle(x, y, width, height);
+        }
+        else
+        {
+            GuiElement.RoundRectangle(ctx, x, y, width, height, radius);
+        }
         ctx.Stroke();
     }
 
