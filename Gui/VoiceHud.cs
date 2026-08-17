@@ -111,7 +111,7 @@ public sealed class VoiceHud : HudElement
         double iconSlotWidth = GuiElement.scaled(64);
 
         ctx.SetSourceRGBA(0.02, 0.02, 0.02, 0.34);
-        GuiElement.RoundRectangle(ctx, 0, 0, width, height, GuiElement.scaled(8));
+        ctx.Rectangle(0, 0, width, height);
         ctx.Fill();
 
         DrawIcon(ctx, snapshot.IconState, pad, GuiElement.scaled(20), iconHeight, iconSlotWidth);
