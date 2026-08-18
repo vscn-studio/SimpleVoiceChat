@@ -1,5 +1,6 @@
 using Vintagestory.API.Client;
 using SimpleVoiceChat.Gui;
+using AssetLocation = Vintagestory.API.Common.AssetLocation;
 
 namespace SimpleVoiceChat.Integration;
 
@@ -31,7 +32,8 @@ public sealed class VoiceSettingsExtensionButton : IVoiceSettingsExtensionContro
         int order = 0,
         double preferredWidth = 0,
         double minimumWidth = 96,
-        Func<bool>? visibility = null)
+        Func<bool>? visibility = null,
+        double height = 34)
     {
         Id = id ?? string.Empty;
         Text = text ?? string.Empty;
@@ -39,6 +41,7 @@ public sealed class VoiceSettingsExtensionButton : IVoiceSettingsExtensionContro
         Order = order;
         PreferredWidth = preferredWidth;
         MinimumWidth = minimumWidth;
+        Height = double.IsFinite(height) ? Math.Clamp(height, 28, 96) : 34;
         this.visibility = visibility;
     }
 
@@ -49,7 +52,7 @@ public sealed class VoiceSettingsExtensionButton : IVoiceSettingsExtensionContro
     public bool IsVisible => visibility?.Invoke() ?? true;
     public double PreferredWidth { get; }
     public double MinimumWidth { get; }
-    public double Height => 34;
+    public double Height { get; }
 
     public void Compose(ICoreClientAPI api, GuiComposer composer, ElementBounds bounds)
     {
@@ -68,6 +71,58 @@ public sealed class VoiceSettingsExtensionButton : IVoiceSettingsExtensionContro
                         ex.Message);
                 }
                 return true;
+            }, bounds),
+            Id);
+    }
+}
+
+/// <summary>Convenience implementation for a square image extension button.</summary>
+public sealed class VoiceSettingsExtensionImageButton : IVoiceSettingsExtensionControl
+{
+    private readonly Func<bool>? visibility;
+
+    public VoiceSettingsExtensionImageButton(
+        string id,
+        AssetLocation image,
+        Action clicked,
+        int order = 0,
+        double size = 42,
+        Func<bool>? visibility = null)
+    {
+        Id = id ?? string.Empty;
+        Image = image ?? throw new ArgumentNullException(nameof(image));
+        Clicked = clicked ?? throw new ArgumentNullException(nameof(clicked));
+        Order = order;
+        Size = double.IsFinite(size) ? Math.Clamp(size, 28, 96) : 42;
+        this.visibility = visibility;
+    }
+
+    public string Id { get; }
+    public AssetLocation Image { get; }
+    public Action Clicked { get; }
+    public int Order { get; }
+    public double Size { get; }
+    public bool IsVisible => visibility?.Invoke() ?? true;
+    public double PreferredWidth => Size;
+    public double MinimumWidth => Size;
+    public double Height => Size;
+
+    public void Compose(ICoreClientAPI api, GuiComposer composer, ElementBounds bounds)
+    {
+        composer.AddInteractiveElement(
+            new VoiceSettingsExtensionImageButtonElement(api, Image, () =>
+            {
+                try
+                {
+                    Clicked();
+                }
+                catch (Exception ex)
+                {
+                    api.Logger.Warning(
+                        "SimpleVoiceChat: settings extension image button '{0}' failed: {1}",
+                        Id,
+                        ex.Message);
+                }
             }, bounds),
             Id);
     }

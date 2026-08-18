@@ -129,8 +129,11 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private const double HomeBaseWindowHeight = 190;
     private const double HomeMaxWindowHeight = WindowHeight;
     private const double HomeExtensionStartY = 156;
-    private const double HomeExtensionRowHeight = 40;
+    private const double HomeExtensionDefaultRowHeight = 40;
     private const double HomeExtensionGap = 6;
+    private const double HomeExtensionMinControlWidth = 28;
+    private const double HomeExtensionMinControlHeight = 28;
+    private const double HomeExtensionMaxControlHeight = 96;
     private const string FontAwesomeCheckIcon = "svc-fa-check";
     private const string FontAwesomeCloseIcon = "svc-fa-xmark";
     private const string FontAwesomeGearIcon = "svc-fa-gear";
@@ -280,13 +283,16 @@ public sealed class VoiceSettingsDialog : GuiDialog
         IReadOnlyList<IVoiceSettingsExtensionControl> homeExtensions = home
             ? GetVisibleExtensionControls()
             : Array.Empty<IVoiceSettingsExtensionControl>();
-        int extensionRows = home
-            ? BuildExtensionRows(homeExtensions, windowWidth - ContentLeft * 2).Count
-            : 0;
+        List<ExtensionRowLayout> homeExtensionRows = home
+            ? BuildExtensionRows(homeExtensions, windowWidth - ContentLeft * 2)
+            : new();
+        double extensionHeight = homeExtensionRows.Count == 0
+            ? 0
+            : homeExtensionRows.Sum(row => row.Height) + (homeExtensionRows.Count - 1) * HomeExtensionGap;
         double requestedHomeHeight = home
             ? Math.Max(
                 HomeBaseWindowHeight,
-                HomeExtensionStartY + extensionRows * (HomeExtensionRowHeight + HomeExtensionGap) + 2)
+                HomeExtensionStartY + extensionHeight + 2)
             : WindowHeight;
         double windowHeight = home
             ? Math.Min(HomeMaxWindowHeight, requestedHomeHeight)
@@ -333,7 +339,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
             contentHeight = selectedPage switch
             {
-                VoiceSettingsPage.Home => AddHomePage(composer, homeExtensions),
+                VoiceSettingsPage.Home => AddHomePage(composer, homeExtensionRows),
                 VoiceSettingsPage.SpeechRecognition => AddSpeechRecognitionPage(composer),
                 VoiceSettingsPage.Channels => AddChannelsPage(composer),
                 VoiceSettingsPage.Admin => AddAdminPage(composer),
@@ -695,7 +701,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private double AddHomePage(
         GuiComposer composer,
-        IReadOnlyList<IVoiceSettingsExtensionControl> extensions)
+        IReadOnlyList<ExtensionRowLayout> extensionRows)
     {
         const double buttonWidth = 138;
         const double navigationY = 54;
@@ -798,7 +804,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
             ElementBounds.Fixed(x, quickY, quickDropDownWidth, 42),
             "quick-transmit");
 
-        List<ExtensionRowLayout> extensionRows = BuildExtensionRows(extensions, activeContentWidth - ContentLeft * 2);
         double extensionY = HomeExtensionStartY;
         foreach (ExtensionRowLayout row in extensionRows)
         {
@@ -867,14 +872,18 @@ public sealed class VoiceSettingsDialog : GuiDialog
         {
             try
             {
-                double minimumWidth = ClampExtensionDimension(control.MinimumWidth, 96, 48, availableWidth);
+                double minimumWidth = ClampExtensionDimension(control.MinimumWidth, 96, HomeExtensionMinControlWidth, availableWidth);
                 double preferredWidth = control.PreferredWidth;
                 if (control is VoiceSettingsExtensionButton button)
                 {
                     preferredWidth = Math.Max(preferredWidth, MeasureExtensionButtonWidth(button.Text));
                 }
                 preferredWidth = ClampExtensionDimension(preferredWidth, 140, minimumWidth, availableWidth);
-                double height = ClampExtensionDimension(control.Height, 34, 28, HomeExtensionRowHeight - 2);
+                double height = ClampExtensionDimension(
+                    control.Height,
+                    HomeExtensionDefaultRowHeight - 6,
+                    HomeExtensionMinControlHeight,
+                    HomeExtensionMaxControlHeight);
 
                 if (current == null || current.Controls.Count > 0 && currentWidth + HomeExtensionGap + preferredWidth > availableWidth)
                 {

@@ -54,12 +54,18 @@
 </ul>
 <p>Only the current dialog layer is displayed. Closing a dialog returns to the previous layer instead of leaving multiple interactive windows stacked on screen.</p>
 <h3>Main-window extensions (client API)</h3>
-<p>Other client mods can register home-page extension buttons or custom controls through <code>SimpleVoiceChatModSystem.ClientSettingsExtensions</code>. Extensions appear below the quick-control row containing the HUD visibility button, are sorted by <code>Order</code>, and wrap automatically using <code>PreferredWidth</code> and the measured button text width. The home page is capped at 650px; rows beyond the visible area can be reached with the mouse wheel and never overlap or overflow the window.</p>
+<p>Other client mods can register text buttons, image buttons, or custom controls through <code>SimpleVoiceChatModSystem.ClientSettingsExtensions</code>. Extensions appear below the quick-control row containing the HUD visibility button, are sorted by <code>Order</code>, and wrap automatically using each control's <code>PreferredWidth</code>. Extension heights are constrained to 28-96px and the minimum width is 28px; image buttons default to a 42px square. The home page height follows the actual row heights and rows beyond the visible area can be reached with the mouse wheel without overlap or overflow.</p>
 <pre><code>var voiceChat = api.ModLoader.GetModSystem&lt;SimpleVoiceChatModSystem&gt;();
 voiceChat.ClientSettingsExtensions.RegisterButton(
     new VoiceSettingsExtensionButton(
         "example.button", "Example", () =&gt; OpenExample(),
         order: 100, preferredWidth: 160));</code></pre>
+<p>For the same image-button treatment used by the built-in quick controls, register <code>VoiceSettingsExtensionImageButton</code>:</p>
+<pre><code>voiceChat.ClientSettingsExtensions.RegisterControl(
+    new VoiceSettingsExtensionImageButton(
+        "example.image",
+        new AssetLocation("example", "gui/icon.png"),
+        () =&gt; OpenExample(), order: 100));</code></pre>
 <p>A mod can also register an independent extension window. SimpleVoiceChat supplies the centered panel, title, close button, clipping, and the common 4px rounded background; extension buttons and other controls remain square:</p>
 <pre><code>voiceChat.ClientSettingsExtensions.RegisterWindow(
     new VoiceSettingsExtensionWindow(

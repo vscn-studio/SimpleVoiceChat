@@ -48,7 +48,7 @@ SimpleVoiceChat 不依赖 Simple Voice Chat、VS Director 或 `SimpleVoiceChat_V
 
 ### 主设置窗口扩展（客户端 API）
 
-其他客户端模组可以通过 `SimpleVoiceChatModSystem.ClientSettingsExtensions` 向主页注册按钮或自定义控件。控件显示在“显示/隐藏 HUD”所在的快捷控制行下方，按 `Order` 排序；每行会根据 `PreferredWidth` 和文字实际宽度自动排列，放不下时自动换行。主页高度最多为 650px，更多行可以用鼠标滚轮滚动，控件不会溢出或覆盖其他按钮。`IsVisible` 可以在运行时切换显示状态。
+其他客户端模组可以通过 `SimpleVoiceChatModSystem.ClientSettingsExtensions` 向主页注册文字按钮、图片按钮或自定义控件。控件显示在“显示/隐藏 HUD”所在的快捷控制行下方，按 `Order` 排序；每行会根据控件的 `PreferredWidth` 自动排列，放不下时自动换行。扩展控件高度规范在 28-96px，最小宽度为 28px；图片按钮默认使用 42px 的方形尺寸。主页高度会根据实际行高计算，超过可视区域的内容可以用鼠标滚轮滚动。`IsVisible` 可以在运行时切换显示状态。
 
 ```csharp
 var voiceChat = api.ModLoader.GetModSystem<SimpleVoiceChatModSystem>();
@@ -59,6 +59,17 @@ voiceChat.ClientSettingsExtensions.RegisterButton(
         () => OpenExample(),
         order: 100,
         preferredWidth: 160));
+```
+
+需要使用与首页快捷按钮一致的图片按钮时，可以直接注册 `VoiceSettingsExtensionImageButton`：
+
+```csharp
+voiceChat.ClientSettingsExtensions.RegisterControl(
+    new VoiceSettingsExtensionImageButton(
+        "example.image",
+        new AssetLocation("example", "gui/icon.png"),
+        () => OpenExample(),
+        order: 100));
 ```
 
 也可以注册与主窗口风格一致的独立扩展窗口。窗口由 SimpleVoiceChat 居中显示，提供标题、关闭按钮、内容裁剪和 4px 圆角背景；扩展按钮和其他控件保持直角。第三方模组只负责在 `Compose` 回调中添加内容：

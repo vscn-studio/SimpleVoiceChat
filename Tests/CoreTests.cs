@@ -1085,6 +1085,28 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void SettingsExtensionImageButtonUsesSquareRequestedSize()
+    {
+        VoiceSettingsExtensionImageButton button = new(
+            "example.image",
+            new Vintagestory.API.Common.AssetLocation("example", "gui/icon.png"),
+            () => { },
+            size: 42);
+
+        Assert.Equal(42, button.Size);
+        Assert.Equal(42, button.PreferredWidth);
+        Assert.Equal(42, button.MinimumWidth);
+        Assert.Equal(42, button.Height);
+
+        VoiceSettingsExtensionButton textButton = new(
+            "example.text",
+            "Example",
+            () => { },
+            height: 42);
+        Assert.Equal(42, textButton.Height);
+    }
+
+    [Fact]
     public void SettingsExtensionRegistryRejectsDuplicateWindowIds()
     {
         VoiceSettingsExtensionRegistry registry = new();

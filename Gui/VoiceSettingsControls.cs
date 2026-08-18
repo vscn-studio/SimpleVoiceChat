@@ -345,7 +345,9 @@ internal sealed class VoiceSettingsExtensionButtonElement : GuiElementControl
         double width = Bounds.OuterWidth;
         double height = Bounds.OuterHeight;
         bool pressedState = pressed && Enabled;
-        context.Rectangle(0, 0, width, height);
+        double lineWidth = GuiElement.scaled(1);
+        double inset = lineWidth / 2d;
+        context.Rectangle(inset, inset, Math.Max(0, width - lineWidth), Math.Max(0, height - lineWidth));
         context.SetSourceRGBA(
             pressedState ? 1.0 : 0.62,
             pressedState ? 1.0 : 0.66,
@@ -357,7 +359,7 @@ internal sealed class VoiceSettingsExtensionButtonElement : GuiElementControl
             pressedState ? 0.025 : 0.95,
             pressedState ? 0.032 : 1.0,
             Enabled ? pressedState ? 0.96 : 0.88 : 0.42);
-        context.LineWidth = GuiElement.scaled(1);
+        context.LineWidth = lineWidth;
         context.Stroke();
 
         CairoFont font = CairoFont.WhiteSmallText()
@@ -459,6 +461,133 @@ internal sealed class VoiceSettingsExtensionButtonElement : GuiElementControl
             length--;
         }
         return length == 0 ? string.Empty : value[..length] + ellipsis;
+    }
+}
+
+internal sealed class VoiceSettingsExtensionImageButtonElement : GuiElementControl
+{
+    private readonly ImageSurface imageSurface;
+    private readonly Action clicked;
+    private int textureId;
+    private bool pressed;
+
+    public override bool Focusable => Enabled;
+
+    public VoiceSettingsExtensionImageButtonElement(
+        ICoreClientAPI capi,
+        AssetLocation image,
+        Action clicked,
+        ElementBounds bounds)
+        : base(capi, bounds)
+    {
+        imageSurface = GuiElement.getImageSurfaceFromAsset(capi, image);
+        this.clicked = clicked;
+    }
+
+    public override void ComposeElements(Context ctx, ImageSurface surface)
+    {
+        Bounds.CalcWorldBounds();
+        Redraw();
+    }
+
+    public override void RenderInteractiveElements(float deltaTime)
+    {
+        api.Render.Render2DTexturePremultipliedAlpha(textureId, Bounds);
+    }
+
+    public override void OnMouseDownOnElement(ICoreClientAPI api, MouseEvent args)
+    {
+        base.OnMouseDownOnElement(api, args);
+        if (!Enabled)
+        {
+            return;
+        }
+
+        pressed = true;
+        Redraw();
+        args.Handled = true;
+    }
+
+    public override void OnMouseUpOnElement(ICoreClientAPI api, MouseEvent args)
+    {
+        bool wasPressed = pressed;
+        pressed = false;
+        base.OnMouseUpOnElement(api, args);
+        Redraw();
+        if (wasPressed && Enabled)
+        {
+            api.Gui.PlaySound("menubutton");
+            clicked();
+            args.Handled = true;
+        }
+    }
+
+    public override void OnMouseUp(ICoreClientAPI api, MouseEvent args)
+    {
+        base.OnMouseUp(api, args);
+        if (pressed)
+        {
+            pressed = false;
+            Redraw();
+        }
+    }
+
+    public override void Dispose()
+    {
+        if (textureId > 0)
+        {
+            api.Render.GLDeleteTexture(textureId);
+            textureId = 0;
+        }
+        imageSurface.Dispose();
+        base.Dispose();
+    }
+
+    private void Redraw()
+    {
+        if (Bounds.OuterWidthInt <= 0 || Bounds.OuterHeightInt <= 0)
+        {
+            return;
+        }
+
+        using ImageSurface surface = new(Format.Argb32, Bounds.OuterWidthInt, Bounds.OuterHeightInt);
+        using Context context = new(surface);
+        double width = Bounds.OuterWidth;
+        double height = Bounds.OuterHeight;
+        bool pressedState = pressed && Enabled;
+        double lineWidth = GuiElement.scaled(1);
+        double inset = lineWidth / 2d;
+        context.Rectangle(inset, inset, Math.Max(0, width - lineWidth), Math.Max(0, height - lineWidth));
+        context.SetSourceRGBA(
+            pressedState ? 1.0 : 0.62,
+            pressedState ? 1.0 : 0.66,
+            pressedState ? 1.0 : 0.72,
+            Enabled ? pressedState ? 0.98 : 0.30 : 0.14);
+        context.FillPreserve();
+        context.SetSourceRGBA(
+            pressedState ? 0.02 : 0.92,
+            pressedState ? 0.025 : 0.95,
+            pressedState ? 0.032 : 1.0,
+            Enabled ? pressedState ? 0.96 : 0.88 : 0.42);
+        context.LineWidth = lineWidth;
+        context.Stroke();
+
+        double padding = GuiElement.scaled(5);
+        double imageHeight = Math.Max(1, height - padding * 2);
+        double imageWidth = imageSurface.Width * imageHeight / Math.Max(1, imageSurface.Height);
+        if (imageWidth > width - padding * 2)
+        {
+            imageWidth = width - padding * 2;
+            imageHeight = imageSurface.Height * imageWidth / Math.Max(1, imageSurface.Width);
+        }
+        context.Save();
+        context.Translate((width - imageWidth) / 2d, (height - imageHeight) / 2d);
+        context.Scale(imageWidth / imageSurface.Width, imageHeight / imageSurface.Height);
+        context.SetSourceSurface(imageSurface, 0, 0);
+        context.Rectangle(0, 0, imageSurface.Width, imageSurface.Height);
+        context.Fill();
+        context.Restore();
+        GuiElement.GenerateTexture(api, surface, ref textureId);
     }
 }
 
