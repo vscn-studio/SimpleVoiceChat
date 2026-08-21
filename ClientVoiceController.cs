@@ -719,7 +719,7 @@ public sealed class ClientVoiceController : IDisposable
         controlChannel.SendPacket(new VoiceHelloPacket
         {
             ProtocolVersion = VoiceProtocol.CurrentVersion,
-            ModVersion = "1.2.1",
+            ModVersion = "1.2.5-pre.1",
             SupportedCodecs = new[] { VoiceProtocol.CodecOpus, VoiceProtocol.CodecImaAdpcm },
             Capabilities = (int)(VoiceCapability.ProtocolV4
                 | VoiceCapability.ChannelDeltas
@@ -1890,12 +1890,32 @@ public sealed class ClientVoiceController : IDisposable
             return safeName;
         }
 
-        IPlayer? online = capi.World.AllOnlinePlayers.FirstOrDefault(player =>
-            player.PlayerUID.Equals(playerUid, StringComparison.Ordinal));
+        IPlayer? online = FindClientPlayer(playerUid);
         safeName = (online?.PlayerName ?? string.Empty).Trim();
         return safeName.Length > 0 && !safeName.Equals(playerUid, StringComparison.Ordinal)
             ? safeName
             : SVCLang.Get("player-offline");
+    }
+
+    private IPlayer? FindClientPlayer(string playerUid)
+    {
+        if (string.IsNullOrWhiteSpace(playerUid))
+        {
+            return null;
+        }
+
+        IPlayer? player = capi.World.AllOnlinePlayers.FirstOrDefault(candidate =>
+            string.Equals(candidate.PlayerUID, playerUid, StringComparison.Ordinal)
+            && !string.IsNullOrWhiteSpace(candidate.PlayerName));
+        if (player != null)
+        {
+            return player;
+        }
+
+        player = capi.World.AllOnlinePlayers.FirstOrDefault(candidate =>
+            string.Equals(candidate.PlayerUID, playerUid, StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(candidate.PlayerName));
+        return player ?? capi.World.PlayerByUid(playerUid);
     }
 
     internal void ManageSelectedChannel(

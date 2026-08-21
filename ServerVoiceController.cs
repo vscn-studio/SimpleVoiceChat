@@ -2536,10 +2536,22 @@ public sealed class ServerVoiceController : IDisposable
 
     private ChannelMemberPacket BuildChannelMemberPacket(string uid, VoiceChannelRole role)
     {
+        IServerPlayer? online = onlinePlayersByUid.TryGetValue(uid, out IServerPlayer? cached)
+            ? cached
+            : onlinePlayersByUid.Values.FirstOrDefault(player =>
+                string.Equals(player.PlayerUID, uid, StringComparison.OrdinalIgnoreCase));
+        online ??= sapi.World.AllOnlinePlayers
+            .OfType<IServerPlayer>()
+            .FirstOrDefault(player => string.Equals(player.PlayerUID, uid, StringComparison.OrdinalIgnoreCase));
+        string playerName = online?.PlayerName?.Trim() ?? string.Empty;
+        if (playerName.Length == 0)
+        {
+            playerName = sapi.World.PlayerByUid(uid)?.PlayerName?.Trim() ?? string.Empty;
+        }
         return new ChannelMemberPacket
         {
             PlayerUid = uid,
-            PlayerName = onlinePlayersByUid.TryGetValue(uid, out IServerPlayer? online) ? online.PlayerName : string.Empty,
+            PlayerName = playerName,
             Role = role
         };
     }
