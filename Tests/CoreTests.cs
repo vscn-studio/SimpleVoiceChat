@@ -138,13 +138,57 @@ public sealed class CoreTests
     }
 
     [Fact]
-    public void ProtocolVersionSixRejectsOlderVersions()
+    public void ProtocolVersionEightRejectsOlderVersions()
     {
-        Assert.Equal(6, VoiceProtocol.CurrentVersion);
-        Assert.True(VoiceProtocol.IsCompatible(6));
+        Assert.Equal(8, VoiceProtocol.CurrentVersion);
+        Assert.True(VoiceProtocol.IsCompatible(8));
+        Assert.False(VoiceProtocol.IsCompatible(7));
         Assert.False(VoiceProtocol.IsCompatible(4));
         Assert.False(VoiceProtocol.IsCompatible(2));
         Assert.False(VoiceProtocol.IsCompatible(3));
+    }
+
+    [Fact]
+    public void HiddenPlayerVisibilityPacketsRoundTrip()
+    {
+        ClientVoiceStatePacket state = new()
+        {
+            Mode = VoiceMode.Talk,
+            HideSelfFromPlayerLists = true,
+            RejectChannelInvites = true
+        };
+        ChannelSnapshotPacket snapshot = new()
+        {
+            HiddenPlayerUids = new[] { "hidden-player" },
+            PendingInviteChannelIds = new[] { "channel-1" },
+            PendingInviteNames = new[] { "inviter" },
+            PendingInviteChannelName = "Raid",
+            PendingInviteChannelMemberCount = 3,
+            PendingInviteChannelMaxMembers = 8,
+            PendingInviteChannelVisibility = VoiceChannelVisibility.Password,
+            PendingInviteChannelLocked = true
+        };
+
+        using MemoryStream stateStream = new();
+        Serializer.Serialize(stateStream, state);
+        stateStream.Position = 0;
+        ClientVoiceStatePacket restoredState = Serializer.Deserialize<ClientVoiceStatePacket>(stateStream);
+
+        using MemoryStream snapshotStream = new();
+        Serializer.Serialize(snapshotStream, snapshot);
+        snapshotStream.Position = 0;
+        ChannelSnapshotPacket restoredSnapshot = Serializer.Deserialize<ChannelSnapshotPacket>(snapshotStream);
+
+        Assert.True(restoredState.HideSelfFromPlayerLists);
+        Assert.True(restoredState.RejectChannelInvites);
+        Assert.Equal(new[] { "hidden-player" }, restoredSnapshot.HiddenPlayerUids);
+        Assert.Equal(new[] { "channel-1" }, restoredSnapshot.PendingInviteChannelIds);
+        Assert.Equal(new[] { "inviter" }, restoredSnapshot.PendingInviteNames);
+        Assert.Equal("Raid", restoredSnapshot.PendingInviteChannelName);
+        Assert.Equal(3, restoredSnapshot.PendingInviteChannelMemberCount);
+        Assert.Equal(8, restoredSnapshot.PendingInviteChannelMaxMembers);
+        Assert.Equal(VoiceChannelVisibility.Password, restoredSnapshot.PendingInviteChannelVisibility);
+        Assert.True(restoredSnapshot.PendingInviteChannelLocked);
     }
 
     [Fact]
@@ -599,15 +643,21 @@ public sealed class CoreTests
 
         existing.Normalize();
 
-        Assert.Equal(7, existing.ConfigVersion);
+        Assert.Equal(10, existing.ConfigVersion);
         Assert.True(existing.InitialSetupCompleted);
         Assert.True(existing.InitialSetupPromptShown);
+        Assert.False(existing.HideSelfFromPlayerLists);
+        Assert.False(existing.HideChatMessages);
+        Assert.Equal(85, existing.VoiceInviteOffsetY);
 
         SimpleVoiceChatClientConfig firstInstall = new();
         firstInstall.Normalize();
-        Assert.Equal(7, firstInstall.ConfigVersion);
+        Assert.Equal(10, firstInstall.ConfigVersion);
         Assert.False(firstInstall.InitialSetupCompleted);
         Assert.False(firstInstall.InitialSetupPromptShown);
+        Assert.False(firstInstall.HideSelfFromPlayerLists);
+        Assert.False(firstInstall.HideChatMessages);
+        Assert.Equal(85, firstInstall.VoiceInviteOffsetY);
     }
 
     [Fact]
@@ -780,7 +830,7 @@ public sealed class CoreTests
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
         JsonElement dependencies = document.RootElement.GetProperty("dependencies");
 
-        Assert.Equal("1.2.5-pre.1", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("1.2.5-pre.2", document.RootElement.GetProperty("version").GetString());
         Assert.True(dependencies.TryGetProperty("game", out _));
         Assert.False(dependencies.TryGetProperty("vsdirector", out _));
         Assert.DoesNotContain(
@@ -1018,8 +1068,8 @@ public sealed class CoreTests
     {
         ChannelInfoPacket[] channels =
         {
-            new() { ChannelId = "channel-a", Name = "A" },
-            new() { ChannelId = "channel-b", Name = "B" }
+            new() { ChannelId = "channel-a", Name = "A", LocalRole = VoiceChannelRole.Member },
+            new() { ChannelId = "channel-b", Name = "B", LocalRole = VoiceChannelRole.Member }
         };
 
         (string selected, bool restore) = ClientVoiceController.ResolveChannelSelection(

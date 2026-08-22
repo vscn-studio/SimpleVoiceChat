@@ -19,6 +19,8 @@ public sealed class VoiceHud : HudElement
 
     private readonly Func<VoiceHudSnapshot> snapshotProvider;
     private readonly Func<bool> shouldShowProvider;
+    private readonly Func<(int X, int Y)> positionProvider;
+    private bool positionEditing;
     private VoiceHudSnapshot lastSnapshot;
     private ImageSurface? mutedSurface;
     private ImageSurface? whisperingSurface;
@@ -30,11 +32,12 @@ public sealed class VoiceHud : HudElement
     public override double DrawOrder => 0.09;
     public double ReservedHeight => shouldShowProvider() ? CalculateHudHeight(lastSnapshot) + 18 : 0;
 
-    public VoiceHud(ICoreClientAPI capi, Func<VoiceHudSnapshot> snapshotProvider, Func<bool> shouldShowProvider)
+    public VoiceHud(ICoreClientAPI capi, Func<VoiceHudSnapshot> snapshotProvider, Func<bool> shouldShowProvider, Func<(int X, int Y)>? positionProvider = null)
         : base(capi)
     {
         this.snapshotProvider = snapshotProvider;
         this.shouldShowProvider = shouldShowProvider;
+        this.positionProvider = positionProvider ?? (() => (0, 0));
         Compose();
     }
 
@@ -60,7 +63,7 @@ public sealed class VoiceHud : HudElement
 
     public void Refresh()
     {
-        if (!shouldShowProvider())
+        if (!shouldShowProvider() && !positionEditing)
         {
             TryClose();
             return;
@@ -89,12 +92,48 @@ public sealed class VoiceHud : HudElement
         SingleComposer?.GetCustomDraw("hud")?.Redraw();
     }
 
+    public void RefreshLayout()
+    {
+        Compose();
+        if (shouldShowProvider() || positionEditing) TryOpen();
+    }
+
+    public void BeginPositionEditing()
+    {
+        positionEditing = true;
+        Compose();
+        TryOpen();
+    }
+
+    public void EndPositionEditing()
+    {
+        positionEditing = false;
+        Refresh();
+    }
+
+    public bool TryGetInteractionBounds(out double x, out double y, out double width, out double height)
+    {
+        if (!IsOpened() || SingleComposer == null)
+        {
+            x = y = width = height = 0;
+            return false;
+        }
+
+        ElementBounds bounds = SingleComposer.Bounds;
+        x = bounds.renderX;
+        y = bounds.renderY;
+        width = bounds.OuterWidth;
+        height = bounds.OuterHeight;
+        return width > 0 && height > 0;
+    }
+
     private void Compose()
     {
         lastSnapshot = snapshotProvider();
         double width = 386;
         double height = CalculateHudHeight(lastSnapshot);
-        ElementBounds bounds = ElementBounds.Fixed(EnumDialogArea.RightBottom, -18, -34 - height, width, height);
+        (int offsetX, int offsetY) = positionProvider();
+        ElementBounds bounds = ElementBounds.Fixed(EnumDialogArea.RightBottom, -18 + offsetX, -34 - height + offsetY, width, height);
         ElementBounds drawBounds = ElementBounds.Fixed(0, 0, width, height);
         SingleComposer = capi.Gui.CreateCompo("simplevoicechat-hud", bounds)
             .AddDynamicCustomDraw(drawBounds, DrawHud, "hud")

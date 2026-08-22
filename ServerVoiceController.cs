@@ -257,6 +257,23 @@ public sealed class ServerVoiceController : IDisposable
                     ? "玩家现在可以创建频道。"
                     : "已禁止普通玩家创建频道。");
 
+            case "channelnamelength":
+            case "setchannelnamelength":
+                if (!HasServerControl(args))
+                {
+                    return NoServerControl();
+                }
+                int channelNameLength = args.RawArgs.PopInt(-1) ?? -1;
+                if (channelNameLength < 1 || channelNameLength > VoiceProtocol.MaxControlStringLength)
+                {
+                    return TextCommandResult.Error(SVCLang.Get("server-channel-name-length-usage"));
+                }
+                config.MaxChannelNameLength = channelNameLength;
+                config.Normalize();
+                SaveConfig();
+                BroadcastConfig();
+                return TextCommandResult.Success(SVCLang.Get("server-channel-name-length-ok", config.MaxChannelNameLength));
+
             case "setrange":
                 {
                     if (!HasServerControl(args))
@@ -629,6 +646,12 @@ public sealed class ServerVoiceController : IDisposable
         onlinePlayersByUid[player.PlayerUID] = player;
         UpdateSpatialEntry(player);
         SendConfig(player);
+        // Refresh existing channel members so a reconnect replaces any stale
+        // offline label cached by their clients. The joining player receives
+        // its initial snapshot after VoiceHello creates a control session.
+        SendSnapshots(channels.GetForPlayer(player.PlayerUID)
+            .SelectMany(channel => channel.Members.Keys)
+            .Where(uid => !string.Equals(uid, player.PlayerUID, StringComparison.Ordinal)));
     }
 
     private void OnPlayerLeave(IServerPlayer player)
@@ -637,6 +660,14 @@ public sealed class ServerVoiceController : IDisposable
         {
             return;
         }
+        // Persistent channel membership survives a disconnect. Snapshot every
+        // peer before removing the player from the online index so clients
+        // receive the updated online state instead of retaining their name.
+        string[] channelObservers = channels.GetForPlayer(player.PlayerUID)
+            .SelectMany(channel => channel.Members.Keys)
+            .Append(player.PlayerUID)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
         statesByUid.Remove(player.PlayerUID);
         mutedByListenerUid.Remove(player.PlayerUID);
         packetRates.Remove(player.PlayerUID);
@@ -658,7 +689,7 @@ public sealed class ServerVoiceController : IDisposable
         }
         channels.RemoveOnlineState(player.PlayerUID);
         RemoveActiveTalkerNotifications(player.PlayerUID);
-        SendSnapshots(affectedChannelMembers);
+        SendSnapshots(channelObservers.Concat(affectedChannelMembers));
     }
 
     private void OnClientState(IServerPlayer fromPlayer, ClientVoiceStatePacket packet)
@@ -673,7 +704,14 @@ public sealed class ServerVoiceController : IDisposable
         {
             return;
         }
+        bool visibilityStateChanged = !statesByUid.TryGetValue(fromPlayer.PlayerUID, out ClientVoiceStatePacket? previous)
+            || previous.HideSelfFromPlayerLists != packet.HideSelfFromPlayerLists
+            || previous.RejectChannelInvites != packet.RejectChannelInvites;
         statesByUid[fromPlayer.PlayerUID] = packet;
+        if (visibilityStateChanged)
+        {
+            SendSnapshots(onlinePlayersByUid.Keys);
+        }
     }
 
     private void OnMutePlayer(IServerPlayer fromPlayer, MutePlayerPacket packet)
@@ -1051,8 +1089,11 @@ public sealed class ServerVoiceController : IDisposable
         }
 
         long now = sapi.World.ElapsedMilliseconds;
-        if (!sessionsByUid.TryGetValue(fromPlayer.PlayerUID, out VoiceClientSession? commandSession)
-            || !commandSession.ControlRate.TryConsume(1, now))
+        if (!sessionsByUid.TryGetValue(fromPlayer.PlayerUID, out VoiceClientSession? commandSession))
+        {
+            return;
+        }
+        if (!commandSession.ControlRate.TryConsume(1, now))
         {
             SendFeedback(fromPlayer, "control-rate-limited");
             return;
@@ -1106,6 +1147,13 @@ public sealed class ServerVoiceController : IDisposable
                     if (target == null || target == fromPlayer)
                     {
                         SendFeedback(fromPlayer, "invalid-target");
+                        return;
+                    }
+
+                    if (statesByUid.TryGetValue(target.PlayerUID, out ClientVoiceStatePacket? targetState)
+                        && targetState.RejectChannelInvites)
+                    {
+                        SendFeedback(fromPlayer, "invite-declined");
                         return;
                     }
 
@@ -1281,6 +1329,12 @@ public sealed class ServerVoiceController : IDisposable
                         return;
                     }
 
+                    if (packet.Name.Trim().Length > config.MaxChannelNameLength)
+                    {
+                        SendFeedback(fromPlayer, "channel-name-too-long", config.MaxChannelNameLength.ToString());
+                        return;
+                    }
+
                     string previousName = channel.Name;
                     channel.SetName(packet.Name.Trim());
                     if (channel.Name == previousName)
@@ -1345,6 +1399,12 @@ public sealed class ServerVoiceController : IDisposable
                     if (visibility == VoiceChannelVisibility.Password && string.IsNullOrWhiteSpace(packet.Password))
                     {
                         SendFeedback(fromPlayer, "channel-password-required");
+                        return;
+                    }
+
+                    if (packet.Name.Trim().Length > config.MaxChannelNameLength)
+                    {
+                        SendFeedback(fromPlayer, "channel-name-too-long", config.MaxChannelNameLength.ToString());
                         return;
                     }
                     VoiceChannel channel = channels.Create(
@@ -2484,6 +2544,10 @@ public sealed class ServerVoiceController : IDisposable
                 : Array.Empty<ChannelMemberPacket>()
         }).ToArray();
         PendingChannelInvite? invite = channels.GetPendingInvite(player.PlayerUID, now);
+        VoiceChannel? inviteChannel = invite is { } pendingInviteChannel
+            && channels.TryGet(pendingInviteChannel.ChannelId, out VoiceChannel resolvedInviteChannel)
+                ? resolvedInviteChannel
+                : null;
         string selectedChannelId = sessionsByUid.TryGetValue(player.PlayerUID, out VoiceClientSession? session)
             ? session.SelectedChannelId
             : string.Empty;
@@ -2497,7 +2561,17 @@ public sealed class ServerVoiceController : IDisposable
             PendingInviteNames = invite is { } pendingInvite
                 ? new[] { pendingInvite.InviterName }
                 : Array.Empty<string>(),
-            HasServerControl = administrator
+            HasServerControl = administrator,
+            HiddenPlayerUids = statesByUid
+                .Where(entry => entry.Value.HideSelfFromPlayerLists && onlinePlayersByUid.ContainsKey(entry.Key))
+                .Select(entry => entry.Key)
+                .OrderBy(uid => uid, StringComparer.Ordinal)
+                .ToArray(),
+            PendingInviteChannelName = inviteChannel?.Name ?? string.Empty,
+            PendingInviteChannelMemberCount = inviteChannel?.Members.Count ?? 0,
+            PendingInviteChannelMaxMembers = inviteChannel?.MaxMembers ?? 0,
+            PendingInviteChannelVisibility = inviteChannel?.Visibility ?? VoiceChannelVisibility.Open,
+            PendingInviteChannelLocked = inviteChannel?.Locked == true
         }, player);
     }
 
@@ -2544,15 +2618,12 @@ public sealed class ServerVoiceController : IDisposable
             .OfType<IServerPlayer>()
             .FirstOrDefault(player => string.Equals(player.PlayerUID, uid, StringComparison.OrdinalIgnoreCase));
         string playerName = online?.PlayerName?.Trim() ?? string.Empty;
-        if (playerName.Length == 0)
-        {
-            playerName = sapi.World.PlayerByUid(uid)?.PlayerName?.Trim() ?? string.Empty;
-        }
         return new ChannelMemberPacket
         {
             PlayerUid = uid,
             PlayerName = playerName,
-            Role = role
+            Role = role,
+            Online = online != null
         };
     }
 

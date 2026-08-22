@@ -28,7 +28,8 @@ public static class PacketMapper
             DefaultOpusBitrateKbps = config.DefaultOpusBitrateKbps,
             MaxOpusBitrateKbps = config.MaxOpusBitrateKbps,
             EnableAdaptiveBitrate = config.EnableAdaptiveBitrate,
-            AllowAdpcmFallback = config.AllowAdpcmFallback
+            AllowAdpcmFallback = config.AllowAdpcmFallback,
+            MaxChannelNameLength = config.MaxChannelNameLength
         };
     }
 }

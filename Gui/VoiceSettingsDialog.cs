@@ -85,6 +85,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         "quick-transmit",
         "speech-recognition-provider",
         "owner-leave-target",
+        "overlay-channel-target-player",
         "overlay-channel-action",
         "overlay-player-channel",
         "overlay-player-action",
@@ -107,7 +108,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         "adminRenameInput"
     };
 
-    private readonly record struct DropdownSnapshot(string Key, string? HoveredValue);
+    private readonly record struct DropdownSnapshot(string Key, string? HoveredValue, string SearchText);
 
     private readonly record struct FocusSnapshot(string Key, int CaretLine, int CaretPosition);
 
@@ -115,6 +116,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         VoiceSettingsOverlay Overlay,
         string ChannelId,
         string PlayerUid,
+        string TargetPlayerUid,
         string Action);
 
     private const double WindowWidth = 940;
@@ -166,12 +168,15 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private double activeViewportHeight = ViewportHeight;
     private double activeContentWidth = ContentWidth;
     private bool composeQueued;
+    private bool composePending;
+    private bool pointerPressed;
 
     private string selectedPlayerUid = string.Empty;
     private string selectedChannelAction = "invite";
     private string selectedAdminChannelId = string.Empty;
     private string selectedAdminAction = "mute";
     private string renameText = string.Empty;
+    private bool hudPositionEditing;
     private string createName = string.Empty;
     private string createPassword = string.Empty;
     private string channelSearch = string.Empty;
@@ -181,6 +186,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private VoiceChannelVisibility createVisibility = VoiceChannelVisibility.Open;
     private string overlayChannelId = string.Empty;
     private string overlayPlayerUid = string.Empty;
+    private string overlayTargetPlayerUid = string.Empty;
     private string overlayAction = "none";
     private VoiceSettingsOverlay overlay;
     private string ownerLeaveChannelId = string.Empty;
@@ -207,7 +213,10 @@ public sealed class VoiceSettingsDialog : GuiDialog
     public override string? ToggleKeyCombinationCode => null;
     public override bool PrefersUngrabbedMouse => true;
     public override bool DisableMouseGrab => true;
-    public override bool CaptureAllInputs() => true;
+    // During HUD positioning, let the transparent position dialog receive
+    // clicks on the HUD. The settings window still receives clicks inside its
+    // own bounds through the normal dialog dispatch path, including confirm.
+    public override bool CaptureAllInputs() => !hudPositionEditing;
     public override bool CaptureRawMouse() => true;
     public override EnumDialogType DialogType => EnumDialogType.Dialog;
     public override double DrawOrder => 0.48;
@@ -217,6 +226,13 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     public override void OnMouseDown(MouseEvent args)
     {
+        // Several settings controls publish their value from mouse-down. Mark
+        // the gesture before dispatching so those callbacks cannot trigger a
+        // composer rebuild while the pressed control is still being tracked.
+        if (args.Button is EnumMouseButton.Left or EnumMouseButton.Right)
+        {
+            pointerPressed = true;
+        }
         if (!args.Handled)
         {
             CloseDropdownsOutside(args.X, args.Y);
@@ -225,11 +241,26 @@ public sealed class VoiceSettingsDialog : GuiDialog
         base.OnMouseDown(args);
     }
 
+    public override void OnMouseUp(MouseEvent args)
+    {
+        // Native controls invoke their callbacks during mouse-up.  Keep the
+        // composer alive for that whole gesture, then apply the latest queued
+        // state change once no control still owns the pressed state.
+        base.OnMouseUp(args);
+        if (args.Button is EnumMouseButton.Left or EnumMouseButton.Right)
+        {
+            pointerPressed = false;
+            FlushQueuedCompose();
+        }
+    }
+
     public override bool TryOpen()
     {
         controller.RequestSettingsRefresh();
         selectedPage = VoiceSettingsPage.Home;
         scrollPosition = 0;
+        composePending = false;
+        pointerPressed = false;
         overlay = VoiceSettingsOverlay.None;
         overlayStack.Clear();
         Compose();
@@ -382,7 +413,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         {
             if (SingleComposer.GetElement(key) is VoiceSettingsDropDown dropdown && dropdown.IsExpanded)
             {
-                return new DropdownSnapshot(key, dropdown.HoveredValue);
+                return new DropdownSnapshot(key, dropdown.HoveredValue, dropdown.SearchText);
             }
         }
 
@@ -398,7 +429,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
         if (composer.GetElement(state.Key) is VoiceSettingsDropDown dropdown)
         {
-            dropdown.RestoreExpanded(state.HoveredValue);
+            dropdown.RestoreExpanded(state.HoveredValue, state.SearchText);
         }
     }
 
@@ -695,8 +726,22 @@ public sealed class VoiceSettingsDialog : GuiDialog
         AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-occlusion"), "occlusion", config.EnableOcclusionEffects, controller.SetOcclusionFromSettings);
         AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-performance-mode"), "performance", config.PerformanceMode, controller.SetPerformanceModeFromSettings);
 
+        double secondaryBehaviorY = y;
+        AddSwitchRow(composer, labelX + 430, ref secondaryBehaviorY, SVCLang.Get("label-hide-self"),
+            "hide-self", config.HideSelfFromPlayerLists, controller.SetHideSelfFromPlayerListsFromSettings);
+        AddSwitchRow(composer, labelX + 430, ref secondaryBehaviorY, SVCLang.Get("label-reject-invites"),
+            "reject-invites", config.RejectChannelInvites, controller.SetRejectChannelInvitesFromSettings);
+        AddSwitchRow(composer, labelX + 430, ref secondaryBehaviorY, SVCLang.Get("label-hide-chat-messages"),
+            "hide-chat-messages", config.HideChatMessages, controller.SetHideChatMessagesFromSettings);
+        AddFlatButton(composer, hudPositionEditing
+                ? SVCLang.Get("button-confirm-hud-position")
+                : SVCLang.Get("button-adjust-hud-position"),
+            () => { controller.OpenHudPositionDialogFromSettings(); return true; },
+            ElementBounds.Fixed(labelX + 430, secondaryBehaviorY - 4, 220, 32), "adjust-hud-position");
+        secondaryBehaviorY += 40;
+
         GetCheckBox(composer, "occlusion").Enabled = !controller.OcclusionForced;
-        return behaviorY + 24;
+        return Math.Max(behaviorY, secondaryBehaviorY) + 24;
     }
 
     private double AddHomePage(
@@ -780,7 +825,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         composer.AddInteractiveElement(statusButton, "quick-current-status");
         x += quickIconSize + quickGap;
 
-        VoiceSettingsChannelOption[] channels = controller.BuildChannelOptions();
+        VoiceSettingsChannelOption[] channels = controller.BuildJoinedChannelOptions();
         string[] channelValues = new[] { string.Empty }.Concat(channels.Select(channel => channel.Id)).ToArray();
         string[] channelNames = new[] { SVCLang.Get("channel-none") }
             .Concat(channels.Select(channel => channel.Name))
@@ -1176,22 +1221,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
                         ? SVCLang.Get("button-join-password")
                         : SVCLang.Get("button-join-channel"))
                     : SVCLang.Get("button-select-channel");
-                composer.AddInteractiveElement(
-                    new VoiceSettingsClickArea(composer.Api,
-                        ElementBounds.Fixed(8, cardY + 4, 470, cardHeight - 8),
-                        _ =>
-                        {
-                            if (channel.LocalRole == VoiceChannelRole.Banned)
-                            {
-                                OpenJoinChannelOverlay(channel.Id);
-                            }
-                            else
-                            {
-                                controller.SelectChannelFromSettings(channel.Id);
-                                QueueCompose();
-                            }
-                        }),
-                    "channel-card-action-" + index);
                 AddFlatButton(composer, Truncate(channel.Id, 22), () =>
                 {
                     CopyChannelId(channel.Id);
@@ -1630,9 +1659,9 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private void AddChannelOverlay(GuiComposer composer)
     {
         const double x = 140;
-        const double y = 132;
+        const double y = 100;
         const double width = 660;
-        const double height = 286;
+        const double height = 350;
         VoiceSettingsChannelOption channel = controller.BuildChannelOptions()
             .FirstOrDefault(option => option.Id == overlayChannelId);
         if (string.IsNullOrWhiteSpace(channel.Id))
@@ -1650,21 +1679,37 @@ public sealed class VoiceSettingsDialog : GuiDialog
             ElementBounds.Fixed(x + 214, y + 84, 390, 34), "overlay-channel-volume");
         ConfigureSlider(composer, "overlay-channel-volume", (int)Math.Round(config.ChannelOutputVolume * 100), 0, 200, "%");
 
-        List<string> actions = BuildChannelActions(new[] { channel }, channel.Id);
+        VoiceSettingsPlayerOption[] players = controller.BuildOnlinePlayerOptions();
+        string[] playerValues = new[] { string.Empty }.Concat(players.Select(player => player.Id)).ToArray();
+        string[] playerNames = new[] { SVCLang.Get("player-none") }.Concat(players.Select(player => player.Name)).ToArray();
+        if (!playerValues.Contains(overlayTargetPlayerUid, StringComparer.Ordinal))
+        {
+            overlayTargetPlayerUid = string.Empty;
+        }
+        composer.AddStaticText(SVCLang.Get("ui-target-player"), label, ElementBounds.Fixed(x + 24, y + 142, 180, 28));
+        composer.AddVoiceDropDown(
+            playerValues,
+            playerNames,
+            Math.Max(0, Array.IndexOf(playerValues, overlayTargetPlayerUid)),
+            OnOverlayTargetPlayerChanged,
+            ElementBounds.Fixed(x + 214, y + 138, 390, 34),
+            "overlay-channel-target-player");
+
+        List<string> actions = BuildChannelActions(new[] { channel }, channel.Id, overlayTargetPlayerUid);
         if (!actions.Contains(overlayAction, StringComparer.Ordinal))
         {
             overlayAction = actions[0];
         }
-        composer.AddStaticText(SVCLang.Get("ui-action-select"), label, ElementBounds.Fixed(x + 24, y + 142, 180, 28));
+        composer.AddStaticText(SVCLang.Get("ui-action-select"), label, ElementBounds.Fixed(x + 24, y + 196, 180, 28));
         composer.AddVoiceDropDown(
             actions.ToArray(),
             actions.Select(action => SVCLang.Get("channel-action-" + action)).ToArray(),
             Math.Max(0, actions.IndexOf(overlayAction)),
             OnOverlayActionChanged,
-            ElementBounds.Fixed(x + 214, y + 138, 260, 34),
+            ElementBounds.Fixed(x + 214, y + 192, 260, 34),
             "overlay-channel-action");
         AddFlatButton(composer, SVCLang.Get("button-apply"), ApplyChannelOverlay,
-            ElementBounds.Fixed(x + 478, y + 138, 126, 34), "overlay-channel-apply");
+            ElementBounds.Fixed(x + 478, y + 192, 126, 34), "overlay-channel-apply");
         composer.GetButton("overlay-channel-apply").Enabled = overlayAction != "none";
     }
 
@@ -1762,7 +1807,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         const double x = 170;
         const double y = 142;
         const double width = 600;
-        const double height = 294;
+        const double defaultHeight = 294;
         VoiceSettingsPlayerOption player = controller.BuildPlayerOptions()
             .FirstOrDefault(option => option.Id == overlayPlayerUid);
         if (string.IsNullOrWhiteSpace(player.Id))
@@ -1770,7 +1815,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             overlay = VoiceSettingsOverlay.None;
             return;
         }
-        AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("player-settings-title"));
+        AddOverlayPanel(composer, x, y, width, defaultHeight, SVCLang.Get("player-settings-title"));
         AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "player-overlay-close");
         CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
         composer.AddStaticText(Truncate(player.Name, 36), label, ElementBounds.Fixed(x + 24, y + 54, width - 48, 24));
@@ -1784,7 +1829,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         composer.AddVoiceDropDown(channelValues, channelNames, Math.Max(0, Array.IndexOf(channelValues, selectedChannel)), OnOverlayChannelChanged,
             ElementBounds.Fixed(x + 214, y + 88, 260, 34), "overlay-player-channel");
 
-        string[] actions = controller.BuildPlayerActions(selectedChannel);
+        string[] actions = controller.BuildPlayerActions(selectedChannel, overlayPlayerUid);
         if (!actions.Contains(overlayAction, StringComparer.Ordinal)) overlayAction = actions[0];
         composer.AddStaticText(SVCLang.Get("ui-action-select"), label, ElementBounds.Fixed(x + 24, y + 144, 180, 28));
         composer.AddVoiceDropDown(actions, actions.Select(action => SVCLang.Get("channel-action-" + action)).ToArray(), Math.Max(0, Array.IndexOf(actions, overlayAction)), OnOverlayActionChanged,
@@ -1815,7 +1860,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
                 OnCreateVisibilityChanged, ElementBounds.Fixed(x + 214, y + 176, 340, 34), "overlay-create-visibility");
         composer.GetTextInput("overlay-create-name").SetValue(createName);
         composer.GetTextInput("overlay-create-password").SetValue(createPassword);
-        composer.GetTextInput("overlay-create-name").SetMaxLength(VoiceProtocol.MaxControlStringLength);
+        composer.GetTextInput("overlay-create-name").SetMaxLength(controller.MaxChannelNameLength);
         composer.GetTextInput("overlay-create-password").SetMaxLength(VoiceProtocol.MaxControlStringLength);
         AddFlatButton(composer, SVCLang.Get("channel-action-create"), CreateChannelFromOverlay,
             ElementBounds.Fixed(x + 214, y + 244, 126, 34), "overlay-create-submit");
@@ -1868,7 +1913,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         string[] playerNames = players.Length == 0 ? new[] { SVCLang.Get("player-none") } : players.Select(player => player.Name).ToArray();
         string[] channelValues = channels.Length == 0 ? new[] { string.Empty } : channels.Select(channel => channel.Id).ToArray();
         string[] channelNames = channels.Length == 0 ? new[] { SVCLang.Get("channel-none") } : channels.Select(channel => channel.Name).ToArray();
-        string[] adminActions = BuildAdminChannelActions(channels);
+        string[] adminActions = BuildAdminChannelActions(channels, selectedPlayerUid);
 
         composer
             .AddStaticText(SVCLang.Get("ui-section-admin-target"), section, ElementBounds.Fixed(leftX, leftY, columnWidth, 26))
@@ -1907,7 +1952,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             .AddTextInput(ElementBounds.Fixed(rightX + 217, rightY += 38, 120, 32), OnRenameTextChanged, input, "adminRenameInput");
         AddFlatButton(composer, SVCLang.Get("button-rename-channel"), RenameAdminChannel, ElementBounds.Fixed(rightX + 345, rightY, 76, 32), "adminRename");
         composer.GetTextInput("adminRenameInput").SetValue(renameText);
-        composer.GetTextInput("adminRenameInput").SetMaxLength(VoiceProtocol.MaxControlStringLength);
+        composer.GetTextInput("adminRenameInput").SetMaxLength(controller.MaxChannelNameLength);
         composer.GetButton("adminApply").Enabled = CanExecuteAdminAction();
         composer.GetButton("adminRename").Enabled = CanRenameAdminChannel(channels);
         return Math.Max(leftY, rightY) + 60;
@@ -1962,9 +2007,12 @@ public sealed class VoiceSettingsDialog : GuiDialog
         }
     }
 
-    private List<string> BuildChannelActions(VoiceSettingsChannelOption[] channels, string? channelId = null)
+    private List<string> BuildChannelActions(
+        VoiceSettingsChannelOption[] channels,
+        string? channelId = null,
+        string? targetPlayerUid = null)
     {
-        bool hasPlayer = !string.IsNullOrWhiteSpace(selectedPlayerUid);
+        bool hasPlayer = !string.IsNullOrWhiteSpace(targetPlayerUid);
         string selectedId = channelId ?? config.SelectedChannelId;
         VoiceSettingsChannelOption? selected = channels.Cast<VoiceSettingsChannelOption?>().FirstOrDefault(channel => channel?.Id == selectedId);
         bool hasChannel = selected.HasValue;
@@ -1972,17 +2020,18 @@ public sealed class VoiceSettingsDialog : GuiDialog
         bool external = selected?.ExternallyManaged ?? false;
         bool canInvite = !external && (controller.HasServerControl
             || selected is { LocalRole: >= VoiceChannelRole.Moderator });
+        bool targetInChannel = hasPlayer && hasChannel && controller.IsPlayerInChannel(selectedId, targetPlayerUid!);
         List<string> actions = new();
-        if (canInvite && hasPlayer) actions.Add("invite");
+        if (canInvite && hasPlayer && !targetInChannel) actions.Add("invite");
         if (hasChannel && !external && role != VoiceChannelRole.Banned) actions.Add("leave");
-        if (hasChannel && role >= VoiceChannelRole.Moderator && hasPlayer)
+        if (hasChannel && role >= VoiceChannelRole.Moderator && targetInChannel)
         {
             actions.AddRange(new[] { "mute", "unmute", "ban", "unban" });
             if (!external) actions.Add("remove");
         }
         if (hasChannel && role == VoiceChannelRole.Owner)
         {
-            if (hasPlayer && !external) actions.AddRange(new[] { "listenonly", "member", "moderator" });
+            if (targetInChannel && !external) actions.AddRange(new[] { "listenonly", "member", "moderator" });
             actions.AddRange(new[] { "lock", "unlock" });
             if (!external) actions.Add("disband");
         }
@@ -1990,13 +2039,22 @@ public sealed class VoiceSettingsDialog : GuiDialog
         return actions;
     }
 
-    private string[] BuildAdminChannelActions(VoiceSettingsChannelOption[] channels)
+    private string[] BuildAdminChannelActions(VoiceSettingsChannelOption[] channels, string? targetPlayerUid)
     {
         VoiceSettingsChannelOption? selected = channels.Cast<VoiceSettingsChannelOption?>().FirstOrDefault(channel => channel?.Id == selectedAdminChannelId);
-        List<string> actions = new() { "mute", "unmute", "ban", "unban", "lock", "unlock" };
+        bool targetInChannel = selected.HasValue
+            && !string.IsNullOrWhiteSpace(targetPlayerUid)
+            && controller.IsPlayerInChannel(selectedAdminChannelId, targetPlayerUid!);
+        List<string> actions = new() { "lock", "unlock" };
         if (selected is { ExternallyManaged: false })
         {
-            actions.AddRange(new[] { "add", "remove", "listenonly", "member", "moderator", "disband" });
+            if (!string.IsNullOrWhiteSpace(targetPlayerUid) && !targetInChannel) actions.Add("add");
+            if (targetInChannel) actions.AddRange(new[] { "remove", "listenonly", "member", "moderator" });
+            actions.Add("disband");
+        }
+        if (targetInChannel)
+        {
+            actions.InsertRange(0, new[] { "mute", "unmute", "ban", "unban" });
         }
         if (!actions.Contains(selectedAdminAction, StringComparer.Ordinal))
         {
@@ -2107,6 +2165,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     {
         PushOverlayState();
         overlayChannelId = channelId;
+        overlayTargetPlayerUid = string.Empty;
         overlayAction = "none";
         overlay = VoiceSettingsOverlay.Channel;
         QueueCompose();
@@ -2186,6 +2245,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             overlay = previous.Overlay;
             overlayChannelId = previous.ChannelId;
             overlayPlayerUid = previous.PlayerUid;
+            overlayTargetPlayerUid = previous.TargetPlayerUid;
             overlayAction = previous.Action;
         }
         else
@@ -2212,6 +2272,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             overlay,
             overlayChannelId,
             overlayPlayerUid,
+            overlayTargetPlayerUid,
             overlayAction));
     }
 
@@ -2223,6 +2284,17 @@ public sealed class VoiceSettingsDialog : GuiDialog
             overlayAction = "none";
             QueueCompose();
         }
+    }
+
+    private void OnOverlayTargetPlayerChanged(string value, bool selected)
+    {
+        if (!selected)
+        {
+            return;
+        }
+        overlayTargetPlayerUid = value;
+        overlayAction = "none";
+        QueueCompose();
     }
 
     private void OnOverlayActionChanged(string value, bool selected)
@@ -2252,7 +2324,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             {
                 return OpenChannelActionConfirmation(action, overlayChannelId);
             }
-            controller.ManageSelectedChannel(action, overlayChannelId, selectedPlayerUid, string.Empty, role);
+            controller.ManageSelectedChannel(action, overlayChannelId, overlayTargetPlayerUid, string.Empty, role);
         }
         CloseOverlay();
         return true;
@@ -2478,6 +2550,20 @@ public sealed class VoiceSettingsDialog : GuiDialog
         SetButtonEnabled("overlay-create-submit", !string.IsNullOrWhiteSpace(value));
     }
 
+    internal void SetHudPositionEditing(bool editing)
+    {
+        if (hudPositionEditing == editing)
+        {
+            return;
+        }
+
+        hudPositionEditing = editing;
+        if (IsOpened())
+        {
+            QueueCompose();
+        }
+    }
+
     private bool CreateChannel()
     {
         if (!controller.HasServerControl || string.IsNullOrWhiteSpace(createName)) return false;
@@ -2541,13 +2627,24 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private void QueueCompose()
     {
-        if (composeQueued) return;
+        composePending = true;
+        if (pointerPressed || composeQueued) return;
         composeQueued = true;
         capi.Event.EnqueueMainThreadTask(() =>
         {
             composeQueued = false;
-            if (IsOpened()) Compose();
+            FlushQueuedCompose();
         }, "simplevoicechat-settings-recompose");
+    }
+
+    private void FlushQueuedCompose()
+    {
+        if (pointerPressed || !composePending || !IsOpened())
+        {
+            return;
+        }
+        composePending = false;
+        Compose();
     }
 
     private void OnClose()

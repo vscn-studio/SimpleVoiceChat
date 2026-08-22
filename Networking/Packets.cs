@@ -16,6 +16,12 @@ public sealed class ClientVoiceStatePacket
 
     [ProtoMember(4)]
     public bool IsSpeaking;
+
+    [ProtoMember(5)]
+    public bool HideSelfFromPlayerLists;
+
+    [ProtoMember(6)]
+    public bool RejectChannelInvites;
 }
 
 [ProtoContract]
@@ -83,6 +89,9 @@ public sealed class ServerVoiceConfigPacket
 
     [ProtoMember(21)]
     public bool AllowAdpcmFallback;
+
+    [ProtoMember(22)]
+    public int MaxChannelNameLength;
 
     public float GetRange(VoiceMode mode)
     {

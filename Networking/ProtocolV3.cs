@@ -4,7 +4,7 @@ namespace SimpleVoiceChat.Networking;
 
 public static class VoiceProtocol
 {
-    public const int CurrentVersion = 6;
+    public const int CurrentVersion = 8;
     public const string GeneratedChannelIdPrefix = "channel-";
     public const int CodecImaAdpcm = 1;
     public const int CodecOpus = 2;
@@ -57,7 +57,9 @@ public enum VoiceCapability
     ProtocolV5 = 1 << 6,
     ServerHostedRecording = 1 << 7,
     ProtocolV6 = 1 << 8,
-    ServerGuidedBitrate = 1 << 9
+    ServerGuidedBitrate = 1 << 9,
+    ProtocolV7 = 1 << 10,
+    ProtocolV8 = 1 << 11
 }
 
 public enum ChannelMemberDeltaKind
@@ -517,6 +519,9 @@ public sealed class ChannelMemberPacket
 
     [ProtoMember(3)]
     public VoiceChannelRole Role;
+
+    [ProtoMember(4)]
+    public bool Online;
 }
 
 [ProtoContract]
@@ -570,6 +575,24 @@ public sealed class ChannelSnapshotPacket
 
     [ProtoMember(5)]
     public bool HasServerControl;
+
+    [ProtoMember(6)]
+    public string[] HiddenPlayerUids = Array.Empty<string>();
+
+    [ProtoMember(7)]
+    public string PendingInviteChannelName = string.Empty;
+
+    [ProtoMember(8)]
+    public int PendingInviteChannelMemberCount;
+
+    [ProtoMember(9)]
+    public int PendingInviteChannelMaxMembers;
+
+    [ProtoMember(10)]
+    public VoiceChannelVisibility PendingInviteChannelVisibility;
+
+    [ProtoMember(11)]
+    public bool PendingInviteChannelLocked;
 }
 
 [ProtoContract]

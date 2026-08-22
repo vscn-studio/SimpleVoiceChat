@@ -34,6 +34,8 @@ public sealed class SimpleVoiceChatServerConfig
     public int MaxChannelMembers { get; set; } = 100;
     public int MaxChannelsPerPlayer { get; set; } = 8;
     public int MaxChannels { get; set; } = 256;
+    /// <summary>Maximum name length enforced while creating or renaming a channel.</summary>
+    public int MaxChannelNameLength { get; set; } = 24;
     public int ChannelMemberPageSize { get; set; } = 20;
     public int AuditRetention { get; set; } = 500;
     public bool AllowContinuousTalk { get; set; } = true;
@@ -125,6 +127,7 @@ public sealed class SimpleVoiceChatServerConfig
         MaxRecorderDownloadKbps = Math.Clamp(MaxRecorderDownloadKbps, 256, 100_000);
         MaxChannelsPerPlayer = Math.Clamp(MaxChannelsPerPlayer, 1, 8);
         MaxChannels = Math.Clamp(MaxChannels, 16, 512);
+        MaxChannelNameLength = Math.Clamp(MaxChannelNameLength, 1, Networking.VoiceProtocol.MaxControlStringLength);
         ChannelMemberPageSize = Math.Clamp(ChannelMemberPageSize, 8, 50);
         AuditRetention = Math.Clamp(AuditRetention, 50, 2_000);
         NextChannelNumber = Math.Max(1, NextChannelNumber);

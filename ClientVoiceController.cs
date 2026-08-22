@@ -75,6 +75,7 @@ public sealed class ClientVoiceController : IDisposable
     private VoiceSettingsDialog? settingsDialog;
     private VoiceSetupWizardDialog? setupWizard;
     private VoiceInviteDialog? inviteDialog;
+    private VoiceHudPositionDialog? hudPositionDialog;
     private readonly short[] captureBuffer = new short[VoiceConstants.SamplesPerFrame];
     private readonly VoiceCapturePreprocessor capturePreprocessor = new();
     private readonly VoiceProbeTracker voiceProbeTracker = new();
@@ -91,7 +92,8 @@ public sealed class ClientVoiceController : IDisposable
         ShoutRange = 35,
         EnableOcclusion = true,
         EnableHudIndicators = true,
-        AllowContinuousTalk = true
+        AllowContinuousTalk = true,
+        MaxChannelNameLength = 24
     };
 
     private VoiceMode mode = VoiceMode.Talk;
@@ -131,9 +133,16 @@ public sealed class ClientVoiceController : IDisposable
     private long lastVoiceLevelMs;
     private VoiceHudChannelMember[] channelHudMembers = Array.Empty<VoiceHudChannelMember>();
     private ChannelInfoPacket[] channelInfos = Array.Empty<ChannelInfoPacket>();
+    private readonly HashSet<string> hiddenPlayerUids = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ChannelMemberPagePacket> memberPagesByChannel = new(StringComparer.Ordinal);
     private readonly Dictionary<string, HashSet<int>> activeChannelTalkerHashesByChannel = new(StringComparer.Ordinal);
     private string[] pendingInviteNames = Array.Empty<string>();
+    private string pendingInviteChannelId = string.Empty;
+    private string pendingInviteChannelName = string.Empty;
+    private int pendingInviteChannelMemberCount;
+    private int pendingInviteChannelMaxMembers;
+    private VoiceChannelVisibility pendingInviteChannelVisibility;
+    private bool pendingInviteChannelLocked;
     private string runtimeServerInstanceId = string.Empty;
     private string pendingInviteKey = string.Empty;
     private long pendingInviteDeadlineMs;
@@ -176,6 +185,11 @@ public sealed class ClientVoiceController : IDisposable
     }
 
     internal SimpleVoiceChatClientConfig SettingsConfig => config;
+
+    internal int MaxChannelNameLength => Math.Clamp(
+        serverConfig.MaxChannelNameLength > 0 ? serverConfig.MaxChannelNameLength : 24,
+        1,
+        VoiceProtocol.MaxControlStringLength);
     internal bool LocalMuted => localMuted;
     internal bool GlobalMuted => globalMuted;
     internal bool ContinuousTalkEnabled => config.PreferVoiceActivation;
@@ -258,7 +272,7 @@ public sealed class ClientVoiceController : IDisposable
             audioBuses.SubmitAt(AudioBusKind.PlayerVoice, samples, ToLocalAudioTimestamp(timestamp));
         };
 
-        hud = new VoiceHud(capi, BuildHudSnapshot, ShouldShowHud);
+        hud = new VoiceHud(capi, BuildHudSnapshot, ShouldShowHud, () => (config.VoiceHudOffsetX, config.VoiceHudOffsetY));
         capi.Gui.RegisterDialog(hud);
         settingsDialog = new VoiceSettingsDialog(capi, this, settingsExtensions);
         setupWizard = new VoiceSetupWizardDialog(capi, this);
@@ -267,7 +281,12 @@ public sealed class ClientVoiceController : IDisposable
             () => capi.World.ElapsedMilliseconds,
             AcceptPendingInvite,
             DeclinePendingInvite,
-            () => hud?.ReservedHeight ?? 0);
+            () => hud?.ReservedHeight ?? 0,
+            () => config.VoiceInviteOffsetY,
+            () => FormatHotkey(VoiceConstants.AcceptChannelInviteHotKey, "Ctrl+F8"),
+            () => FormatHotkey(VoiceConstants.DeclineChannelInviteHotKey, "F7"));
+        hudPositionDialog = new VoiceHudPositionDialog(capi, config, hud, inviteDialog, SetHudPositionFromSettings, SetHudPositionEditingState);
+        capi.Gui.RegisterDialog(hudPositionDialog);
         hud.Refresh();
         ShowInitialSetupPrompt();
 
@@ -348,6 +367,8 @@ public sealed class ClientVoiceController : IDisposable
         capi.Input.RegisterHotKey(VoiceConstants.SettingsHotKey, SVCLang.Get("hotkey-settings"), GlKeys.Quote, HotkeyType.GUIOrOtherControls);
         capi.Input.RegisterHotKey(VoiceConstants.MultiTrackSettingsHotKey, SVCLang.Get("hotkey-multitrack-settings"), GlKeys.F9, HotkeyType.GUIOrOtherControls, ctrlPressed: true);
         capi.Input.RegisterHotKey(VoiceConstants.SpeechRecognitionHotKey, SVCLang.Get("hotkey-speech-recognition"), GlKeys.V, HotkeyType.CharacterControls);
+        capi.Input.RegisterHotKey(VoiceConstants.AcceptChannelInviteHotKey, SVCLang.Get("hotkey-accept-channel-invite"), GlKeys.F8, HotkeyType.GUIOrOtherControls, ctrlPressed: true);
+        capi.Input.RegisterHotKey(VoiceConstants.DeclineChannelInviteHotKey, SVCLang.Get("hotkey-decline-channel-invite"), GlKeys.F7, HotkeyType.GUIOrOtherControls);
 
         capi.Input.SetHotKeyHandler(VoiceConstants.ModeCycleHotKey, _ =>
         {
@@ -436,11 +457,29 @@ public sealed class ClientVoiceController : IDisposable
             multiTrackSettingsPressed = true;
             if (!hasServerControl || !serverConfig.EnableRecorderCapture)
             {
-                capi.ShowChatMessage(SVCLang.Get("chat-multitrack-admin-only"));
+                ShowChatMessage(SVCLang.Get("chat-multitrack-admin-only"));
                 return true;
             }
 
             settingsDialog?.OpenMultiTrackRecordingOverlay();
+            return true;
+        });
+        capi.Input.SetHotKeyHandler(VoiceConstants.AcceptChannelInviteHotKey, _ =>
+        {
+            if (!lifecycle.IsStarted || pendingInviteNames.Length == 0)
+            {
+                return false;
+            }
+            AcceptPendingInvite();
+            return true;
+        });
+        capi.Input.SetHotKeyHandler(VoiceConstants.DeclineChannelInviteHotKey, _ =>
+        {
+            if (!lifecycle.IsStarted || pendingInviteNames.Length == 0)
+            {
+                return false;
+            }
+            DeclinePendingInvite();
             return true;
         });
     }
@@ -485,7 +524,7 @@ public sealed class ClientVoiceController : IDisposable
     private void ToggleLocalMute()
     {
         localMuted = !localMuted;
-        capi.ShowChatMessage(SVCLang.Get("chat-local-mute", localMuted ? SVCLang.Get("chat-local-mute-on") : SVCLang.Get("chat-local-mute-off")));
+        ShowChatMessage(SVCLang.Get("chat-local-mute", localMuted ? SVCLang.Get("chat-local-mute-on") : SVCLang.Get("chat-local-mute-off")));
         SendState(force: true);
         hud?.Refresh();
     }
@@ -493,7 +532,7 @@ public sealed class ClientVoiceController : IDisposable
     private void ToggleGlobalMute()
     {
         globalMuted = !globalMuted;
-        capi.ShowChatMessage(SVCLang.Get("chat-global-mute", globalMuted ? SVCLang.Get("state-off") : SVCLang.Get("state-on")));
+        ShowChatMessage(SVCLang.Get("chat-global-mute", globalMuted ? SVCLang.Get("state-off") : SVCLang.Get("state-on")));
         SendState(force: true);
         hud?.Refresh();
     }
@@ -502,7 +541,7 @@ public sealed class ClientVoiceController : IDisposable
     {
         config.PreferVoiceActivation = !config.PreferVoiceActivation;
         SaveConfig();
-        capi.ShowChatMessage(SVCLang.Get(
+        ShowChatMessage(SVCLang.Get(
             "chat-voice-activation-mode",
             config.PreferVoiceActivation ? SVCLang.Get("mode-voice-activation") : SVCLang.Get("mode-push-to-talk")));
         SendState(force: true);
@@ -719,7 +758,7 @@ public sealed class ClientVoiceController : IDisposable
         controlChannel.SendPacket(new VoiceHelloPacket
         {
             ProtocolVersion = VoiceProtocol.CurrentVersion,
-            ModVersion = "1.2.5-pre.1",
+            ModVersion = "1.2.5-pre.2",
             SupportedCodecs = new[] { VoiceProtocol.CodecOpus, VoiceProtocol.CodecImaAdpcm },
             Capabilities = (int)(VoiceCapability.ProtocolV4
                 | VoiceCapability.ChannelDeltas
@@ -730,6 +769,8 @@ public sealed class ClientVoiceController : IDisposable
                 | VoiceCapability.ProtocolV5
                 | VoiceCapability.ServerHostedRecording
                 | VoiceCapability.ProtocolV6
+                | VoiceCapability.ProtocolV7
+                | VoiceCapability.ProtocolV8
                 | VoiceCapability.ServerGuidedBitrate),
             PreferredOpusBitrateKbps = config.PreferredOpusBitrateKbps
         });
@@ -749,7 +790,7 @@ public sealed class ClientVoiceController : IDisposable
             recording.Stop(MonotonicClock.NowMilliseconds, out _);
             multiTrackStartPending = false;
             pendingRecorderTimeline = null;
-            capi.ShowChatMessage(SVCLang.Get("chat-recording-server-restarted"));
+            ShowChatMessage(SVCLang.Get("chat-recording-server-restarted"));
         }
         if (!string.IsNullOrWhiteSpace(packet.RuntimeInstanceId))
         {
@@ -801,7 +842,7 @@ public sealed class ClientVoiceController : IDisposable
         }
         if (!voiceHandshakeAccepted && !string.IsNullOrWhiteSpace(packet.Message))
         {
-            capi.ShowChatMessage($"Simple Voice Chat: {SVCLang.Get("feedback-" + packet.Message)}");
+            ShowChatMessage($"Simple Voice Chat: {SVCLang.Get("feedback-" + packet.Message)}");
         }
         if (voiceHandshakeAccepted)
         {
@@ -821,6 +862,14 @@ public sealed class ClientVoiceController : IDisposable
             return;
         }
         hasServerControl = packet.HasServerControl;
+        hiddenPlayerUids.Clear();
+        foreach (string uid in packet.HiddenPlayerUids ?? Array.Empty<string>())
+        {
+            if (!string.IsNullOrWhiteSpace(uid))
+            {
+                hiddenPlayerUids.Add(uid);
+            }
+        }
         channelInfos = packet.Channels ?? Array.Empty<ChannelInfoPacket>();
         HashSet<string> currentChannelIds = channelInfos.Select(channel => channel.ChannelId).ToHashSet(StringComparer.Ordinal);
         foreach (string removedChannelId in memberPagesByChannel.Keys.Where(id => !currentChannelIds.Contains(id)).ToArray())
@@ -959,7 +1008,7 @@ public sealed class ClientVoiceController : IDisposable
         string message = LocalizeFeedback(packet);
         if (!string.IsNullOrWhiteSpace(message))
         {
-            capi.ShowChatMessage($"Simple Voice Chat: {message}");
+            ShowChatMessage($"Simple Voice Chat: {message}");
         }
     }
 
@@ -1052,7 +1101,7 @@ public sealed class ClientVoiceController : IDisposable
             if (multiTrackStartPending && !recorderListenerRequested && recorderClock.IsStable)
             {
                 SetRecorderListener(true);
-                capi.ShowChatMessage(SVCLang.Get("chat-multitrack-waiting-anchor"));
+                ShowChatMessage(SVCLang.Get("chat-multitrack-waiting-anchor"));
             }
             TryStartPendingMultiTrackSession();
             hud?.Refresh();
@@ -1069,7 +1118,10 @@ public sealed class ClientVoiceController : IDisposable
         string password = "",
         VoiceChannelVisibility visibility = VoiceChannelVisibility.Open)
     {
-        if (controlChannel?.Connected != true)
+        // The server creates its control session while handling VoiceHello.
+        // A snapshot can arrive during player join before that handshake has
+        // completed, so do not turn it into an unauthenticated channel command.
+        if (!voiceHandshakeAccepted || controlChannel?.Connected != true)
         {
             return;
         }
@@ -1106,11 +1158,14 @@ public sealed class ClientVoiceController : IDisposable
         }
         activeChannelTalkerHashesByChannel.TryGetValue(channel.ChannelId, out HashSet<int>? activeTalkers);
 
+        string localPlayerUid = capi.World?.Player?.PlayerUID ?? string.Empty;
         channelHudMembers = (channel.Members ?? Array.Empty<ChannelMemberPacket>())
-            .Where(member => member.PlayerUid != capi.World.Player.PlayerUID)
+            .Where(member => member != null
+                && !string.Equals(member.PlayerUid, localPlayerUid, StringComparison.Ordinal)
+                && CanShowPlayerInLists(member.PlayerUid, includeLocalPlayer: false))
             .Take(12)
             .Select(member => new VoiceHudChannelMember(
-                DisplayPlayerName(member.PlayerUid, member.PlayerName),
+                DisplayPlayerName(member.PlayerUid, member.PlayerName, member.Online),
                 activeTalkers?.Contains(VoiceMath.StableUidHash(member.PlayerUid)) == true))
             .ToArray();
     }
@@ -1129,6 +1184,13 @@ public sealed class ClientVoiceController : IDisposable
                 info.Locked,
                 info.Visibility,
                 info.OwnerUid))
+            .ToArray();
+    }
+
+    internal VoiceSettingsChannelOption[] BuildJoinedChannelOptions()
+    {
+        return BuildChannelOptions()
+            .Where(channel => channel.LocalRole != VoiceChannelRole.Banned)
             .ToArray();
     }
 
@@ -1157,7 +1219,19 @@ public sealed class ClientVoiceController : IDisposable
         SendChannelCommand("delete-owned-channel", channelId: channelId);
     }
 
-    internal string[] BuildPlayerActions(string channelId)
+    internal bool IsPlayerInChannel(string channelId, string playerUid)
+    {
+        if (string.IsNullOrWhiteSpace(channelId) || string.IsNullOrWhiteSpace(playerUid))
+        {
+            return false;
+        }
+
+        ChannelInfoPacket? channel = channelInfos.FirstOrDefault(info => info.ChannelId == channelId);
+        return channel?.Members?.Any(member => member != null
+            && string.Equals(member.PlayerUid, playerUid, StringComparison.Ordinal)) == true;
+    }
+
+    internal string[] BuildPlayerActions(string channelId, string? targetPlayerUid = null)
     {
         VoiceSettingsChannelOption? selected = BuildChannelOptions()
             .Cast<VoiceSettingsChannelOption?>()
@@ -1168,28 +1242,32 @@ public sealed class ClientVoiceController : IDisposable
         }
 
         VoiceSettingsChannelOption channel = selected.Value;
+        bool hasTarget = !string.IsNullOrWhiteSpace(targetPlayerUid);
+        bool targetInChannel = hasTarget && IsPlayerInChannel(channel.Id, targetPlayerUid!);
         List<string> actions = new();
         if (hasServerControl)
         {
             if (!channel.ExternallyManaged)
             {
-                actions.AddRange(new[] { "invite", "add", "remove", "listenonly", "member", "moderator" });
+                if (hasTarget && !targetInChannel) actions.AddRange(new[] { "invite", "add" });
+                if (targetInChannel) actions.AddRange(new[] { "remove", "listenonly", "member", "moderator" });
             }
-            actions.AddRange(new[] { "mute", "unmute", "ban", "unban" });
+            if (targetInChannel) actions.AddRange(new[] { "mute", "unmute", "ban", "unban" });
         }
         else if (channel.LocalRole == VoiceChannelRole.Owner)
         {
             if (!channel.ExternallyManaged)
             {
-                actions.AddRange(new[] { "invite", "remove", "listenonly", "member", "moderator" });
+                if (hasTarget && !targetInChannel) actions.Add("invite");
+                if (targetInChannel) actions.AddRange(new[] { "remove", "listenonly", "member", "moderator" });
             }
-            actions.AddRange(new[] { "mute", "unmute", "ban", "unban" });
+            if (targetInChannel) actions.AddRange(new[] { "mute", "unmute", "ban", "unban" });
         }
         else if (channel.LocalRole == VoiceChannelRole.Moderator)
         {
-            actions.Add("invite");
-            actions.AddRange(new[] { "mute", "unmute", "ban", "unban" });
-            if (!channel.ExternallyManaged)
+            if (hasTarget && !targetInChannel) actions.Add("invite");
+            if (targetInChannel) actions.AddRange(new[] { "mute", "unmute", "ban", "unban" });
+            if (targetInChannel && !channel.ExternallyManaged)
             {
                 actions.Add("remove");
             }
@@ -1198,24 +1276,34 @@ public sealed class ClientVoiceController : IDisposable
         return actions.Count == 0 ? new[] { "none" } : actions.ToArray();
     }
 
-    internal VoiceSettingsPlayerOption[] BuildPlayerOptions()
+    internal VoiceSettingsPlayerOption[] BuildPlayerOptions(bool includeLocalPlayer = false)
     {
         Dictionary<string, string> names = capi.World.AllOnlinePlayers
-            .Where(player => player.PlayerUID != capi.World.Player.PlayerUID)
+            .Where(player => CanShowPlayerInLists(player.PlayerUID, includeLocalPlayer))
             .ToDictionary(player => player.PlayerUID, player => player.PlayerName, StringComparer.Ordinal);
+        if (includeLocalPlayer && !string.IsNullOrWhiteSpace(capi.World.Player.PlayerUID))
+        {
+            names[capi.World.Player.PlayerUID] = capi.World.Player.PlayerName;
+        }
         foreach (ChannelInfoPacket channel in channelInfos)
         {
             foreach (ChannelMemberPacket member in channel.Members ?? Array.Empty<ChannelMemberPacket>())
             {
-                if (member.PlayerUid != capi.World.Player.PlayerUID && !names.ContainsKey(member.PlayerUid))
+                if (CanShowPlayerInLists(member.PlayerUid, includeLocalPlayer) && !names.ContainsKey(member.PlayerUid))
                 {
-                    names[member.PlayerUid] = DisplayPlayerName(member.PlayerUid, member.PlayerName);
+                    names[member.PlayerUid] = DisplayPlayerName(member.PlayerUid, member.PlayerName, member.Online);
                 }
             }
         }
         return names.Select(pair => new VoiceSettingsPlayerOption(
                 pair.Key,
-                DisplayPlayerName(pair.Key, pair.Value),
+                DisplayPlayerName(
+                    pair.Key,
+                    pair.Value,
+                    FindOnlineClientPlayer(pair.Key) != null
+                        || channelInfos.Any(channel =>
+                            (channel.Members ?? Array.Empty<ChannelMemberPacket>()).Any(member =>
+                                member.PlayerUid == pair.Key && member.Online))),
                 string.Join(", ", channelInfos
                     .Where(channel => (channel.Members ?? Array.Empty<ChannelMemberPacket>()).Any(member => member.PlayerUid == pair.Key))
                     .Select(channel => channel.Name)
@@ -1295,10 +1383,10 @@ public sealed class ClientVoiceController : IDisposable
         ChannelInfoPacket? channel = channelInfos.FirstOrDefault(info => info.ChannelId == channelId);
         if (channel == null) return Array.Empty<VoiceSettingsMemberOption>();
         return channel.Members
-            .Where(member => member.PlayerUid != capi.World.Player.PlayerUID)
+            .Where(member => CanShowPlayerInLists(member.PlayerUid, includeLocalPlayer: false))
             .Select(member => new VoiceSettingsMemberOption(
                 member.PlayerUid,
-                DisplayPlayerName(member.PlayerUid, member.PlayerName),
+                DisplayPlayerName(member.PlayerUid, member.PlayerName, member.Online),
                 member.Role))
             .ToArray();
     }
@@ -1486,7 +1574,7 @@ public sealed class ClientVoiceController : IDisposable
 
         if (microphoneTest == null || capture?.IsAvailable != true)
         {
-            capi.ShowChatMessage(SVCLang.Get("chat-recording-unavailable", capture?.FailureReason ?? string.Empty));
+            ShowChatMessage(SVCLang.Get("chat-recording-unavailable", capture?.FailureReason ?? string.Empty));
             return false;
         }
 
@@ -1512,7 +1600,7 @@ public sealed class ClientVoiceController : IDisposable
         settingsDialog?.RefreshConfiguration();
         if (!captured)
         {
-            capi.ShowChatMessage(SVCLang.Get("chat-recording-empty"));
+            ShowChatMessage(SVCLang.Get("chat-recording-empty"));
         }
         return captured;
     }
@@ -1530,13 +1618,13 @@ public sealed class ClientVoiceController : IDisposable
         RecordedAudioClip? clip = microphoneTest?.LastClip;
         if (clip == null || playback == null)
         {
-            capi.ShowChatMessage(SVCLang.Get("chat-recording-playback-empty"));
+            ShowChatMessage(SVCLang.Get("chat-recording-playback-empty"));
             return false;
         }
 
         if (!playback.PlayRecording(clip, out string error))
         {
-            capi.ShowChatMessage(SVCLang.Get("chat-recording-playback-failed", error));
+            ShowChatMessage(SVCLang.Get("chat-recording-playback-failed", error));
             return false;
         }
 
@@ -1560,7 +1648,7 @@ public sealed class ClientVoiceController : IDisposable
     {
         if (recording == null || capture?.IsAvailable != true)
         {
-            capi.ShowChatMessage(SVCLang.Get("chat-recording-unavailable", capture?.FailureReason ?? string.Empty));
+            ShowChatMessage(SVCLang.Get("chat-recording-unavailable", capture?.FailureReason ?? string.Empty));
             return false;
         }
 
@@ -1568,34 +1656,34 @@ public sealed class ClientVoiceController : IDisposable
         {
             if (!hasServerControl || !serverConfig.EnableRecorderCapture)
             {
-                capi.ShowChatMessage(SVCLang.Get("chat-multitrack-admin-only"));
+                ShowChatMessage(SVCLang.Get("chat-multitrack-admin-only"));
                 return false;
             }
 
             if (!recorderClock.IsStable)
             {
                 multiTrackStartPending = true;
-                capi.ShowChatMessage(SVCLang.Get("chat-multitrack-syncing"));
+                ShowChatMessage(SVCLang.Get("chat-multitrack-syncing"));
                 settingsDialog?.RefreshConfiguration();
                 return true;
             }
 
             multiTrackStartPending = true;
             SetRecorderListener(true);
-            capi.ShowChatMessage(SVCLang.Get("chat-multitrack-waiting-anchor"));
+            ShowChatMessage(SVCLang.Get("chat-multitrack-waiting-anchor"));
             settingsDialog?.RefreshConfiguration();
             return true;
         }
 
         if (!recording.Start(mode, MonotonicClock.NowMilliseconds, out string error))
         {
-            capi.ShowChatMessage(SVCLang.Get("chat-recording-failed", error));
+            ShowChatMessage(SVCLang.Get("chat-recording-failed", error));
             return false;
         }
 
         capture.Start();
         settingsDialog?.RefreshConfiguration();
-        capi.ShowChatMessage(SVCLang.Get("chat-recording-started", mode == VoiceRecordingMode.InputOnly
+        ShowChatMessage(SVCLang.Get("chat-recording-started", mode == VoiceRecordingMode.InputOnly
             ? SVCLang.Get("recording-mode-input")
                 : SVCLang.Get("recording-mode-input-output")));
         return true;
@@ -1635,7 +1723,7 @@ public sealed class ClientVoiceController : IDisposable
         if (wasMultiTrack)
         {
             SetRecorderListener(false);
-            capi.ShowChatMessage(SVCLang.Get("chat-recording-stop-requested"));
+            ShowChatMessage(SVCLang.Get("chat-recording-stop-requested"));
             settingsDialog?.RefreshConfiguration();
             return true;
         }
@@ -1650,11 +1738,11 @@ public sealed class ClientVoiceController : IDisposable
         settingsDialog?.RefreshConfiguration();
         if (saved)
         {
-            capi.ShowChatMessage(SVCLang.Get("chat-recording-stopped", Path.GetFileName(path)));
+            ShowChatMessage(SVCLang.Get("chat-recording-stopped", Path.GetFileName(path)));
         }
         else
         {
-            capi.ShowChatMessage(SVCLang.Get("chat-recording-empty"));
+            ShowChatMessage(SVCLang.Get("chat-recording-empty"));
         }
         return saved;
     }
@@ -1670,19 +1758,19 @@ public sealed class ClientVoiceController : IDisposable
 
         if (!HasRecording || recording?.CanPlayLastRecording != true || playback == null)
         {
-            capi.ShowChatMessage(SVCLang.Get("chat-recording-playback-empty"));
+            ShowChatMessage(SVCLang.Get("chat-recording-playback-empty"));
             return false;
         }
 
         if (!playback.PlayRecording(LastRecordingPath, out string error))
         {
-            capi.ShowChatMessage(SVCLang.Get("chat-recording-playback-failed", error));
+            ShowChatMessage(SVCLang.Get("chat-recording-playback-failed", error));
             return false;
         }
 
         lastRecordingPlaybackActive = true;
         settingsDialog?.RefreshConfiguration();
-        capi.ShowChatMessage(SVCLang.Get("chat-recording-playback-started"));
+        ShowChatMessage(SVCLang.Get("chat-recording-playback-started"));
         return true;
     }
 
@@ -1776,6 +1864,78 @@ public sealed class ClientVoiceController : IDisposable
     internal void SetPlayerMutedFromSettings(string playerUid, bool muted) => SetPlayerMuted(playerUid, muted);
     internal void SelectChannelFromSettings(string channelId) => SelectChannel(channelId);
 
+    internal bool IsLocalPlayer(string playerUid)
+        => string.Equals(playerUid, capi.World?.Player?.PlayerUID, StringComparison.Ordinal);
+
+    internal void SetHideSelfFromPlayerListsFromSettings(bool hidden)
+    {
+        if (config.HideSelfFromPlayerLists == hidden)
+        {
+            return;
+        }
+
+        config.HideSelfFromPlayerLists = hidden;
+        SaveConfig();
+        SendState(force: true);
+        settingsDialog?.RefreshData();
+    }
+
+    internal void SetRejectChannelInvitesFromSettings(bool reject)
+    {
+        if (config.RejectChannelInvites == reject)
+        {
+            return;
+        }
+
+        config.RejectChannelInvites = reject;
+        SaveConfig();
+        SendState(force: true);
+        if (reject && pendingInviteNames.Length > 0)
+        {
+            DeclinePendingInvite();
+        }
+        settingsDialog?.RefreshData();
+    }
+
+    internal void SetHideChatMessagesFromSettings(bool hidden)
+    {
+        if (config.HideChatMessages == hidden) return;
+        config.HideChatMessages = hidden;
+        SaveConfig();
+        settingsDialog?.RefreshData();
+    }
+
+    internal void OpenHudPositionDialogFromSettings()
+    {
+        if (hudPositionDialog?.IsOpened() == true)
+        {
+            hudPositionDialog.ConfirmFromSettings();
+            return;
+        }
+
+        hudPositionDialog?.TryOpen();
+    }
+
+    private void SetHudPositionEditingState(bool editing)
+    {
+        settingsDialog?.SetHudPositionEditing(editing);
+    }
+
+    internal void SetHudPositionFromSettings(int voiceX, int voiceY, int inviteY)
+    {
+        config.VoiceHudOffsetX = Math.Clamp(voiceX, -2000, 2000);
+        config.VoiceHudOffsetY = Math.Clamp(voiceY, -2000, 2000);
+        config.VoiceInviteOffsetY = Math.Clamp(inviteY, -2000, 2000);
+        SaveConfig();
+        hud?.RefreshLayout();
+        inviteDialog?.RefreshPosition();
+    }
+
+    private void ShowChatMessage(string message)
+    {
+        if (!config.HideChatMessages) capi.ShowChatMessage(message);
+    }
+
     internal void SetTransmitTargetFromSettings(string value)
     {
         config.TransmitTarget = value switch
@@ -1808,8 +1968,10 @@ public sealed class ClientVoiceController : IDisposable
             cached.PageSize,
             cached.Members.Select(member => new VoiceSettingsMemberOption(
                 member.PlayerUid,
-                DisplayPlayerName(member.PlayerUid, member.PlayerName),
-                member.Role)).ToArray());
+                DisplayPlayerName(member.PlayerUid, member.PlayerName, member.Online),
+                member.Role))
+                .Where(member => CanShowPlayerInLists(member.Id, includeLocalPlayer: false))
+                .ToArray());
     }
 
     private static GlKeys GetConfiguredKey(string? value, GlKeys fallback)
@@ -1826,7 +1988,7 @@ public sealed class ClientVoiceController : IDisposable
             return;
         }
 
-        capi.ShowChatMessage(SVCLang.Get("chat-initial-setup"));
+        ShowChatMessage(SVCLang.Get("chat-initial-setup"));
         config.InitialSetupPromptShown = true;
         SaveConfig();
     }
@@ -1882,24 +2044,60 @@ public sealed class ClientVoiceController : IDisposable
         hud?.Refresh();
     }
 
-    private string DisplayPlayerName(string playerUid, string? playerName)
+    internal VoiceSettingsPlayerOption[] BuildOnlinePlayerOptions()
     {
-        string safeName = (playerName ?? string.Empty).Trim();
-        if (safeName.Length > 0 && !safeName.Equals(playerUid, StringComparison.Ordinal))
-        {
-            return safeName;
-        }
-
-        IPlayer? online = FindClientPlayer(playerUid);
-        safeName = (online?.PlayerName ?? string.Empty).Trim();
-        return safeName.Length > 0 && !safeName.Equals(playerUid, StringComparison.Ordinal)
-            ? safeName
-            : SVCLang.Get("player-offline");
+        return capi.World.AllOnlinePlayers
+            .Where(player => CanShowPlayerInLists(player.PlayerUID, includeLocalPlayer: false))
+            .GroupBy(player => player.PlayerUID, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .Select(player => new VoiceSettingsPlayerOption(
+                player.PlayerUID,
+                DisplayPlayerName(player.PlayerUID, player.PlayerName, online: true),
+                string.Empty))
+            .OrderBy(player => player.Name, StringComparer.OrdinalIgnoreCase)
+            .Take(100)
+            .ToArray();
     }
 
-    private IPlayer? FindClientPlayer(string playerUid)
+    private string DisplayPlayerName(string playerUid, string? playerName, bool online = true)
     {
-        if (string.IsNullOrWhiteSpace(playerUid))
+        // A prior snapshot may have stored the localized offline placeholder
+        // even though the player is online again. Prefer the live player list
+        // before using any packet/cache value so reconnects immediately show
+        // the real name.
+        IPlayer? livePlayer = FindOnlineClientPlayer(playerUid);
+        string liveName = (livePlayer?.PlayerName ?? string.Empty).Trim();
+        string packetName = (playerName ?? string.Empty).Trim();
+        string offlineLabel = SVCLang.Get("player-offline");
+        string displayName = !string.IsNullOrWhiteSpace(liveName)
+            && !liveName.Equals(offlineLabel, StringComparison.Ordinal)
+            ? liveName
+            : !string.IsNullOrWhiteSpace(packetName)
+                && !packetName.Equals(offlineLabel, StringComparison.Ordinal)
+                    ? packetName
+                    : offlineLabel;
+
+        return IsHiddenPlayer(playerUid) && hasServerControl
+            ? displayName + SVCLang.Get("player-hidden-suffix")
+            : displayName;
+    }
+
+    private bool CanShowPlayerInLists(string playerUid, bool includeLocalPlayer)
+    {
+        if (IsLocalPlayer(playerUid))
+        {
+            return includeLocalPlayer;
+        }
+
+        return hasServerControl || !IsHiddenPlayer(playerUid);
+    }
+
+    private bool IsHiddenPlayer(string playerUid)
+        => hiddenPlayerUids.Contains(playerUid);
+
+    private IPlayer? FindOnlineClientPlayer(string playerUid)
+    {
+        if (string.IsNullOrWhiteSpace(playerUid) || capi.World == null)
         {
             return null;
         }
@@ -1915,7 +2113,7 @@ public sealed class ClientVoiceController : IDisposable
         player = capi.World.AllOnlinePlayers.FirstOrDefault(candidate =>
             string.Equals(candidate.PlayerUID, playerUid, StringComparison.OrdinalIgnoreCase)
             && !string.IsNullOrWhiteSpace(candidate.PlayerName));
-        return player ?? capi.World.PlayerByUid(playerUid);
+        return player;
     }
 
     internal void ManageSelectedChannel(
@@ -1985,16 +2183,19 @@ public sealed class ClientVoiceController : IDisposable
         string? serverChannelId,
         bool restorePending)
     {
+        ChannelInfoPacket[] joinedChannels = (channels ?? Array.Empty<ChannelInfoPacket>())
+            .Where(channel => channel.LocalRole != VoiceChannelRole.Banned)
+            .ToArray();
         string serverSelected = serverChannelId ?? string.Empty;
         if (!string.IsNullOrEmpty(serverSelected)
-            && channels.Any(channel => channel.ChannelId == serverSelected))
+            && joinedChannels.Any(channel => channel.ChannelId == serverSelected))
         {
             return (serverSelected, false);
         }
 
         string savedSelected = savedChannelId ?? string.Empty;
         if (!string.IsNullOrEmpty(savedSelected)
-            && channels.Any(channel => channel.ChannelId == savedSelected))
+            && joinedChannels.Any(channel => channel.ChannelId == savedSelected))
         {
             return (savedSelected, restorePending);
         }
@@ -2004,7 +2205,7 @@ public sealed class ClientVoiceController : IDisposable
             return (string.Empty, false);
         }
 
-        return (channels.FirstOrDefault()?.ChannelId ?? string.Empty, false);
+        return (joinedChannels.FirstOrDefault()?.ChannelId ?? string.Empty, false);
     }
 
     private bool AcceptPendingInvite()
@@ -2031,16 +2232,37 @@ public sealed class ClientVoiceController : IDisposable
             return;
         }
 
+        if (config.RejectChannelInvites)
+        {
+            DeclinePendingInvite();
+            return;
+        }
+
         string key = string.Join("\u001f", channelIds) + "\u001e" + string.Join("\u001f", names);
         pendingInviteNames = names;
+        pendingInviteChannelId = channelIds.FirstOrDefault() ?? string.Empty;
+        pendingInviteChannelName = packet.PendingInviteChannelName ?? string.Empty;
+        pendingInviteChannelMemberCount = Math.Max(0, packet.PendingInviteChannelMemberCount);
+        pendingInviteChannelMaxMembers = Math.Max(0, packet.PendingInviteChannelMaxMembers);
+        pendingInviteChannelVisibility = packet.PendingInviteChannelVisibility;
+        pendingInviteChannelLocked = packet.PendingInviteChannelLocked;
         if (key == pendingInviteKey)
         {
+            inviteDialog?.RefreshInvite();
             return;
         }
 
         pendingInviteKey = key;
         pendingInviteDeadlineMs = capi.World.ElapsedMilliseconds + VoiceInvitePolicy.ResponseTimeoutMilliseconds;
-        inviteDialog?.ShowInvite(string.Join(", ", names), pendingInviteDeadlineMs);
+        inviteDialog?.ShowInvite(
+            string.Join(", ", names),
+            pendingInviteChannelId,
+            pendingInviteChannelName,
+            pendingInviteChannelMemberCount,
+            pendingInviteChannelMaxMembers,
+            pendingInviteChannelVisibility,
+            pendingInviteChannelLocked,
+            pendingInviteDeadlineMs);
     }
 
     private void UpdatePendingInviteTimeout()
@@ -2056,6 +2278,12 @@ public sealed class ClientVoiceController : IDisposable
     private void ClearPendingInvite()
     {
         pendingInviteNames = Array.Empty<string>();
+        pendingInviteChannelId = string.Empty;
+        pendingInviteChannelName = string.Empty;
+        pendingInviteChannelMemberCount = 0;
+        pendingInviteChannelMaxMembers = 0;
+        pendingInviteChannelVisibility = VoiceChannelVisibility.Open;
+        pendingInviteChannelLocked = false;
         pendingInviteKey = string.Empty;
         pendingInviteDeadlineMs = 0;
         inviteDialog?.Dismiss();
@@ -2215,7 +2443,7 @@ public sealed class ClientVoiceController : IDisposable
             recorderListenerRequested = false;
             multiTrackStartPending = false;
             pendingRecorderTimeline = null;
-            capi.ShowChatMessage(SVCLang.Get("chat-recording-server-finalized", packet.SessionId));
+            ShowChatMessage(SVCLang.Get("chat-recording-server-finalized", packet.SessionId));
             settingsDialog?.RefreshConfiguration();
             hud?.Refresh();
             return;
@@ -2265,7 +2493,7 @@ public sealed class ClientVoiceController : IDisposable
         {
             multiTrackStartPending = false;
             SetRecorderListener(false);
-            capi.ShowChatMessage(SVCLang.Get("chat-recording-failed", error));
+            ShowChatMessage(SVCLang.Get("chat-recording-failed", error));
             return;
         }
 
@@ -2276,7 +2504,7 @@ public sealed class ClientVoiceController : IDisposable
         {
             audioBuses.NotifyRecordingSessionStarted(session);
         }
-        capi.ShowChatMessage(SVCLang.Get("chat-recording-started", SVCLang.Get("recording-mode-multitrack")));
+        ShowChatMessage(SVCLang.Get("chat-recording-started", SVCLang.Get("recording-mode-multitrack")));
         settingsDialog?.RefreshConfiguration();
         hud?.Refresh();
     }
@@ -2305,7 +2533,7 @@ public sealed class ClientVoiceController : IDisposable
     {
         if (!string.IsNullOrWhiteSpace(packet.Error))
         {
-            capi.ShowChatMessage(SVCLang.Get("chat-recording-download-failed", packet.Error));
+            ShowChatMessage(SVCLang.Get("chat-recording-download-failed", packet.Error));
             return;
         }
         if (recorderDownloads == null
@@ -2317,25 +2545,25 @@ public sealed class ClientVoiceController : IDisposable
         if (!string.Equals(recorderDownloads.SessionId, packet.RecordingSessionId, StringComparison.Ordinal)
             && !recorderDownloads.Begin(packet.RecordingSessionId, out string beginError))
         {
-            capi.ShowChatMessage(SVCLang.Get("chat-recording-download-failed", beginError));
+            ShowChatMessage(SVCLang.Get("chat-recording-download-failed", beginError));
             return;
         }
 
         bool completed = recorderDownloads.Accept(packet, out string error);
         if (!string.IsNullOrWhiteSpace(error))
         {
-            capi.ShowChatMessage(SVCLang.Get("chat-recording-download-failed", error));
+            ShowChatMessage(SVCLang.Get("chat-recording-download-failed", error));
             return;
         }
         if (completed)
         {
             if (recording.CompleteHostedDownload(packet.RecordingSessionId))
             {
-                capi.ShowChatMessage(SVCLang.Get("chat-recording-download-complete", packet.RecordingSessionId));
+                ShowChatMessage(SVCLang.Get("chat-recording-download-complete", packet.RecordingSessionId));
             }
             else
             {
-                capi.ShowChatMessage(SVCLang.Get("chat-recording-download-failed", "session.core.json is unavailable"));
+                ShowChatMessage(SVCLang.Get("chat-recording-download-failed", "session.core.json is unavailable"));
             }
             recorderDownloads.Reset();
             settingsDialog?.RefreshConfiguration();
@@ -2376,7 +2604,7 @@ public sealed class ClientVoiceController : IDisposable
         if (pressed && capture?.IsAvailable != true && !captureWarningShown)
         {
             captureWarningShown = true;
-            capi.ShowChatMessage(SVCLang.Get("chat-mic-unavailable", capture?.FailureReason ?? string.Empty));
+            ShowChatMessage(SVCLang.Get("chat-mic-unavailable", capture?.FailureReason ?? string.Empty));
         }
 
         bool speechPressed = speechCaptureReady && IsSpeechRecognitionPressed();
@@ -2389,7 +2617,7 @@ public sealed class ClientVoiceController : IDisposable
                 {
                     speechRecognitionActive = true;
                     speechRecognitionBuffer.Start();
-                    capi.ShowChatMessage(SVCLang.Get("chat-speech-recognition-recording"));
+                    ShowChatMessage(SVCLang.Get("chat-speech-recognition-recording"));
                 }
                 capture?.Start();
                 DrainCapturedFrames(sendVoice: false, captureSpeech: true);
@@ -2624,7 +2852,7 @@ public sealed class ClientVoiceController : IDisposable
         lastMicLevel = 0f;
         SendState(force: true);
         hud?.Refresh();
-        capi.ShowChatMessage(SVCLang.Get("chat-device-recovered", string.IsNullOrWhiteSpace(config.InputDeviceName) ? SVCLang.Get("default-microphone") : config.InputDeviceName));
+        ShowChatMessage(SVCLang.Get("chat-device-recovered", string.IsNullOrWhiteSpace(config.InputDeviceName) ? SVCLang.Get("default-microphone") : config.InputDeviceName));
     }
 
     private void OnPlaybackTick(float dt)
@@ -2683,7 +2911,7 @@ public sealed class ClientVoiceController : IDisposable
             mode = VoiceMode.Talk;
         }
 
-        capi.ShowChatMessage(SVCLang.Get("chat-switched-mode", FormatMode(mode)));
+        ShowChatMessage(SVCLang.Get("chat-switched-mode", FormatMode(mode)));
         SendState(force: true);
         hud?.Refresh();
     }
@@ -2727,7 +2955,9 @@ public sealed class ClientVoiceController : IDisposable
             Mode = mode,
             LocalMuted = localMuted,
             GlobalMuted = globalMuted,
-            IsSpeaking = lastSpeaking
+            IsSpeaking = lastSpeaking,
+            HideSelfFromPlayerLists = config.HideSelfFromPlayerLists,
+            RejectChannelInvites = config.RejectChannelInvites
         });
     }
 
@@ -2757,7 +2987,7 @@ public sealed class ClientVoiceController : IDisposable
         lastRemoteVoiceLevel = 0f;
         SendState(force: true);
         hud?.Refresh();
-        capi.ShowChatMessage(SVCLang.Get("chat-device-switched", string.IsNullOrWhiteSpace(config.InputDeviceName) ? SVCLang.Get("default-microphone") : config.InputDeviceName));
+        ShowChatMessage(SVCLang.Get("chat-device-switched", string.IsNullOrWhiteSpace(config.InputDeviceName) ? SVCLang.Get("default-microphone") : config.InputDeviceName));
     }
 
     private bool IsSpeechRecognitionPressed()
@@ -2799,7 +3029,7 @@ public sealed class ClientVoiceController : IDisposable
         playback.Initialize();
         lastRecordingPlaybackActive = false;
         settingsDialog?.RefreshConfiguration();
-        capi.ShowChatMessage(SVCLang.Get("chat-output-device-switched", string.IsNullOrWhiteSpace(config.OutputDeviceName) ? SVCLang.Get("default-speaker") : config.OutputDeviceName));
+        ShowChatMessage(SVCLang.Get("chat-output-device-switched", string.IsNullOrWhiteSpace(config.OutputDeviceName) ? SVCLang.Get("default-speaker") : config.OutputDeviceName));
     }
 
     private bool DrainCapturedFrames(
@@ -3018,7 +3248,7 @@ public sealed class ClientVoiceController : IDisposable
         speechRecognitionActive = false;
         if (!speechRecognitionBuffer.Stop(out byte[] wavAudio))
         {
-            capi.ShowChatMessage(SVCLang.Get("chat-speech-recognition-too-short"));
+            ShowChatMessage(SVCLang.Get("chat-speech-recognition-too-short"));
             return;
         }
 
@@ -3030,7 +3260,7 @@ public sealed class ClientVoiceController : IDisposable
         speechRecognitionCancellation?.Cancel();
         speechRecognitionCancellation?.Dispose();
         speechRecognitionCancellation = new CancellationTokenSource();
-        capi.ShowChatMessage(SVCLang.Get("chat-speech-recognition-recognizing"));
+        ShowChatMessage(SVCLang.Get("chat-speech-recognition-recognizing"));
         _ = CompleteSpeechRecognitionAsync(wavAudio, speechRecognitionCancellation.Token);
     }
 
@@ -3052,7 +3282,7 @@ public sealed class ClientVoiceController : IDisposable
 
             if (!result.Succeeded)
             {
-                capi.ShowChatMessage(SVCLang.Get("chat-speech-recognition-failed", result.Error));
+                ShowChatMessage(SVCLang.Get("chat-speech-recognition-failed", result.Error));
                 return;
             }
 
@@ -3063,7 +3293,7 @@ public sealed class ClientVoiceController : IDisposable
             }
             if (text.Length == 0)
             {
-                capi.ShowChatMessage(SVCLang.Get("speech-recognition-error-empty"));
+                ShowChatMessage(SVCLang.Get("speech-recognition-error-empty"));
                 return;
             }
 
@@ -3394,6 +3624,9 @@ public sealed class ClientVoiceController : IDisposable
         settingsDialog?.TryClose();
         settingsDialog?.Dispose();
         settingsDialog = null;
+        hudPositionDialog?.TryClose();
+        hudPositionDialog?.Dispose();
+        hudPositionDialog = null;
         setupWizard?.TryClose();
         setupWizard?.Dispose();
         setupWizard = null;

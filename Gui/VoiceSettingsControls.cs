@@ -1,4 +1,5 @@
 using Cairo;
+using SimpleVoiceChat.Networking;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 
@@ -979,6 +980,16 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
     private int popupHeight;
     private int rowHeight;
     private bool expanded;
+    private bool searchFocused;
+    private string searchText = string.Empty;
+    private int[] matchingIndices = Array.Empty<int>();
+    private long popupScrollStartMilliseconds;
+    private long lastPopupScrollRedrawMilliseconds;
+
+    private const long PopupScrollPauseMilliseconds = 700;
+    private const long PopupScrollDurationMilliseconds = 2200;
+    private const long PopupScrollCycleMilliseconds = 3600;
+    private const double PopupScrollGap = 24;
 
     public override bool Focusable => Enabled;
 
@@ -987,6 +998,8 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
     public string? HoveredValue => hoveredIndex >= 0 && hoveredIndex < values.Length
         ? values[hoveredIndex]
         : null;
+
+    public string SearchText => searchText;
 
     public VoiceSettingsDropDown(
         ICoreClientAPI capi,
@@ -1026,6 +1039,12 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
             Bounds.renderX, Bounds.renderY, Bounds.OuterWidth, Bounds.OuterHeight);
         if (expanded)
         {
+            if (HasOverflowingPopupText()
+                && api.ElapsedMilliseconds - lastPopupScrollRedrawMilliseconds >= 50)
+            {
+                lastPopupScrollRedrawMilliseconds = api.ElapsedMilliseconds;
+                RebuildPopupTexture();
+            }
             api.Render.Render2DTexturePremultipliedAlpha(popupTexture.TextureId,
                 Bounds.renderX, Bounds.renderY + Bounds.InnerHeight, popupWidth, popupHeight, 320f);
         }
@@ -1062,6 +1081,8 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
         {
             expanded = true;
             hoveredIndex = selectedIndex;
+            searchFocused = true;
+            popupScrollStartMilliseconds = api.ElapsedMilliseconds;
             RebuildTextures();
             api.Gui.PlaySound("menubutton");
             args.Handled = true;
@@ -1071,9 +1092,19 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
         double popupTop = Bounds.renderY + Bounds.InnerHeight;
         if (args.Y >= popupTop && args.Y <= popupTop + popupHeight)
         {
-            int nextIndex = (int)((args.Y - popupTop) / rowHeight);
-            if (nextIndex >= 0 && nextIndex < values.Length)
+            int popupRow = (int)((args.Y - popupTop) / rowHeight);
+            if (popupRow == 0)
             {
+                searchFocused = true;
+                RebuildPopupTexture();
+                args.Handled = true;
+                return;
+            }
+
+            int matchIndex = popupRow - 1;
+            if (matchIndex >= 0 && matchIndex < matchingIndices.Length)
+            {
+                int nextIndex = matchingIndices[matchIndex];
                 selectedIndex = nextIndex;
                 hoveredIndex = nextIndex;
                 changed?.Invoke(values[selectedIndex], true);
@@ -1081,8 +1112,7 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
             }
         }
 
-        expanded = false;
-        RebuildTextures();
+        Close();
         args.Handled = true;
     }
 
@@ -1100,11 +1130,29 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
             return;
         }
 
-        int nextIndex = (int)((args.Y - popupTop) / rowHeight);
-        if (nextIndex >= 0 && nextIndex < values.Length && nextIndex != hoveredIndex)
+        int popupRow = (int)((args.Y - popupTop) / rowHeight);
+        if (popupRow == 0)
         {
-            hoveredIndex = nextIndex;
-            RebuildPopupTexture();
+            if (!searchFocused)
+            {
+                searchFocused = true;
+                RebuildPopupTexture();
+            }
+            args.Handled = true;
+            return;
+        }
+
+        int matchIndex = popupRow - 1;
+        if (matchIndex >= 0 && matchIndex < matchingIndices.Length)
+        {
+            int nextIndex = matchingIndices[matchIndex];
+            if (nextIndex != hoveredIndex || searchFocused)
+            {
+                hoveredIndex = nextIndex;
+                searchFocused = false;
+                popupScrollStartMilliseconds = api.ElapsedMilliseconds;
+                RebuildPopupTexture();
+            }
         }
         args.Handled = true;
     }
@@ -1123,10 +1171,12 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
         }
 
         expanded = false;
+        searchFocused = false;
+        searchText = string.Empty;
         RebuildTextures();
     }
 
-    public void RestoreExpanded(string? hoveredValue)
+    public void RestoreExpanded(string? hoveredValue, string? restoredSearchText)
     {
         if (!Enabled || values.Length == 0)
         {
@@ -1137,9 +1187,12 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
             ? selectedIndex
             : Array.IndexOf(values, hoveredValue);
         expanded = true;
+        searchFocused = true;
+        searchText = LimitSearchText(restoredSearchText);
         hoveredIndex = restoredIndex >= 0
             ? restoredIndex
             : selectedIndex;
+        popupScrollStartMilliseconds = api.ElapsedMilliseconds;
         RebuildTextures();
     }
 
@@ -1150,17 +1203,61 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
             return;
         }
 
-        if (args.KeyCode is 49 or 51)
+        GlKeys key = Enum.IsDefined(typeof(GlKeys), args.KeyCode) ? (GlKeys)args.KeyCode : GlKeys.Unknown;
+        if (expanded && key == GlKeys.Escape)
+        {
+            Close();
+        }
+        else if (expanded && (args.CtrlPressed || args.CommandPressed) && key == GlKeys.A)
+        {
+            SetSearchText(string.Empty);
+        }
+        else if (expanded && (args.CtrlPressed || args.CommandPressed) && key == GlKeys.V)
+        {
+            AppendSearchText(api.Input.ClipboardText);
+        }
+        else if (expanded && key is GlKeys.Back or GlKeys.Delete)
+        {
+            if (searchText.Length > 0)
+            {
+                SetSearchText(searchText[..^1]);
+            }
+        }
+        else if (key == GlKeys.Enter && expanded)
+        {
+            if (hoveredIndex >= 0 && hoveredIndex < values.Length)
+            {
+                selectedIndex = hoveredIndex;
+                changed?.Invoke(values[selectedIndex], true);
+                api.Gui.PlaySound("toggleswitch");
+            }
+            Close();
+        }
+        else if (key is GlKeys.Enter or GlKeys.Space)
         {
             expanded = !expanded;
             hoveredIndex = selectedIndex;
-        }
-        else if (args.KeyCode is 45 or 46)
-        {
-            int delta = args.KeyCode == 45 ? -1 : 1;
+            searchFocused = expanded;
             if (expanded)
             {
-                hoveredIndex = Math.Clamp(hoveredIndex + delta, 0, values.Length - 1);
+                popupScrollStartMilliseconds = api.ElapsedMilliseconds;
+            }
+        }
+        else if (key is GlKeys.Up or GlKeys.Down)
+        {
+            int delta = key == GlKeys.Up ? -1 : 1;
+            if (expanded)
+            {
+                if (matchingIndices.Length > 0)
+                {
+                    int matchIndex = Array.IndexOf(matchingIndices, hoveredIndex);
+                    matchIndex = matchIndex < 0
+                        ? 0
+                        : Math.Clamp(matchIndex + delta, 0, matchingIndices.Length - 1);
+                    hoveredIndex = matchingIndices[matchIndex];
+                    searchFocused = false;
+                    popupScrollStartMilliseconds = api.ElapsedMilliseconds;
+                }
             }
             else
             {
@@ -1175,6 +1272,56 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
 
         RebuildTextures();
         args.Handled = true;
+    }
+
+    public override void OnKeyPress(ICoreClientAPI api, KeyEvent args)
+    {
+        if (!HasFocus || !Enabled || !expanded
+            || args.CtrlPressed || args.CommandPressed || args.AltPressed
+            || args.KeyChar == '\0' || char.IsControl(args.KeyChar))
+        {
+            return;
+        }
+
+        AppendSearchText(args.KeyChar.ToString());
+        args.Handled = true;
+    }
+
+    private void AppendSearchText(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return;
+        }
+
+        string normalized = value.Replace("\r", string.Empty).Replace("\n", string.Empty);
+        if (normalized.Length == 0)
+        {
+            return;
+        }
+
+        SetSearchText(searchText + normalized);
+    }
+
+    private void SetSearchText(string? value)
+    {
+        string next = LimitSearchText(value);
+        if (searchText == next)
+        {
+            return;
+        }
+
+        searchText = next;
+        searchFocused = true;
+        RebuildPopupTexture();
+    }
+
+    private static string LimitSearchText(string? value)
+    {
+        string normalized = (value ?? string.Empty).Replace("\r", string.Empty).Replace("\n", string.Empty);
+        return normalized.Length <= VoiceProtocol.MaxControlStringLength
+            ? normalized
+            : normalized[..VoiceProtocol.MaxControlStringLength];
     }
 
     private void RebuildTextures()
@@ -1243,7 +1390,18 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
     {
         rowHeight = Math.Max(1, (int)GuiElement.scaled(30));
         popupWidth = Math.Max(1, Bounds.OuterWidthInt);
-        popupHeight = Math.Max(rowHeight, rowHeight * Math.Max(1, names.Length));
+        matchingIndices = Enumerable.Range(0, names.Length)
+            .Where(index => string.IsNullOrWhiteSpace(searchText)
+                || names[index].Contains(searchText, StringComparison.OrdinalIgnoreCase)
+                || values[index].Contains(searchText, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (!matchingIndices.Contains(hoveredIndex))
+        {
+            hoveredIndex = matchingIndices.Length > 0 ? matchingIndices[0] : -1;
+        }
+
+        int popupRows = Math.Max(2, matchingIndices.Length + 1);
+        popupHeight = rowHeight * popupRows;
         using ImageSurface surface = new(Format.Argb32, popupWidth, popupHeight);
         using Context context = new(surface);
         context.SetSourceRGBA(0.02, 0.025, 0.032, 0.98);
@@ -1254,32 +1412,73 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
         context.Stroke();
         font.SetupContext(context);
         FontExtents extents = context.FontExtents;
-        for (int i = 0; i < names.Length; i++)
+        context.SetSourceRGBA(searchFocused ? 0.16 : 0.10, searchFocused ? 0.20 : 0.13, searchFocused ? 0.26 : 0.17, 0.98);
+        context.Rectangle(1, 1, popupWidth - 2, rowHeight - 2);
+        context.FillPreserve();
+        context.SetSourceRGBA(searchFocused ? 0.86 : 0.58, searchFocused ? 0.91 : 0.64, searchFocused ? 0.98 : 0.72, 0.86);
+        context.LineWidth = GuiElement.scaled(1);
+        context.Stroke();
+        string searchDisplay = string.IsNullOrEmpty(searchText) ? SVCLang.Get("dropdown-search-placeholder") : searchText;
+        string visibleSearchText = FitText(context, searchDisplay, popupWidth - GuiElement.scaled(26));
+        context.SetSourceRGBA(
+            string.IsNullOrEmpty(searchText) ? 0.58 : 0.98,
+            string.IsNullOrEmpty(searchText) ? 0.63 : 0.99,
+            string.IsNullOrEmpty(searchText) ? 0.70 : 1.0,
+            1.0);
+        DrawTextLineAt(context, visibleSearchText, GuiElement.scaled(10), (rowHeight - extents.Height) / 2d);
+        if (searchFocused)
         {
+            double caretX = GuiElement.scaled(10)
+                + (string.IsNullOrEmpty(searchText) ? 0d : context.TextExtents(visibleSearchText).XAdvance)
+                + GuiElement.scaled(2);
+            context.SetSourceRGBA(0.96, 0.97, 1.0, 0.96);
+            context.LineWidth = GuiElement.scaled(1);
+            context.MoveTo(caretX, GuiElement.scaled(7));
+            context.LineTo(caretX, rowHeight - GuiElement.scaled(7));
+            context.Stroke();
+        }
+
+        for (int matchIndex = 0; matchIndex < matchingIndices.Length; matchIndex++)
+        {
+            int i = matchingIndices[matchIndex];
+            int row = matchIndex + 1;
             if (i == selectedIndex)
             {
                 context.SetSourceRGBA(0.18, 0.24, 0.31, 0.96);
-                context.Rectangle(1, i * rowHeight + 1, popupWidth - 2, rowHeight - 2);
+                context.Rectangle(1, row * rowHeight + 1, popupWidth - 2, rowHeight - 2);
                 context.Fill();
             }
             if (i == hoveredIndex)
             {
                 context.SetSourceRGBA(0.34, 0.39, 0.46, 0.94);
-                context.Rectangle(1, i * rowHeight + 1, popupWidth - 2, rowHeight - 2);
+                context.Rectangle(1, row * rowHeight + 1, popupWidth - 2, rowHeight - 2);
                 context.Fill();
             }
 
-            string text = FitText(context, names[i], popupWidth - GuiElement.scaled(20));
             context.SetSourceRGBA(1, 1, 1, 1);
-            DrawTextLineAt(context, text, GuiElement.scaled(10), i * rowHeight + (rowHeight - extents.Height) / 2d);
-            if (i < names.Length - 1)
+            double textLeft = GuiElement.scaled(10);
+            double textWidth = popupWidth - GuiElement.scaled(20);
+            double textOffset = GetHorizontalScrollOffset(context, names[i], textWidth);
+            context.Save();
+            context.Rectangle(GuiElement.scaled(6), row * rowHeight, popupWidth - GuiElement.scaled(12), rowHeight);
+            context.Clip();
+            DrawTextLineAt(context, names[i], textLeft - textOffset,
+                row * rowHeight + (rowHeight - extents.Height) / 2d);
+            context.Restore();
+            if (matchIndex < matchingIndices.Length - 1)
             {
                 context.SetSourceRGBA(0.78, 0.83, 0.9, 0.16);
                 context.LineWidth = GuiElement.scaled(1);
-                context.MoveTo(GuiElement.scaled(8), (i + 1) * rowHeight - GuiElement.scaled(0.5));
-                context.LineTo(popupWidth - GuiElement.scaled(8), (i + 1) * rowHeight - GuiElement.scaled(0.5));
+                context.MoveTo(GuiElement.scaled(8), (row + 1) * rowHeight - GuiElement.scaled(0.5));
+                context.LineTo(popupWidth - GuiElement.scaled(8), (row + 1) * rowHeight - GuiElement.scaled(0.5));
                 context.Stroke();
             }
+        }
+        if (matchingIndices.Length == 0)
+        {
+            context.SetSourceRGBA(0.72, 0.76, 0.82, 1.0);
+            DrawTextLineAt(context, SVCLang.Get("dropdown-no-matches"), GuiElement.scaled(10),
+                rowHeight + (rowHeight - extents.Height) / 2d);
         }
         GuiElement.GenerateTexture(api, surface, ref popupTexture.TextureId);
     }
@@ -1298,6 +1497,43 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
             length--;
         }
         return text[..length] + ellipsis;
+    }
+
+    private bool HasOverflowingPopupText()
+    {
+        if (!expanded || matchingIndices.Length == 0)
+        {
+            return false;
+        }
+
+        using ImageSurface surface = new(Format.Argb32, 1, 1);
+        using Context context = new(surface);
+        font.SetupContext(context);
+        double maxWidth = popupWidth - GuiElement.scaled(20);
+        return matchingIndices.Any(index => context.TextExtents(names[index]).XAdvance > maxWidth);
+    }
+
+    private double GetHorizontalScrollOffset(Context context, string text, double maxWidth)
+    {
+        double textWidth = context.TextExtents(text).XAdvance;
+        if (textWidth <= maxWidth)
+        {
+            return 0;
+        }
+
+        long elapsed = Math.Max(0, api.ElapsedMilliseconds - popupScrollStartMilliseconds)
+            % PopupScrollCycleMilliseconds;
+        if (elapsed <= PopupScrollPauseMilliseconds)
+        {
+            return 0;
+        }
+
+        double distance = textWidth - maxWidth + GuiElement.scaled(PopupScrollGap);
+        double progress = Math.Clamp(
+            (elapsed - PopupScrollPauseMilliseconds) / (double)PopupScrollDurationMilliseconds,
+            0d,
+            1d);
+        return distance * progress;
     }
 
     private static void DrawTextLineAt(Context context, string text, double x, double top)

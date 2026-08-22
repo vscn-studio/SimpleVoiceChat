@@ -4,7 +4,7 @@
 <th style="padding: 6px 8px; text-align: left;">当前版本口径</th>
 </tr></thead><tbody>
 <tr><td style="padding: 6px 8px; vertical-align: top;">模组名称</td><td style="padding: 6px 8px; vertical-align: top;">SimpleVoiceChat（简单语音对话）</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">模组版本</td><td style="padding: 6px 8px; vertical-align: top;"><code>1.2.5-pre.1</code></td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">模组版本</td><td style="padding: 6px 8px; vertical-align: top;"><code>1.2.5-pre.2</code></td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">游戏版本</td><td style="padding: 6px 8px; vertical-align: top;">Vintage Story <code>1.22.3</code></td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">语音协议</td><td style="padding: 6px 8px; vertical-align: top;">协议 V6；Opus 为首选编码，是否允许 ADPCM 回退由服务器配置决定</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">安装范围</td><td style="padding: 6px 8px; vertical-align: top;">客户端和服务器均需安装同一版本</td></tr>
@@ -17,7 +17,7 @@
 <ol>
 <li>关闭 Vintage Story 客户端和服务器。</li>
 <li>删除 Mods 目录中旧的 SimpleVoiceChat 压缩包，只保留目标版本。</li>
-<li>将 <code>SimpleVoiceChat-v1.2.5-pre.1.zip</code> 原样放入客户端和服务器的 <code>Mods</code> 目录，不要解压模组包。</li>
+<li>将 <code>SimpleVoiceChat-v1.2.5-pre.2.zip</code> 原样放入客户端和服务器的 <code>Mods</code> 目录，不要解压模组包。</li>
 <li>先启动服务器，再启动客户端并进入世界。</li>
 <li>第一次使用时，聊天框会提示按 <code>'</code> 进入设置。该提示不会直接打开窗口。</li>
 <li>按 <code>'</code> 打开首次设置向导。欢迎页可以选择“跳过初始设置，进入设置窗口”，也可以按“取消”关闭或按“确认”开始配置。</li>
@@ -237,6 +237,7 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");</code></pre>
 <tr><td style="padding: 6px 8px; vertical-align: top;">频道同时发言</td><td style="padding: 6px 8px; vertical-align: top;">默认最多 3 人，服务端可调整。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">每名玩家频道数</td><td style="padding: 6px 8px; vertical-align: top;">默认最多 8 个显式频道。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">服务器频道总数</td><td style="padding: 6px 8px; vertical-align: top;">默认最多 256 个，配置边界为 16-512。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">频道名称长度</td><td style="padding: 6px 8px; vertical-align: top;">服务端 <code>MaxChannelNameLength</code> 默认 24，范围 1-128；只限制创建和重命名，不影响已有频道。管理员也可使用 <code>/svc channelnamelength &lt;1-128&gt;</code> 修改。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">主要配置</td><td style="padding: 6px 8px; vertical-align: top;"><code>SimpleVoiceChat.Server.json</code>、<code>SimpleVoiceChat.Client.json</code>。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">管理审计</td><td style="padding: 6px 8px; vertical-align: top;"><code>SimpleVoiceChat.Audit.json</code>；记录管理操作，不记录语音内容。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">多人分轨录音</td><td style="padding: 6px 8px; vertical-align: top;">服务器数据目录 <code>ModData/SimpleVoiceChat/Recordings</code>；客户端只保存 OBS 标记和下载缓存。轨道名为 <code>玩家名-UID.wav</code>。</td></tr>
@@ -255,7 +256,7 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");</code></pre>
 <tr><td style="padding: 6px 8px; vertical-align: top;">列表看不到第七行</td><td style="padding: 6px 8px; vertical-align: top;">频道和玩家列表每页最多 6 行，使用底部分页器切换。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">频道无法加入</td><td style="padding: 6px 8px; vertical-align: top;">检查频道是否锁定、密码是否正确、是否被封禁、是否达到每人 8 个频道上限。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">频道发言席位已满</td><td style="padding: 6px 8px; vertical-align: top;">频道同时发言人数达到上限，稍后重试；只听角色和禁言玩家不能发言。</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">提示协议 V6 不兼容</td><td style="padding: 6px 8px; vertical-align: top;">客户端和服务器必须都使用兼容的协议 V6 版本；建议双方均安装 <code>1.2.5-pre.1</code>，并删除旧压缩包。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">提示协议 V6 不兼容</td><td style="padding: 6px 8px; vertical-align: top;">客户端和服务器必须都使用兼容的协议 V6 版本；建议双方均安装 <code>1.2.5-pre.2</code>，并删除旧压缩包。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">麦克风测试没有文件</td><td style="padding: 6px 8px; vertical-align: top;">这是设计行为。设置页“麦克风测试”只在内存中录制；需要保存文件时使用主页录音图标。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;"><code>Ctrl + F9</code> 没有可用的开始按钮，或一直显示 <code>0/3</code></td><td style="padding: 6px 8px; vertical-align: top;">确认已进入世界、语音握手完成、录音客户端拥有 <code>controlserver</code>，并且当前服务器的 <code>EnableRecorderCapture</code> 为 <code>true</code>；修改后执行 <code>/svc reload</code> 或重启服务器。单人模式等待一秒后会自动尝试可靠控制通道；仍不增长时检查客户端/服务器版本和游戏日志。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">已经添加 <code>SimpleVoiceChat Player Voice</code>，但没有逐玩家 WAV</td><td style="padding: 6px 8px; vertical-align: top;">OBS 来源只是混合监听总线。必须启动服务器托管多人分轨，等待参与者就绪，让对应玩家实际发送语音，再停止并等待下载。恢复或历史会话可用 <code>/svc recording list</code> 和 <code>/svc recording download &lt;session-id&gt;</code>。</td></tr>

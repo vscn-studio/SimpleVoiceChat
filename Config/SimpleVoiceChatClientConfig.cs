@@ -13,7 +13,7 @@ public sealed class SimpleVoiceChatClientConfig
     public const string DeepgramSpeechRecognitionModel = "nova-3";
     public const string DeepgramSpeechRecognitionEndpoint = "https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true";
 
-    private const int CurrentConfigVersion = 7;
+    private const int CurrentConfigVersion = 10;
     private const int MaxServerProfiles = 128;
 
     public int ConfigVersion { get; set; } = CurrentConfigVersion;
@@ -49,6 +49,12 @@ public sealed class SimpleVoiceChatClientConfig
     public Networking.VoiceTransmitTarget TransmitTarget { get; set; } = Networking.VoiceTransmitTarget.ProximityAndChannel;
     public Dictionary<string, float> PlayerVolumeOverrides { get; set; } = new(StringComparer.Ordinal);
     public List<string> MutedPlayerUids { get; set; } = new();
+    public bool HideSelfFromPlayerLists { get; set; }
+    public bool RejectChannelInvites { get; set; }
+    public bool HideChatMessages { get; set; }
+    public int VoiceHudOffsetX { get; set; }
+    public int VoiceHudOffsetY { get; set; }
+    public int VoiceInviteOffsetY { get; set; } = 85;
     public Dictionary<string, SimpleVoiceChatServerProfile> ServerProfiles { get; set; } = new(StringComparer.Ordinal);
     public bool NeedsServerProfileMigration { get; set; }
 
@@ -90,6 +96,9 @@ public sealed class SimpleVoiceChatClientConfig
             VoiceActivationThreshold = NoiseGate;
         }
         ChannelOutputVolume = Math.Clamp(ChannelOutputVolume, 0f, 2f);
+        VoiceHudOffsetX = Math.Clamp(VoiceHudOffsetX, -2000, 2000);
+        VoiceHudOffsetY = Math.Clamp(VoiceHudOffsetY, -2000, 2000);
+        VoiceInviteOffsetY = Math.Clamp(VoiceInviteOffsetY, -2000, 2000);
         PreferredOpusBitrateKbps = NormalizePreferredOpusBitrate(PreferredOpusBitrateKbps);
         ShowHudIndicator = ShowMicrophoneHud;
         PlayerVolumeOverrides ??= new Dictionary<string, float>(StringComparer.Ordinal);
@@ -159,6 +168,27 @@ public sealed class SimpleVoiceChatClientConfig
         {
             PreferredOpusBitrateKbps = 0;
             ConfigVersion = 7;
+        }
+
+        if (ConfigVersion < 8)
+        {
+            HideSelfFromPlayerLists = false;
+            ConfigVersion = 8;
+        }
+
+        if (ConfigVersion < 9)
+        {
+            RejectChannelInvites = false;
+            ConfigVersion = 9;
+        }
+
+        if (ConfigVersion < 10)
+        {
+            HideChatMessages = false;
+            VoiceHudOffsetX = 0;
+            VoiceHudOffsetY = 0;
+            VoiceInviteOffsetY = 85;
+            ConfigVersion = 10;
         }
 
         ConfigVersion = Math.Max(CurrentConfigVersion, ConfigVersion);
