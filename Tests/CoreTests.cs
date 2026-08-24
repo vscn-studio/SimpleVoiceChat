@@ -1083,6 +1083,34 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void HudDoesNotShowMembersWhenNoChannelIsSelected()
+    {
+        ChannelInfoPacket[] channels =
+        {
+            new() { ChannelId = "channel-a", Name = "A", LocalRole = VoiceChannelRole.Member }
+        };
+
+        Assert.Null(ClientVoiceController.ResolveHudChannel(channels, string.Empty));
+        Assert.Null(ClientVoiceController.ResolveHudChannel(channels, null));
+        Assert.Equal("channel-a", ClientVoiceController.ResolveHudChannel(channels, "channel-a")?.ChannelId);
+    }
+
+    [Fact]
+    public void DistanceGainFadesMonotonicallyToSilenceAtRange()
+    {
+        float near = VoiceMath.DistanceGain(3, 18, 3);
+        float middle = VoiceMath.DistanceGain(10, 18, 3);
+        float edge = VoiceMath.DistanceGain(18, 18, 3);
+        float outside = VoiceMath.DistanceGain(19, 18, 3);
+
+        Assert.Equal(1f, near);
+        Assert.InRange(middle, 0f, 1f);
+        Assert.True(middle < near);
+        Assert.Equal(0f, edge);
+        Assert.Equal(0f, outside);
+    }
+
+    [Fact]
     public void SettingsAssetsAndLanguageKeySetsRemainAligned()
     {
         string languageDirectory = Path.Combine(AppContext.BaseDirectory, "assets", "simplevoicechat", "lang");

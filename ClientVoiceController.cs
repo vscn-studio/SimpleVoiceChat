@@ -1149,8 +1149,7 @@ public sealed class ClientVoiceController : IDisposable
 
     private void UpdateChannelHudMembers()
     {
-        ChannelInfoPacket? channel = channelInfos.FirstOrDefault(info => info.ChannelId == config.SelectedChannelId)
-            ?? channelInfos.FirstOrDefault();
+        ChannelInfoPacket? channel = ResolveHudChannel(channelInfos, config.SelectedChannelId);
         if (channel == null)
         {
             channelHudMembers = Array.Empty<VoiceHudChannelMember>();
@@ -1168,6 +1167,17 @@ public sealed class ClientVoiceController : IDisposable
                 DisplayPlayerName(member.PlayerUid, member.PlayerName, member.Online),
                 activeTalkers?.Contains(VoiceMath.StableUidHash(member.PlayerUid)) == true))
             .ToArray();
+    }
+
+    internal static ChannelInfoPacket? ResolveHudChannel(ChannelInfoPacket[] channels, string? selectedChannelId)
+    {
+        if (string.IsNullOrWhiteSpace(selectedChannelId))
+        {
+            return null;
+        }
+
+        return (channels ?? Array.Empty<ChannelInfoPacket>())
+            .FirstOrDefault(channel => channel.ChannelId == selectedChannelId);
     }
 
     internal VoiceSettingsChannelOption[] BuildChannelOptions()

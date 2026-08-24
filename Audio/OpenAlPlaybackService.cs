@@ -376,6 +376,17 @@ public sealed class OpenAlPlaybackService : IDisposable
             gain = 0.82f * clientConfig.OutputVolume * stream.ExternalGain;
         }
 
+        float referenceDistance = CalculateReferenceDistance(range);
+        if (!stream.ChannelRelay)
+        {
+            // The server stops relaying outside the configured range. Apply the
+            // same smooth curve locally so the final packets fade to silence
+            // instead of ending at a still-audible OpenAL attenuation level.
+            referenceDistance = Math.Min(referenceDistance, Math.Max(0.1f, range * 0.5f));
+            double distance = listener.DistanceTo(stream.Position.X, stream.Position.Y, stream.Position.Z);
+            gain *= VoiceMath.DistanceGain(distance, range, referenceDistance);
+        }
+
         VoiceEnvironmentSnapshot env = GetEnvironment(stream, serverConfig);
         gain *= env.VolumeMultiplier;
 
@@ -385,8 +396,10 @@ public sealed class OpenAlPlaybackService : IDisposable
 
         AL.Source(stream.Source, ALSource3f.Position, playbackPosition.X, playbackPosition.Y, playbackPosition.Z);
         AL.Source(stream.Source, ALSourcef.Gain, Math.Clamp(gain, 0f, 2f));
-        AL.Source(stream.Source, ALSourcef.RolloffFactor, stream.ChannelRelay ? 0f : CalculateRolloff(range));
-        AL.Source(stream.Source, ALSourcef.ReferenceDistance, stream.ChannelRelay ? 1f : CalculateReferenceDistance(range));
+        // Distance gain is applied explicitly above for proximity voice. Keep
+        // OpenAL positional panning while preventing a second distance curve.
+        AL.Source(stream.Source, ALSourcef.RolloffFactor, 0f);
+        AL.Source(stream.Source, ALSourcef.ReferenceDistance, stream.ChannelRelay ? 1f : referenceDistance);
         AL.Source(stream.Source, ALSourcef.MaxDistance, 9999f);
         AL.Source(stream.Source, ALSourcef.Pitch, env.Pitch);
         ApplyLowPass(stream, env.LowPass);
@@ -909,11 +922,6 @@ public sealed class OpenAlPlaybackService : IDisposable
         ownsContext = false;
         context = ALContext.Null;
         device = ALDevice.Null;
-    }
-
-    private static float CalculateRolloff(float range)
-    {
-        return range > 1f ? (float)(0.0 - Math.Log(0.01) / Math.Log(range)) : 1f;
     }
 
     private static float CalculateReferenceDistance(float range)
