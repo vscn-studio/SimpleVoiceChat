@@ -830,7 +830,7 @@ public sealed class CoreTests
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
         JsonElement dependencies = document.RootElement.GetProperty("dependencies");
 
-        Assert.Equal("1.2.5-pre.2", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("1.2.6", document.RootElement.GetProperty("version").GetString());
         Assert.True(dependencies.TryGetProperty("game", out _));
         Assert.False(dependencies.TryGetProperty("vsdirector", out _));
         Assert.DoesNotContain(

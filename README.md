@@ -1,8 +1,8 @@
 # SimpleVoiceChat / 简单语音对话
 
-SimpleVoiceChat `1.2.5-pre.2` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, server-hosted multi-track recording, moderation, optional speech-to-chat, and optional VS Director capture.
+SimpleVoiceChat `1.2.6` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, server-hosted multi-track recording, moderation, optional speech-to-chat, and optional VS Director capture.
 
-SimpleVoiceChat `1.2.5-pre.2` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、服务器托管多人分轨录音、管理功能、可选语音转文字聊天以及可选 VS Director 录制集成。
+SimpleVoiceChat `1.2.6` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、服务器托管多人分轨录音、管理功能、可选语音转文字聊天以及可选 VS Director 录制集成。
 
 - [中文说明](#中文说明)
 - [English](#english)
@@ -17,7 +17,8 @@ SimpleVoiceChat `1.2.5-pre.2` 是适用于 Vintage Story `1.22.3` 的客户端/�
 - 可将声音发送到接近度范围、当前频道或两者。
 - 自定义频道支持开放、密码和隐藏可见性，以及所有者、主持人、成员、只听和封禁角色。
 - 支持按键说话、语音触发通话（自由麦）、输入/输出设备选择、增益、噪声门、玩家单独音量与静音。
-- 首选 Opus 编码；服务器可选择是否允许 ADPCM 回退。客户端和服务器必须使用协议 V6 兼容版本。
+- 首选 Opus 编码；ADPCM 回退默认关闭并由服务器配置决定。客户端和服务器必须使用协议 V8 兼容版本。
+- 接近度语音在客户端按距离平滑衰减到静音；频道/群组语音不受距离衰减影响，服务端转发范围不会扩大。
 - 可在本机进行麦克风试听，并主动保存仅输入或输入+输出 WAV；多人分轨由服务器权威托管。
 - 语音识别默认关闭，完全由玩家在客户端配置，不经过 SimpleVoiceChat 服务端。
 - VS Director 是可选集成，不是前置模组，也不需要单独的集成模组。
@@ -26,7 +27,7 @@ SimpleVoiceChat `1.2.5-pre.2` 是适用于 Vintage Story `1.22.3` 的客户端/�
 
 1. 关闭 Vintage Story 客户端和服务器。
 2. 删除 `Mods` 目录中的旧版 SimpleVoiceChat 压缩包，避免同时加载多个版本。
-3. 将 `SimpleVoiceChat-v1.2.5-pre.2.zip` 原样放入客户端和服务器的 `Mods` 目录，不要解压模组包。
+3. 将 `SimpleVoiceChat-v1.2.6.zip` 原样放入客户端和服务器的 `Mods` 目录，不要解压模组包。
 4. 启动服务器，然后启动客户端。首次按 `'` 会打开设置向导。
 
 SimpleVoiceChat 不依赖 Simple Voice Chat、VS Director 或 `SimpleVoiceChat_VSDirectorIntegration` 等其他模组。单独安装即可使用基本语音功能。
@@ -113,7 +114,7 @@ Whisper 页面通常直接提供模型文件；填写实际 `.bin` 文件路径�
 
 ### 频道和录音
 
-频道具有稳定的 `channel-数字` ID。普通玩家默认可创建频道，服务器可关闭该权限。频道所有者可管理成员、角色、锁定状态和频道生命周期；服务器管理员使用 `controlserver` 权限执行全服管理。
+频道具有稳定的 `channel-<number>` ID。普通玩家默认可创建频道，服务器可关闭该权限。频道所有者可管理成员、角色、锁定状态和频道生命周期；服务器管理员使用 `controlserver` 权限执行全服管理。
 
 主页录音按钮可保存“仅输入”或“输入+输出”WAV。Windows 默认位置为：
 
@@ -122,6 +123,10 @@ Whisper 页面通常直接提供模型文件；填写实际 `.bin` 文件路径�
 ```
 
 设置页的“麦克风测试”只保存在内存中，不会生成文件或发送到服务器。
+
+### 接近度距离渐变
+
+接近度语音在客户端播放时使用距离增益：近距离保持正常音量，接近模式范围边界时逐渐降低，到达边界时静音。服务端仍只转发配置范围内的接收者（空间查询带约 1 格缓冲），因此不会增加网络流量。频道语音不使用距离渐变；选择“接近度和当前频道”时，服务端对同时满足两种条件的接收者优先选择频道路径，其他接近度接收者使用渐变。距离增益会与总音量、玩家音量、静音/拒听和环境效果相乘。
 
 ### 可选 VS Director 集成
 
@@ -211,7 +216,8 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 - Transmit to proximity, the selected custom channel, or both.
 - Open, password-protected, and hidden channels with Owner, Moderator, Member, Listen Only, and Banned roles.
 - Push-to-talk, voice activation, input/output device selection, gain, noise gate, per-player volume, and local mute.
-- Opus is preferred; the server may optionally allow ADPCM fallback. Compatible V6 builds are required on both sides.
+- Opus is preferred; ADPCM fallback is disabled by default and controlled by the server. Compatible V8 builds are required on both sides.
+- Proximity playback applies a client-side distance fade to silence at the configured boundary; channel/group voice bypasses that fade and server forwarding does not expand.
 - In-memory microphone testing plus input-only, input-and-output, and server-hosted administrator multi-track WAV recording.
 - Optional client-side speech-to-chat, disabled by default and never processed by the SimpleVoiceChat server.
 - Optional runtime VS Director integration without a hard dependency or a separate integration mod.
@@ -220,7 +226,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 
 1. Stop the Vintage Story client and server.
 2. Remove older SimpleVoiceChat archives from each `Mods` directory so that only one version can load.
-3. Place `SimpleVoiceChat-v1.2.5-pre.2.zip` unchanged in the client and server `Mods` directories. Do not extract the mod archive.
+3. Place `SimpleVoiceChat-v1.2.6.zip` unchanged in the client and server `Mods` directories. Do not extract the mod archive.
 4. Start the server and client. Press `'` to open the first-run setup wizard.
 
 SimpleVoiceChat does not require Simple Voice Chat, VS Director, or `SimpleVoiceChat_VSDirectorIntegration`. The base voice features work with this package alone.
@@ -296,7 +302,7 @@ Cloud API keys are stored as plain text in the local `SimpleVoiceChat.Client.jso
 
 ### Channels and Recording
 
-Channels use stable `channel-number` IDs. Ordinary players may create channels by default, although the server can disable that permission. Channel owners manage members, roles, locking, and lifecycle; server administrators use the `controlserver` privilege for server-wide actions.
+Channels use stable `channel-<number>` IDs. Ordinary players may create channels by default, although the server can disable that permission. Channel owners manage members, roles, locking, and lifecycle; server administrators use the `controlserver` privilege for server-wide actions.
 
 The home-page recording button offers Input Only, Input+Output, and Multi-track speakers. Input+Output stores the microphone and received playback as separate stereo channels. Multi-track WAV files are authoritative on the server under `ModData/SimpleVoiceChat/Recordings`; the client keeps only an OBS marker and a download cache. On Windows, the default local cache is:
 
@@ -305,6 +311,10 @@ The home-page recording button offers Input Only, Input+Output, and Multi-track 
 ```
 
 Microphone Test is memory-only and neither creates a file nor sends audio to the server.
+
+### Proximity Fade
+
+During client playback, proximity voice keeps normal volume nearby, fades smoothly near the configured mode range, and reaches silence at the boundary. The server still forwards only within the configured range (with an approximately one-block spatial-query buffer), so the fade does not increase network traffic. Channel voice bypasses distance fading; with Proximity and Channel, recipients matching both conditions use the higher-priority channel path while other proximity recipients fade. Distance gain is multiplied with master/player volume, mute/deafen, and environment effects.
 
 ### OBS and Multi-track Recording
 
