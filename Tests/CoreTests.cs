@@ -87,6 +87,26 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void VoiceFrameSendQueueDropsOldestFramesAndBoundsBacklog()
+    {
+        VoiceFrameSendQueue queue = new();
+        VoiceFrameV3Packet first = new() { Sequence = 1 };
+        VoiceFrameV3Packet second = new() { Sequence = 2 };
+        VoiceFrameV3Packet latest = new() { Sequence = 3 };
+
+        queue.Enqueue(first);
+        queue.Enqueue(second);
+        queue.Enqueue(latest);
+
+        Assert.Equal(VoiceFrameSendQueue.MaximumPendingFrames, queue.Count);
+        Assert.True(queue.TryDequeue(out VoiceFrameV3Packet sent));
+        Assert.Equal(2, sent.Sequence);
+        Assert.True(queue.TryDequeue(out sent));
+        Assert.Equal(3, sent.Sequence);
+        Assert.False(queue.TryDequeue(out _));
+    }
+
+    [Fact]
     public void PlaybackStreamLimitAllowsThirtyTwoSources()
     {
         SimpleVoiceChatServerConfig config = new()

@@ -78,6 +78,7 @@ public sealed class ClientVoiceController : IDisposable
     private VoiceHudPositionDialog? hudPositionDialog;
     private readonly short[] captureBuffer = new short[VoiceConstants.SamplesPerFrame];
     private readonly VoiceCapturePreprocessor capturePreprocessor = new();
+    private readonly VoiceFrameSendQueue pendingVoiceFrames = new();
     private readonly VoiceProbeTracker voiceProbeTracker = new();
     private readonly AdaptiveVoiceBitrateController adaptiveBitrate = new();
     private readonly VoiceProbeTracker recorderClockControlProbeTracker = new();
@@ -2717,6 +2718,8 @@ public sealed class ClientVoiceController : IDisposable
             lastMicRms = 0f;
         }
 
+        FlushPendingVoiceFrame(voiceReady);
+
         lastPressed = canSpeak;
         bool speaking = canSpeak;
         if (speaking != lastSpeaking)
@@ -3181,7 +3184,7 @@ public sealed class ClientVoiceController : IDisposable
             ? recorderClock.ToServerTime(captureTimestampMilliseconds)
             : 0L;
         ushort frameSequence = sequence++;
-        voiceChannel?.SendPacket(new VoiceFrameV3Packet
+        pendingVoiceFrames.Enqueue(new VoiceFrameV3Packet
         {
             ConnectionEpoch = connectionEpoch,
             SessionId = sessionId,
@@ -3205,6 +3208,20 @@ public sealed class ClientVoiceController : IDisposable
                 Payload = payload,
                 CaptureServerTimestampMilliseconds = captureServerTimestamp
             });
+        }
+    }
+
+    private void FlushPendingVoiceFrame(bool voiceReady)
+    {
+        if (!voiceReady || voiceChannel?.Connected != true)
+        {
+            pendingVoiceFrames.Clear();
+            return;
+        }
+
+        if (pendingVoiceFrames.TryDequeue(out VoiceFrameV3Packet frame))
+        {
+            voiceChannel.SendPacket(frame);
         }
     }
 
@@ -3354,6 +3371,7 @@ public sealed class ClientVoiceController : IDisposable
     {
         sessionId = NextSessionId();
         sequence = 0;
+        pendingVoiceFrames.Clear();
         voiceEncoder?.Reset();
         capturePreprocessor.Reset();
     }
