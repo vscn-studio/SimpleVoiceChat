@@ -169,6 +169,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private double activeContentWidth = ContentWidth;
     private bool composeQueued;
     private bool composePending;
+    private bool scrollComposeQueued;
     private bool pointerPressed;
     private ServerVoiceConfigPacket adminConfigDraft = new();
     private bool adminConfigDirty;
@@ -390,15 +391,29 @@ public sealed class VoiceSettingsDialog : GuiDialog
             {
                 composer = composer.EndClip();
             }
-            if (contentHeight > activeViewportHeight)
+            if (!home)
             {
-                const string scrollbarKey = "settings-scrollbar";
-                VoiceSettingsScrollbar scrollbar = new(
-                    composer.Api,
-                    ElementBounds.Fixed(windowWidth - 20, viewportTop + 4, 8, activeViewportHeight - 8),
-                    OnScroll);
-                scrollbar.SetHeights(activeViewportHeight, contentHeight, scrollPosition);
-                composer.AddInteractiveElement(scrollbar, scrollbarKey);
+                composer.AddStaticCustomDraw(
+                    ElementBounds.Fixed(0, 0, windowWidth, viewportTop),
+                    DrawScrolledHeaderMask);
+                composer.AddStaticCustomDraw(
+                    ElementBounds.Fixed(
+                        0,
+                        viewportTop + activeViewportHeight,
+                        windowWidth,
+                        Math.Max(0, windowHeight - viewportTop - activeViewportHeight)),
+                    DrawScrolledFooterMask);
+
+                if (contentHeight > activeViewportHeight)
+                {
+                    const string scrollbarKey = "settings-scrollbar";
+                    VoiceSettingsScrollbar scrollbar = new(
+                        composer.Api,
+                        ElementBounds.Fixed(windowWidth - 20, viewportTop + 4, 8, activeViewportHeight - 8),
+                        OnScroll);
+                    scrollbar.SetHeights(activeViewportHeight, contentHeight, scrollPosition);
+                    composer.AddInteractiveElement(scrollbar, scrollbarKey);
+                }
             }
         }
         if (overlay != VoiceSettingsOverlay.None)
@@ -592,6 +607,38 @@ public sealed class VoiceSettingsDialog : GuiDialog
         ctx.SetSourceRGBA(0.78, 0.82, 0.9, 0.22);
         ctx.LineWidth = GuiElement.scaled(1);
         ctx.Stroke();
+    }
+
+    private void DrawScrolledHeaderMask(Context ctx, ImageSurface surface, ElementBounds bounds)
+    {
+        bounds.CalcWorldBounds();
+        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
+        ctx.SetSourceRGBA(0.015, 0.02, 0.028, 0.98);
+        ctx.Fill();
+
+        string title = SVCLang.Get("settings-brand-title");
+        CairoFont font = CairoFont.WhiteSmallishText()
+            .WithFontSize(20)
+            .WithColor(new[] { 1.0, 1.0, 1.0, 1.0 });
+        font.SetupContext(ctx);
+        TextExtents extents = ctx.TextExtents(title);
+        double x = bounds.drawX + (bounds.OuterWidth - extents.XAdvance) / 2d - extents.XBearing;
+        double y = bounds.drawY + (bounds.OuterHeight - ctx.FontExtents.Height) / 2d + ctx.FontExtents.Ascent;
+        ctx.MoveTo(x, y);
+        ctx.ShowText(title);
+    }
+
+    private static void DrawScrolledFooterMask(Context ctx, ImageSurface surface, ElementBounds bounds)
+    {
+        bounds.CalcWorldBounds();
+        if (bounds.InnerHeight <= 0)
+        {
+            return;
+        }
+
+        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
+        ctx.SetSourceRGBA(0.015, 0.02, 0.028, 0.98);
+        ctx.Fill();
     }
 
     private static void AddFlatButton(GuiComposer composer, string text, ActionConsumable action, ElementBounds bounds, string key, bool active = false)
@@ -2803,7 +2850,24 @@ public sealed class VoiceSettingsDialog : GuiDialog
         if (contentBounds == null) return;
         contentBounds.fixedY = -scrollPosition;
         contentBounds.CalcWorldBounds();
-        SingleComposer?.ReCompose();
+        if (SingleComposer?.GetElement("settings-scrollbar") is VoiceSettingsScrollbar scrollbar)
+        {
+            scrollbar.SetPosition(scrollPosition);
+        }
+        if (scrollComposeQueued)
+        {
+            return;
+        }
+
+        scrollComposeQueued = true;
+        capi.Event.EnqueueMainThreadTask(() =>
+        {
+            scrollComposeQueued = false;
+            if (IsOpened())
+            {
+                SingleComposer?.ReCompose();
+            }
+        }, "simplevoicechat-settings-scroll");
     }
 
     private void QueueCompose()
