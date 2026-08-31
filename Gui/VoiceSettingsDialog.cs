@@ -167,6 +167,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private double contentHeight = ViewportHeight;
     private double activeViewportHeight = ViewportHeight;
     private double activeContentWidth = ContentWidth;
+    private double activeContentHeaderHeight;
     private bool composeQueued;
     private bool composePending;
     private bool scrollComposeQueued;
@@ -331,12 +332,13 @@ public sealed class VoiceSettingsDialog : GuiDialog
         double windowHeight = home
             ? Math.Min(HomeMaxWindowHeight, requestedHomeHeight)
             : WindowHeight;
-        activeViewportHeight = home ? windowHeight : ViewportHeight;
+        activeViewportHeight = windowHeight;
+        activeContentHeaderHeight = home ? 0 : 52;
         activeContentWidth = home ? windowWidth - ContentLeft * 2 : ContentWidth;
         ElementBounds root = ElementBounds.Fixed(EnumDialogArea.CenterMiddle, 0, 0, windowWidth, windowHeight);
         ElementBounds background = ElementBounds.Fixed(0, 0, windowWidth, windowHeight);
         bool clipContent = !home || requestedHomeHeight > windowHeight;
-        double viewportTop = home ? 0 : ContentTop;
+        double viewportTop = 0;
         ElementBounds viewport = ElementBounds.Fixed(ContentLeft, viewportTop, activeContentWidth, activeViewportHeight);
         contentBounds = ElementBounds.Fixed(0, 0, activeContentWidth, activeViewportHeight);
         bool overlayActive = overlay != VoiceSettingsOverlay.None;
@@ -350,12 +352,15 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
         if (!overlayActive)
         {
-            composer.AddStaticText(
-                    SVCLang.Get("settings-brand-title"),
-                    CairoFont.WhiteSmallishText().WithFontSize(20).WithOrientation(EnumTextOrientation.Center)
-                        .WithColor(new[] { 1.0, 1.0, 1.0, 1.0 }),
-                    ElementBounds.Fixed(ContentLeft, 10, activeContentWidth, 30),
-                    "brand-title");
+            if (home)
+            {
+                composer.AddStaticText(
+                        SVCLang.Get("settings-brand-title"),
+                        CairoFont.WhiteSmallishText().WithFontSize(20).WithOrientation(EnumTextOrientation.Center)
+                            .WithColor(new[] { 1.0, 1.0, 1.0, 1.0 }),
+                        ElementBounds.Fixed(ContentLeft, 10, activeContentWidth, 30),
+                        "brand-title");
+            }
 
             composer.AddInteractiveElement(
                 new VoiceSettingsIconButton(
@@ -371,6 +376,17 @@ public sealed class VoiceSettingsDialog : GuiDialog
             }
             composer.BeginChildElements(contentBounds);
 
+            if (!home)
+            {
+                composer.AddStaticText(
+                    SVCLang.Get("settings-brand-title"),
+                    CairoFont.WhiteSmallishText().WithFontSize(20).WithOrientation(EnumTextOrientation.Center)
+                        .WithColor(new[] { 1.0, 1.0, 1.0, 1.0 }),
+                    ElementBounds.Fixed(ContentLeft, 10, activeContentWidth, 30),
+                    "brand-title");
+                composer.BeginChildElements(ElementBounds.Fixed(0, 52, activeContentWidth, activeViewportHeight));
+            }
+
             contentHeight = selectedPage switch
             {
                 VoiceSettingsPage.Home => AddHomePage(composer, homeExtensionRows),
@@ -379,6 +395,11 @@ public sealed class VoiceSettingsDialog : GuiDialog
                 VoiceSettingsPage.Admin => AddAdminPage(composer),
                 _ => AddAudioPage(composer)
             };
+            if (!home)
+            {
+                composer.EndChildElements();
+                contentHeight += activeContentHeaderHeight;
+            }
             contentHeight = Math.Max(activeViewportHeight, contentHeight);
             scrollPosition = Math.Clamp(
                 scrollPosition,
@@ -391,29 +412,15 @@ public sealed class VoiceSettingsDialog : GuiDialog
             {
                 composer = composer.EndClip();
             }
-            if (!home)
+            if (!home && contentHeight > activeViewportHeight)
             {
-                composer.AddStaticCustomDraw(
-                    ElementBounds.Fixed(0, 0, windowWidth, viewportTop),
-                    DrawScrolledHeaderMask);
-                composer.AddStaticCustomDraw(
-                    ElementBounds.Fixed(
-                        0,
-                        viewportTop + activeViewportHeight,
-                        windowWidth,
-                        Math.Max(0, windowHeight - viewportTop - activeViewportHeight)),
-                    DrawScrolledFooterMask);
-
-                if (contentHeight > activeViewportHeight)
-                {
-                    const string scrollbarKey = "settings-scrollbar";
-                    VoiceSettingsScrollbar scrollbar = new(
-                        composer.Api,
-                        ElementBounds.Fixed(windowWidth - 20, viewportTop + 4, 8, activeViewportHeight - 8),
-                        OnScroll);
-                    scrollbar.SetHeights(activeViewportHeight, contentHeight, scrollPosition);
-                    composer.AddInteractiveElement(scrollbar, scrollbarKey);
-                }
+                const string scrollbarKey = "settings-scrollbar";
+                VoiceSettingsScrollbar scrollbar = new(
+                    composer.Api,
+                    ElementBounds.Fixed(windowWidth - 20, viewportTop + 4, 8, activeViewportHeight - 8),
+                    OnScroll);
+                scrollbar.SetHeights(activeViewportHeight, contentHeight, scrollPosition);
+                composer.AddInteractiveElement(scrollbar, scrollbarKey);
             }
         }
         if (overlay != VoiceSettingsOverlay.None)
@@ -607,38 +614,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
         ctx.SetSourceRGBA(0.78, 0.82, 0.9, 0.22);
         ctx.LineWidth = GuiElement.scaled(1);
         ctx.Stroke();
-    }
-
-    private void DrawScrolledHeaderMask(Context ctx, ImageSurface surface, ElementBounds bounds)
-    {
-        bounds.CalcWorldBounds();
-        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
-        ctx.SetSourceRGBA(0.015, 0.02, 0.028, 0.98);
-        ctx.Fill();
-
-        string title = SVCLang.Get("settings-brand-title");
-        CairoFont font = CairoFont.WhiteSmallishText()
-            .WithFontSize(20)
-            .WithColor(new[] { 1.0, 1.0, 1.0, 1.0 });
-        font.SetupContext(ctx);
-        TextExtents extents = ctx.TextExtents(title);
-        double x = bounds.drawX + (bounds.OuterWidth - extents.XAdvance) / 2d - extents.XBearing;
-        double y = bounds.drawY + (bounds.OuterHeight - ctx.FontExtents.Height) / 2d + ctx.FontExtents.Ascent;
-        ctx.MoveTo(x, y);
-        ctx.ShowText(title);
-    }
-
-    private static void DrawScrolledFooterMask(Context ctx, ImageSurface surface, ElementBounds bounds)
-    {
-        bounds.CalcWorldBounds();
-        if (bounds.InnerHeight <= 0)
-        {
-            return;
-        }
-
-        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
-        ctx.SetSourceRGBA(0.015, 0.02, 0.028, 0.98);
-        ctx.Fill();
     }
 
     private static void AddFlatButton(GuiComposer composer, string text, ActionConsumable action, ElementBounds bounds, string key, bool active = false)
@@ -1254,7 +1229,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
                 || channel.Id.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase)).ToArray();
         }
 
-        double footerY = activeViewportHeight - 44;
+        double footerY = activeViewportHeight - activeContentHeaderHeight - 44;
         double listViewportHeight = pageSize * (cardHeight + cardGap);
         int pageCount = Math.Max(1, (channels.Length + pageSize - 1) / pageSize);
         channelListPage = Math.Clamp(channelListPage, 0, pageCount - 1);
@@ -1337,7 +1312,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         AddFlatButton(composer, SVCLang.Get("button-create-channel"), OpenCreateChannelOverlay,
             ElementBounds.Fixed(x + 52, footerY, 180, 36), "open-create-channel");
         composer.GetButton("open-create-channel").Enabled = true;
-        return activeViewportHeight;
+        return activeViewportHeight - activeContentHeaderHeight;
     }
 
     private void AddOverlay(GuiComposer composer)
