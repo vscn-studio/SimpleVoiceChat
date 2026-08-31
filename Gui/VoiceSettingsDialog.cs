@@ -1996,12 +1996,14 @@ public sealed class VoiceSettingsDialog : GuiDialog
         AddAdminConfigSwitch(composer, leftX, ref leftY, label, "adpcm-fallback", SVCLang.Get("admin-config-adpcm-fallback"), value => adminConfigDraft.AllowAdpcmFallback = value);
         AddAdminConfigSwitch(composer, leftX, ref leftY, label, "director-capture", SVCLang.Get("admin-config-director-capture"), value => adminConfigDraft.EnableDirectorProximityCapture = value);
         AddAdminConfigSwitch(composer, leftX, ref leftY, label, "recorder-capture", SVCLang.Get("admin-config-recorder-capture"), value => adminConfigDraft.EnableRecorderCapture = value);
+        AddAdminConfigSwitch(composer, leftX, ref leftY, label, "proximity-chat-text", SVCLang.Get("admin-config-proximity-chat-text"), value => adminConfigDraft.EnableProximityChatText = value);
 
         double rightY = startY + 44;
         AddAdminConfigSlider(composer, rightX, ref rightY, label, "max-range", SVCLang.Get("admin-config-max-range"), adminConfigDraft.MaxRange, 10, 1280, value => adminConfigDraft.MaxRange = value / 10f, true);
         AddAdminConfigSlider(composer, rightX, ref rightY, label, "whisper-range", SVCLang.Get("admin-config-whisper-range"), adminConfigDraft.WhisperRange, 10, 1280, value => adminConfigDraft.WhisperRange = value / 10f, true);
         AddAdminConfigSlider(composer, rightX, ref rightY, label, "talk-range", SVCLang.Get("admin-config-talk-range"), adminConfigDraft.TalkRange, 10, 1280, value => adminConfigDraft.TalkRange = value / 10f, true);
         AddAdminConfigSlider(composer, rightX, ref rightY, label, "shout-range", SVCLang.Get("admin-config-shout-range"), adminConfigDraft.ShoutRange, 10, 1280, value => adminConfigDraft.ShoutRange = value / 10f, true);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "proximity-chat-range", SVCLang.Get("admin-config-proximity-chat-range"), adminConfigDraft.ProximityChatRange, 10, 1280, value => adminConfigDraft.ProximityChatRange = value / 10f, true);
         AddAdminConfigSlider(composer, rightX, ref rightY, label, "default-opus", SVCLang.Get("admin-config-default-opus"), adminConfigDraft.DefaultOpusBitrateKbps, 8, 32, value => adminConfigDraft.DefaultOpusBitrateKbps = value);
         AddAdminConfigSlider(composer, rightX, ref rightY, label, "max-opus", SVCLang.Get("admin-config-max-opus"), adminConfigDraft.MaxOpusBitrateKbps, 8, 32, value => adminConfigDraft.MaxOpusBitrateKbps = value);
         AddAdminConfigSlider(composer, rightX, ref rightY, label, "max-streams", SVCLang.Get("admin-config-max-streams"), adminConfigDraft.MaxStreamsPerListener, 1, 32, value => adminConfigDraft.MaxStreamsPerListener = value);
@@ -2062,6 +2064,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         "adpcm-fallback" => adminConfigDraft.AllowAdpcmFallback,
         "director-capture" => adminConfigDraft.EnableDirectorProximityCapture,
         "recorder-capture" => adminConfigDraft.EnableRecorderCapture,
+        "proximity-chat-text" => adminConfigDraft.EnableProximityChatText,
         _ => false
     };
 
@@ -2097,6 +2100,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             Enabled = source.Enabled, AllowWhisper = source.AllowWhisper, AllowShout = source.AllowShout,
             ForceImmersive = source.ForceImmersive, MaxRange = source.MaxRange, WhisperRange = source.WhisperRange,
             TalkRange = source.TalkRange, ShoutRange = source.ShoutRange, EnableOcclusion = source.EnableOcclusion,
+            EnableProximityChatText = source.EnableProximityChatText, ProximityChatRange = source.ProximityChatRange,
             EnableWeatherEffects = source.EnableWeatherEffects, EnableHudIndicators = source.EnableHudIndicators,
             ProtocolVersion = source.ProtocolVersion, MaxStreamsPerListener = source.MaxStreamsPerListener,
             AllowContinuousTalk = source.AllowContinuousTalk, ServerInstanceId = source.ServerInstanceId,

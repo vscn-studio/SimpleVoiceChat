@@ -19,6 +19,7 @@ SimpleVoiceChat `1.2.6` 是适用于 Vintage Story `1.22.3` 的客户端/服务�
 - 支持按键说话、语音触发通话（自由麦）、输入/输出设备选择、增益、噪声门、玩家单独音量与静音。
 - 首选 Opus 编码；ADPCM 回退默认关闭并由服务器配置决定。客户端和服务器必须使用协议 V8 兼容版本。
 - 接近度语音在客户端按距离平滑衰减到静音；频道/群组语音不受距离衰减影响，服务端转发范围不会扩大。
+- 可选的公共聊天距离可视：开启后，普通公共聊天只会显示给同维度且处于“聊天可视距离”内的玩家，发言者始终能看到自己的消息。
 - 可在本机进行麦克风试听，并主动保存仅输入或输入+输出 WAV；多人分轨由服务器权威托管。
 - 语音识别默认关闭，完全由玩家在客户端配置，不经过 SimpleVoiceChat 服务端。
 - VS Director 是可选集成，不是前置模组，也不需要单独的集成模组。
@@ -128,6 +129,10 @@ Whisper 页面通常直接提供模型文件；填写实际 `.bin` 文件路径�
 
 接近度语音在客户端播放时使用距离增益：近距离保持正常音量，接近模式范围边界时逐渐降低，到达边界时静音。服务端仍只转发配置范围内的接收者（空间查询带约 1 格缓冲），因此不会增加网络流量。频道语音不使用距离渐变；选择“接近度和当前频道”时，服务端对同时满足两种条件的接收者优先选择频道路径，其他接近度接收者使用渐变。距离增益会与总音量、玩家音量、静音/拒听和环境效果相乘。
 
+### 公共聊天距离可视
+
+管理员可在管理员设置页打开“仅显示附近聊天”，并设置“聊天可视距离”（1-128 格）。也可以在 `SimpleVoiceChat.Server.json` 中设置 `EnableProximityChatText` 和 `ProximityChatRange`。该功能只影响普通公共聊天；频道聊天、命令、系统通知和管理员消息不受影响。
+
 ### 可选 VS Director 集成
 
 SimpleVoiceChat 和 VS Director 可以独立安装。两者同时存在时，SimpleVoiceChat 会在运行时检测 `VSDirectorModSystem.VoiceApi`；不需要 `SimpleVoiceChat_VSDirectorIntegration`，主程序集也不引用 VS Director。
@@ -205,6 +210,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 
 - `SimpleVoiceChat.Client.json`：本机设备、音量、快捷方式、语音识别服务商配置和每服务器偏好。
 - `SimpleVoiceChat.Server.json`：范围、频道、容量、路由和 VS Director 捕获策略。
+- `SimpleVoiceChat.Server.json`：范围、公共聊天可视距离、频道、容量、路由和 VS Director 捕获策略。
 - 频道名称创建/修改限制由服务端 `MaxChannelNameLength` 控制，默认 24，范围 1-128；调整只作用于之后的创建和重命名，不会改动已有频道名称。也可使用 `/svc channelnamelength <1-128>` 修改并广播配置。
 - `SimpleVoiceChat.Audit.json`：服务器管理操作审计，不记录语音内容。
 
@@ -218,6 +224,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 - Push-to-talk, voice activation, input/output device selection, gain, noise gate, per-player volume, and local mute.
 - Opus is preferred; ADPCM fallback is disabled by default and controlled by the server. Compatible V8 builds are required on both sides.
 - Proximity playback applies a client-side distance fade to silence at the configured boundary; channel/group voice bypasses that fade and server forwarding does not expand.
+- Optional proximity visibility for public chat can limit ordinary chat messages to players in the same dimension and within a server-configured range; the sender always sees their own message.
 - In-memory microphone testing plus input-only, input-and-output, and server-hosted administrator multi-track WAV recording.
 - Optional client-side speech-to-chat, disabled by default and never processed by the SimpleVoiceChat server.
 - Optional runtime VS Director integration without a hard dependency or a separate integration mod.
@@ -388,7 +395,7 @@ Server administrators can use `/svc enable`, `/svc disable`, `/svc reload`, `/sv
 ### Configuration Files
 
 - `SimpleVoiceChat.Client.json`: local devices, levels, input preferences, speech-recognition provider settings, and per-server preferences.
-- `SimpleVoiceChat.Server.json`: ranges, channels, capacity, routing, and VS Director capture policy.
+- `SimpleVoiceChat.Server.json`: ranges, public-chat visibility, channels, capacity, routing, and VS Director capture policy.
 - `SimpleVoiceChat.Audit.json`: server administration events; it does not contain voice content.
 
 ## Build and Verification

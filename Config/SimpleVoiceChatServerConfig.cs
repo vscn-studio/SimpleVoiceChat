@@ -2,7 +2,7 @@ namespace SimpleVoiceChat.Config;
 
 public sealed class SimpleVoiceChatServerConfig
 {
-    private const int CurrentConfigVersion = 9;
+    private const int CurrentConfigVersion = 10;
 
     public int ConfigVersion { get; set; } = 1;
     public string ServerInstanceId { get; set; } = string.Empty;
@@ -18,6 +18,8 @@ public sealed class SimpleVoiceChatServerConfig
     public float WhisperRange { get; set; } = 8f;
     public float TalkRange { get; set; } = 18f;
     public float ShoutRange { get; set; } = 35f;
+    public bool EnableProximityChatText { get; set; } = false;
+    public float ProximityChatRange { get; set; } = 18f;
     public bool EnableOcclusion { get; set; } = true;
     public bool EnableWeatherEffects { get; set; } = true;
     public bool EnableHudIndicators { get; set; } = true;
@@ -94,6 +96,10 @@ public sealed class SimpleVoiceChatServerConfig
         {
             ConfigVersion = 9;
         }
+        if (ConfigVersion < 10)
+        {
+            ConfigVersion = 10;
+        }
         ConfigVersion = Math.Max(CurrentConfigVersion, ConfigVersion);
         if (!Guid.TryParse(ServerInstanceId, out Guid serverInstanceId) || serverInstanceId == Guid.Empty)
         {
@@ -106,6 +112,7 @@ public sealed class SimpleVoiceChatServerConfig
         WhisperRange = Math.Clamp(WhisperRange, 1f, MaxRange);
         TalkRange = Math.Clamp(TalkRange, 1f, MaxRange);
         ShoutRange = Math.Clamp(ShoutRange, 1f, MaxRange);
+        ProximityChatRange = Math.Clamp(ProximityChatRange, 1f, MaxRange);
         MaxVoicePacketsPerSecond = Math.Clamp(MaxVoicePacketsPerSecond, 5, 100);
         MaxVoiceBytesPerSecond = Math.Clamp(MaxVoiceBytesPerSecond, 2_048, 65_536);
         MaxVoicePayloadBytes = Math.Clamp(MaxVoicePayloadBytes, 1, VoiceConstants.MaxUdpPacketBytes - 32);

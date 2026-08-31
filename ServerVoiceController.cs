@@ -6,6 +6,7 @@ using SimpleVoiceChat.Server;
 using System.Diagnostics;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
+using Vintagestory.API.Datastructures;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 
@@ -88,6 +89,7 @@ public sealed class ServerVoiceController : IDisposable
         RegisterCommands();
         sapi.Event.PlayerJoin += OnPlayerJoin;
         sapi.Event.PlayerLeave += OnPlayerLeave;
+        sapi.Event.PlayerChat += OnPlayerChat;
         slowTickListenerId = sapi.Event.RegisterGameTickListener(OnSlowTick, 250);
         spatialTickListenerId = sapi.Event.RegisterGameTickListener(OnSpatialTick, 100);
         RefreshOnlinePlayerSnapshot();
@@ -694,6 +696,47 @@ public sealed class ServerVoiceController : IDisposable
         SendSnapshots(channelObservers.Concat(affectedChannelMembers));
     }
 
+    private void OnPlayerChat(IServerPlayer byPlayer, int channelId, ref string message, ref string data, BoolRef consumed)
+    {
+        if (!lifecycle.IsStarted
+            || !config.EnableProximityChatText
+            || channelId != GlobalConstants.GeneralChatGroup
+            || byPlayer.Entity == null)
+        {
+            return;
+        }
+
+        Vec3d speakerPosition = byPlayer.Entity.Pos.XYZ;
+        int speakerDimension = byPlayer.Entity.Pos.Dimension;
+        double rangeSquared = (double)config.ProximityChatRange * config.ProximityChatRange;
+        string chatMessage = message ?? string.Empty;
+        string chatData = data ?? string.Empty;
+
+        // Replace the default global broadcast with explicit nearby delivery.
+        consumed.value = true;
+        byPlayer.SendMessage(GlobalConstants.GeneralChatGroup, chatMessage, EnumChatType.OwnMessage, chatData);
+        sapi.Logger.Chat($"{GlobalConstants.GeneralChatGroup} | {byPlayer.PlayerName}: {chatMessage.Replace("{", "{{").Replace("}", "}}")}");
+        foreach (IServerPlayer recipient in sapi.World.AllOnlinePlayers.OfType<IServerPlayer>())
+        {
+            if (recipient.PlayerUID == byPlayer.PlayerUID
+                || recipient.Entity == null
+                || recipient.Entity.Pos.Dimension != speakerDimension)
+            {
+                continue;
+            }
+
+            Vec3d recipientPosition = recipient.Entity.Pos.XYZ;
+            double dx = recipientPosition.X - speakerPosition.X;
+            double dy = recipientPosition.Y - speakerPosition.Y;
+            double dz = recipientPosition.Z - speakerPosition.Z;
+            double distanceSquared = dx * dx + dy * dy + dz * dz;
+            if (double.IsFinite(distanceSquared) && distanceSquared <= rangeSquared)
+            {
+                recipient.SendMessage(GlobalConstants.GeneralChatGroup, chatMessage, EnumChatType.OthersMessage, chatData);
+            }
+        }
+    }
+
     private void OnClientState(IServerPlayer fromPlayer, ClientVoiceStatePacket packet)
     {
         if (!lifecycle.IsStarted)
@@ -921,6 +964,8 @@ public sealed class ServerVoiceController : IDisposable
             WhisperRange = packet.WhisperRange,
             TalkRange = packet.TalkRange,
             ShoutRange = packet.ShoutRange,
+            EnableProximityChatText = packet.EnableProximityChatText,
+            ProximityChatRange = packet.ProximityChatRange,
             EnableOcclusion = packet.EnableOcclusion,
             EnableWeatherEffects = packet.EnableWeatherEffects,
             EnableHudIndicators = packet.EnableHudIndicators,
@@ -3338,6 +3383,7 @@ public sealed class ServerVoiceController : IDisposable
         hostedRecorder.Dispose();
         sapi.Event.PlayerJoin -= OnPlayerJoin;
         sapi.Event.PlayerLeave -= OnPlayerLeave;
+        sapi.Event.PlayerChat -= OnPlayerChat;
         if (slowTickListenerId != 0)
         {
             sapi.Event.UnregisterGameTickListener(slowTickListenerId);

@@ -122,7 +122,7 @@ public sealed class CoreTests
 
         config.Normalize();
 
-        Assert.Equal(9, config.ConfigVersion);
+        Assert.Equal(10, config.ConfigVersion);
         Assert.Equal(32, config.MaxDirectorStreamsPerListener);
         Assert.Equal(4096, config.MaxDirectorEgressKbps);
     }
@@ -432,7 +432,7 @@ public sealed class CoreTests
         config.Normalize();
 
         PersistentVoiceChannelConfig channel = Assert.Single(config.PersistentChannels);
-        Assert.Equal(9, config.ConfigVersion);
+        Assert.Equal(10, config.ConfigVersion);
         Assert.Equal("channel-1", channel.Id);
         Assert.Equal(2, config.NextChannelNumber);
         Assert.NotEqual("legacy-general", channel.Id);
@@ -466,6 +466,23 @@ public sealed class CoreTests
         ServerVoiceConfigPacket packet = PacketMapper.ToPacket(config);
 
         Assert.True(packet.EnableRecorderCapture);
+    }
+
+    [Fact]
+    public void ProximityChatConfigurationIsNormalizedAndSentToClients()
+    {
+        SimpleVoiceChatServerConfig config = new()
+        {
+            EnableProximityChatText = true,
+            MaxRange = 40,
+            ProximityChatRange = 80
+        };
+
+        config.Normalize();
+        ServerVoiceConfigPacket packet = PacketMapper.ToPacket(config);
+
+        Assert.True(packet.EnableProximityChatText);
+        Assert.Equal(40, packet.ProximityChatRange);
     }
 
     [Fact]

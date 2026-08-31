@@ -16,6 +16,8 @@ public static class PacketMapper
             WhisperRange = config.WhisperRange,
             TalkRange = config.TalkRange,
             ShoutRange = config.ShoutRange,
+            EnableProximityChatText = config.EnableProximityChatText,
+            ProximityChatRange = config.ProximityChatRange,
             EnableOcclusion = config.EnableOcclusion,
             EnableWeatherEffects = config.EnableWeatherEffects,
             EnableHudIndicators = config.EnableHudIndicators,

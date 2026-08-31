@@ -117,6 +117,8 @@ public sealed class ServerVoiceConfigPacket
     [ProtoMember(44)] public int MaxRecorderSessionMinutes;
     [ProtoMember(45)] public int MaxRecorderClockSkewMilliseconds;
     [ProtoMember(46)] public int MaxRecorderDownloadKbps;
+    [ProtoMember(47)] public bool EnableProximityChatText;
+    [ProtoMember(48)] public float ProximityChatRange;
 
     public float GetRange(VoiceMode mode)
     {
