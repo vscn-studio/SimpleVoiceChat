@@ -170,6 +170,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private bool composeQueued;
     private bool composePending;
     private bool pointerPressed;
+    private ServerVoiceConfigPacket adminConfigDraft = new();
+    private bool adminConfigDirty;
 
     private string selectedPlayerUid = string.Empty;
     private string selectedChannelAction = "invite";
@@ -399,6 +401,14 @@ public sealed class VoiceSettingsDialog : GuiDialog
         if (!RestoreFocusedElement(SingleComposer, focusedElement))
         {
             SingleComposer.FocusElement(0);
+        }
+    }
+
+    internal void OnServerConfigRefreshed()
+    {
+        if (!adminConfigDirty)
+        {
+            adminConfigDraft = CloneServerConfig(controller.ServerSettings);
         }
     }
 
@@ -1955,7 +1965,158 @@ public sealed class VoiceSettingsDialog : GuiDialog
         composer.GetTextInput("adminRenameInput").SetMaxLength(controller.MaxChannelNameLength);
         composer.GetButton("adminApply").Enabled = CanExecuteAdminAction();
         composer.GetButton("adminRename").Enabled = CanRenameAdminChannel(channels);
-        return Math.Max(leftY, rightY) + 60;
+        return AddAdminConfigSection(composer, Math.Max(leftY, rightY) + 30);
+    }
+
+    private double AddAdminConfigSection(GuiComposer composer, double startY)
+    {
+        const double leftX = 18;
+        const double rightX = 466;
+        const double columnWidth = 420;
+        CairoFont section = CairoFont.WhiteSmallishText();
+        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+
+        composer.AddStaticText(SVCLang.Get("ui-section-server-config"), section, ElementBounds.Fixed(leftX, startY, columnWidth, 28));
+        AddFlatButton(composer, SVCLang.Get("button-apply-config"), ApplyAdminConfig, ElementBounds.Fixed(rightX + 188, startY - 2, 104, 32), "adminConfigApply", adminConfigDirty);
+        AddFlatButton(composer, SVCLang.Get("button-reload-config"), ReloadAdminConfig, ElementBounds.Fixed(rightX + 300, startY - 2, 104, 32), "adminConfigReload");
+        composer.GetButton("adminConfigApply").Enabled = adminConfigDirty;
+
+        double leftY = startY + 44;
+        AddAdminConfigSwitch(composer, leftX, ref leftY, label, "enabled", SVCLang.Get("admin-config-enabled"), value => adminConfigDraft.Enabled = value);
+        AddAdminConfigSwitch(composer, leftX, ref leftY, label, "allow-whisper", SVCLang.Get("admin-config-allow-whisper"), value => adminConfigDraft.AllowWhisper = value);
+        AddAdminConfigSwitch(composer, leftX, ref leftY, label, "allow-shout", SVCLang.Get("admin-config-allow-shout"), value => adminConfigDraft.AllowShout = value);
+        AddAdminConfigSwitch(composer, leftX, ref leftY, label, "force-immersive", SVCLang.Get("admin-config-force-immersive"), value => adminConfigDraft.ForceImmersive = value);
+        AddAdminConfigSwitch(composer, leftX, ref leftY, label, "enable-occlusion", SVCLang.Get("admin-config-enable-occlusion"), value => adminConfigDraft.EnableOcclusion = value);
+        AddAdminConfigSwitch(composer, leftX, ref leftY, label, "enable-weather", SVCLang.Get("admin-config-enable-weather"), value => adminConfigDraft.EnableWeatherEffects = value);
+        AddAdminConfigSwitch(composer, leftX, ref leftY, label, "enable-hud", SVCLang.Get("admin-config-enable-hud"), value => adminConfigDraft.EnableHudIndicators = value);
+        AddAdminConfigSwitch(composer, leftX, ref leftY, label, "allow-continuous-talk", SVCLang.Get("admin-config-allow-continuous-talk"), value => adminConfigDraft.AllowContinuousTalk = value);
+        AddAdminConfigSwitch(composer, leftX, ref leftY, label, "enable-channels", SVCLang.Get("admin-config-enable-channels"), value => adminConfigDraft.EnableChannels = value);
+        AddAdminConfigSwitch(composer, leftX, ref leftY, label, "allow-channel-creation", SVCLang.Get("admin-config-allow-channel-creation"), value => adminConfigDraft.AllowPlayerChannelCreation = value);
+        AddAdminConfigSwitch(composer, leftX, ref leftY, label, "adaptive-bitrate", SVCLang.Get("admin-config-adaptive-bitrate"), value => adminConfigDraft.EnableAdaptiveBitrate = value);
+        AddAdminConfigSwitch(composer, leftX, ref leftY, label, "adpcm-fallback", SVCLang.Get("admin-config-adpcm-fallback"), value => adminConfigDraft.AllowAdpcmFallback = value);
+        AddAdminConfigSwitch(composer, leftX, ref leftY, label, "director-capture", SVCLang.Get("admin-config-director-capture"), value => adminConfigDraft.EnableDirectorProximityCapture = value);
+        AddAdminConfigSwitch(composer, leftX, ref leftY, label, "recorder-capture", SVCLang.Get("admin-config-recorder-capture"), value => adminConfigDraft.EnableRecorderCapture = value);
+
+        double rightY = startY + 44;
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "max-range", SVCLang.Get("admin-config-max-range"), adminConfigDraft.MaxRange, 10, 1280, value => adminConfigDraft.MaxRange = value / 10f, true);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "whisper-range", SVCLang.Get("admin-config-whisper-range"), adminConfigDraft.WhisperRange, 10, 1280, value => adminConfigDraft.WhisperRange = value / 10f, true);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "talk-range", SVCLang.Get("admin-config-talk-range"), adminConfigDraft.TalkRange, 10, 1280, value => adminConfigDraft.TalkRange = value / 10f, true);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "shout-range", SVCLang.Get("admin-config-shout-range"), adminConfigDraft.ShoutRange, 10, 1280, value => adminConfigDraft.ShoutRange = value / 10f, true);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "default-opus", SVCLang.Get("admin-config-default-opus"), adminConfigDraft.DefaultOpusBitrateKbps, 8, 32, value => adminConfigDraft.DefaultOpusBitrateKbps = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "max-opus", SVCLang.Get("admin-config-max-opus"), adminConfigDraft.MaxOpusBitrateKbps, 8, 32, value => adminConfigDraft.MaxOpusBitrateKbps = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "max-streams", SVCLang.Get("admin-config-max-streams"), adminConfigDraft.MaxStreamsPerListener, 1, 32, value => adminConfigDraft.MaxStreamsPerListener = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "max-proximity-streams", SVCLang.Get("admin-config-max-proximity-streams"), adminConfigDraft.MaxProximityStreams, 1, 32, value => adminConfigDraft.MaxProximityStreams = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "channel-talkers", SVCLang.Get("admin-config-channel-talkers"), adminConfigDraft.MaxChannelTalkers, 1, 12, value => adminConfigDraft.MaxChannelTalkers = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "channel-members", SVCLang.Get("admin-config-channel-members"), adminConfigDraft.MaxChannelMembers, 2, 100, value => adminConfigDraft.MaxChannelMembers = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "channels-per-player", SVCLang.Get("admin-config-channels-per-player"), adminConfigDraft.MaxChannelsPerPlayer, 1, 8, value => adminConfigDraft.MaxChannelsPerPlayer = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "max-channels", SVCLang.Get("admin-config-max-channels"), adminConfigDraft.MaxChannels, 16, 512, value => adminConfigDraft.MaxChannels = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "channel-name-length", SVCLang.Get("admin-config-channel-name-length"), adminConfigDraft.MaxChannelNameLength, 1, VoiceProtocol.MaxControlStringLength, value => adminConfigDraft.MaxChannelNameLength = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "voice-packets", SVCLang.Get("admin-config-voice-packets"), adminConfigDraft.MaxVoicePacketsPerSecond, 5, 100, value => adminConfigDraft.MaxVoicePacketsPerSecond = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "voice-bytes", SVCLang.Get("admin-config-voice-bytes"), adminConfigDraft.MaxVoiceBytesPerSecond, 2048, 65536, value => adminConfigDraft.MaxVoiceBytesPerSecond = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "voice-payload", SVCLang.Get("admin-config-voice-payload"), adminConfigDraft.MaxVoicePayloadBytes, 1, VoiceConstants.MaxUdpPacketBytes - 32, value => adminConfigDraft.MaxVoicePayloadBytes = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "channel-page-size", SVCLang.Get("admin-config-channel-page-size"), adminConfigDraft.ChannelMemberPageSize, 8, 50, value => adminConfigDraft.ChannelMemberPageSize = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "server-egress", SVCLang.Get("admin-config-server-egress"), adminConfigDraft.MaxServerEgressKbps, 1000, 100000, value => adminConfigDraft.MaxServerEgressKbps = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "listener-egress", SVCLang.Get("admin-config-listener-egress"), adminConfigDraft.MaxListenerEgressKbps, 64, 2048, value => adminConfigDraft.MaxListenerEgressKbps = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "director-egress", SVCLang.Get("admin-config-director-egress"), adminConfigDraft.MaxDirectorEgressKbps, 512, 8192, value => adminConfigDraft.MaxDirectorEgressKbps = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "spatial-cell", SVCLang.Get("admin-config-spatial-cell"), adminConfigDraft.SpatialCellSize, 4, 64, value => adminConfigDraft.SpatialCellSize = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "audit-retention", SVCLang.Get("admin-config-audit-retention"), adminConfigDraft.AuditRetention, 50, 2000, value => adminConfigDraft.AuditRetention = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "director-listeners", SVCLang.Get("admin-config-director-listeners"), adminConfigDraft.MaxDirectorListeners, 1, 8, value => adminConfigDraft.MaxDirectorListeners = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "director-streams", SVCLang.Get("admin-config-director-streams"), adminConfigDraft.MaxDirectorStreamsPerListener, 1, 64, value => adminConfigDraft.MaxDirectorStreamsPerListener = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "recorder-listeners", SVCLang.Get("admin-config-recorder-listeners"), adminConfigDraft.MaxRecorderListeners, 1, 4, value => adminConfigDraft.MaxRecorderListeners = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "recorder-egress", SVCLang.Get("admin-config-recorder-egress"), adminConfigDraft.MaxRecorderEgressKbps, 512, 8192, value => adminConfigDraft.MaxRecorderEgressKbps = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "recorder-checkpoint", SVCLang.Get("admin-config-recorder-checkpoint"), adminConfigDraft.RecorderCheckpointSeconds, 1, 60, value => adminConfigDraft.RecorderCheckpointSeconds = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "recorder-session", SVCLang.Get("admin-config-recorder-session"), adminConfigDraft.MaxRecorderSessionMinutes, 1, 1440, value => adminConfigDraft.MaxRecorderSessionMinutes = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "recorder-clock-skew", SVCLang.Get("admin-config-recorder-clock-skew"), adminConfigDraft.MaxRecorderClockSkewMilliseconds, 250, 10000, value => adminConfigDraft.MaxRecorderClockSkewMilliseconds = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "recorder-download", SVCLang.Get("admin-config-recorder-download"), adminConfigDraft.MaxRecorderDownloadKbps, 256, 100000, value => adminConfigDraft.MaxRecorderDownloadKbps = value);
+        return Math.Max(leftY, rightY) + 24;
+    }
+
+    private void AddAdminConfigSwitch(GuiComposer composer, double x, ref double y, CairoFont label, string key, string text, Action<bool> set)
+    {
+        composer.AddStaticText(text, label, ElementBounds.Fixed(x, y + 2, 210, 30));
+        AddCheckBox(composer, value => { set(value); MarkAdminConfigDirty(); }, ElementBounds.Fixed(x + 217, y, 28, 28), "admin-config-" + key, GetAdminConfigBool(key));
+        y += 40;
+    }
+
+    private void AddAdminConfigSlider(GuiComposer composer, double x, ref double y, CairoFont label, string key, string text, float value, int minimum, int maximum, Action<int> set, bool range = false)
+    {
+        composer.AddStaticText(text, label, ElementBounds.Fixed(x, y + 2, 210, 30));
+        composer.AddVoiceSlider(number => { set(number); MarkAdminConfigDirty(); return true; }, ElementBounds.Fixed(x + 217, y, 190, 32), "admin-config-" + key);
+        ConfigureSlider(composer, "admin-config-" + key, (int)Math.Round(value * (range ? 10 : 1)), minimum, maximum);
+        y += 40;
+    }
+
+    private bool GetAdminConfigBool(string key) => key switch
+    {
+        "enabled" => adminConfigDraft.Enabled,
+        "allow-whisper" => adminConfigDraft.AllowWhisper,
+        "allow-shout" => adminConfigDraft.AllowShout,
+        "force-immersive" => adminConfigDraft.ForceImmersive,
+        "enable-occlusion" => adminConfigDraft.EnableOcclusion,
+        "enable-weather" => adminConfigDraft.EnableWeatherEffects,
+        "enable-hud" => adminConfigDraft.EnableHudIndicators,
+        "allow-continuous-talk" => adminConfigDraft.AllowContinuousTalk,
+        "enable-channels" => adminConfigDraft.EnableChannels,
+        "allow-channel-creation" => adminConfigDraft.AllowPlayerChannelCreation,
+        "adaptive-bitrate" => adminConfigDraft.EnableAdaptiveBitrate,
+        "adpcm-fallback" => adminConfigDraft.AllowAdpcmFallback,
+        "director-capture" => adminConfigDraft.EnableDirectorProximityCapture,
+        "recorder-capture" => adminConfigDraft.EnableRecorderCapture,
+        _ => false
+    };
+
+    private void MarkAdminConfigDirty()
+    {
+        adminConfigDirty = true;
+        SetButtonEnabled("adminConfigApply", true);
+    }
+
+    private bool ApplyAdminConfig()
+    {
+        if (!controller.HasServerControl || !adminConfigDirty) return false;
+        controller.ApplyServerConfigFromSettings(adminConfigDraft, reload: false);
+        adminConfigDirty = false;
+        QueueCompose();
+        return true;
+    }
+
+    private bool ReloadAdminConfig()
+    {
+        if (!controller.HasServerControl) return false;
+        controller.ApplyServerConfigFromSettings(controller.ServerSettings, reload: true);
+        adminConfigDraft = CloneServerConfig(controller.ServerSettings);
+        adminConfigDirty = false;
+        QueueCompose();
+        return true;
+    }
+
+    private static ServerVoiceConfigPacket CloneServerConfig(ServerVoiceConfigPacket source)
+    {
+        return new ServerVoiceConfigPacket
+        {
+            Enabled = source.Enabled, AllowWhisper = source.AllowWhisper, AllowShout = source.AllowShout,
+            ForceImmersive = source.ForceImmersive, MaxRange = source.MaxRange, WhisperRange = source.WhisperRange,
+            TalkRange = source.TalkRange, ShoutRange = source.ShoutRange, EnableOcclusion = source.EnableOcclusion,
+            EnableWeatherEffects = source.EnableWeatherEffects, EnableHudIndicators = source.EnableHudIndicators,
+            ProtocolVersion = source.ProtocolVersion, MaxStreamsPerListener = source.MaxStreamsPerListener,
+            AllowContinuousTalk = source.AllowContinuousTalk, ServerInstanceId = source.ServerInstanceId,
+            EnableDirectorProximityCapture = source.EnableDirectorProximityCapture, EnableRecorderCapture = source.EnableRecorderCapture,
+            DefaultOpusBitrateKbps = source.DefaultOpusBitrateKbps, MaxOpusBitrateKbps = source.MaxOpusBitrateKbps,
+            EnableAdaptiveBitrate = source.EnableAdaptiveBitrate, AllowAdpcmFallback = source.AllowAdpcmFallback,
+            MaxChannelNameLength = source.MaxChannelNameLength, MaxVoicePacketsPerSecond = source.MaxVoicePacketsPerSecond,
+            MaxVoiceBytesPerSecond = source.MaxVoiceBytesPerSecond, MaxVoicePayloadBytes = source.MaxVoicePayloadBytes,
+            MaxServerEgressKbps = source.MaxServerEgressKbps, MaxListenerEgressKbps = source.MaxListenerEgressKbps,
+            MaxDirectorEgressKbps = source.MaxDirectorEgressKbps, SpatialCellSize = source.SpatialCellSize,
+            MaxProximityStreams = source.MaxProximityStreams, MaxChannelTalkers = source.MaxChannelTalkers,
+            MaxChannelMembers = source.MaxChannelMembers, MaxChannelsPerPlayer = source.MaxChannelsPerPlayer,
+            MaxChannels = source.MaxChannels, ChannelMemberPageSize = source.ChannelMemberPageSize,
+            AuditRetention = source.AuditRetention, EnableChannels = source.EnableChannels,
+            AllowPlayerChannelCreation = source.AllowPlayerChannelCreation, MaxDirectorListeners = source.MaxDirectorListeners,
+            MaxDirectorStreamsPerListener = source.MaxDirectorStreamsPerListener, MaxRecorderListeners = source.MaxRecorderListeners,
+            MaxRecorderEgressKbps = source.MaxRecorderEgressKbps, RecorderCheckpointSeconds = source.RecorderCheckpointSeconds,
+            MaxRecorderSessionMinutes = source.MaxRecorderSessionMinutes, MaxRecorderClockSkewMilliseconds = source.MaxRecorderClockSkewMilliseconds,
+            MaxRecorderDownloadKbps = source.MaxRecorderDownloadKbps
+        };
     }
 
     private static void AddSwitchRow(GuiComposer composer, double x, ref double y, string text, string key, bool value, Action<bool> changed)
@@ -2071,6 +2232,11 @@ public sealed class VoiceSettingsDialog : GuiDialog
         }
         selectedPage = page;
         scrollPosition = 0;
+        if (page == VoiceSettingsPage.Admin)
+        {
+            adminConfigDraft = CloneServerConfig(controller.ServerSettings);
+            adminConfigDirty = false;
+        }
         if (page == VoiceSettingsPage.Channels)
         {
             channelListPage = 0;

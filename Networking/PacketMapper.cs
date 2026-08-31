@@ -29,7 +29,31 @@ public static class PacketMapper
             MaxOpusBitrateKbps = config.MaxOpusBitrateKbps,
             EnableAdaptiveBitrate = config.EnableAdaptiveBitrate,
             AllowAdpcmFallback = config.AllowAdpcmFallback,
-            MaxChannelNameLength = config.MaxChannelNameLength
+            MaxChannelNameLength = config.MaxChannelNameLength,
+            MaxVoicePacketsPerSecond = config.MaxVoicePacketsPerSecond,
+            MaxVoiceBytesPerSecond = config.MaxVoiceBytesPerSecond,
+            MaxVoicePayloadBytes = config.MaxVoicePayloadBytes,
+            MaxServerEgressKbps = config.MaxServerEgressKbps,
+            MaxListenerEgressKbps = config.MaxListenerEgressKbps,
+            MaxDirectorEgressKbps = config.MaxDirectorEgressKbps,
+            SpatialCellSize = config.SpatialCellSize,
+            MaxProximityStreams = config.MaxProximityStreams,
+            MaxChannelTalkers = config.MaxChannelTalkers,
+            MaxChannelMembers = config.MaxChannelMembers,
+            MaxChannelsPerPlayer = config.MaxChannelsPerPlayer,
+            MaxChannels = config.MaxChannels,
+            ChannelMemberPageSize = config.ChannelMemberPageSize,
+            AuditRetention = config.AuditRetention,
+            EnableChannels = config.EnableChannels,
+            AllowPlayerChannelCreation = config.AllowPlayerChannelCreation,
+            MaxDirectorListeners = config.MaxDirectorListeners,
+            MaxDirectorStreamsPerListener = config.MaxDirectorStreamsPerListener,
+            MaxRecorderListeners = config.MaxRecorderListeners,
+            MaxRecorderEgressKbps = config.MaxRecorderEgressKbps,
+            RecorderCheckpointSeconds = config.RecorderCheckpointSeconds,
+            MaxRecorderSessionMinutes = config.MaxRecorderSessionMinutes,
+            MaxRecorderClockSkewMilliseconds = config.MaxRecorderClockSkewMilliseconds,
+            MaxRecorderDownloadKbps = config.MaxRecorderDownloadKbps
         };
     }
 }

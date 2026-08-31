@@ -16,7 +16,7 @@ public sealed class ServerHostedRecordingService : IDisposable
 
     private readonly object gate = new();
     private readonly string rootDirectory;
-    private readonly long checkpointIntervalMilliseconds;
+    private long checkpointIntervalMilliseconds;
     private readonly Dictionary<string, HostedTrack> tracks = new(StringComparer.Ordinal);
     private HostedRecordingState? state;
     private long lastCheckpointMilliseconds;
@@ -31,6 +31,14 @@ public sealed class ServerHostedRecordingService : IDisposable
     }
 
     public string RootDirectory => rootDirectory;
+
+    public void SetCheckpointInterval(int checkpointSeconds)
+    {
+        lock (gate)
+        {
+            checkpointIntervalMilliseconds = Math.Clamp(checkpointSeconds, 1, 60) * 1000L;
+        }
+    }
 
     public bool IsActive
     {

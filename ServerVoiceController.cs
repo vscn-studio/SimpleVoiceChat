@@ -99,6 +99,7 @@ public sealed class ServerVoiceController : IDisposable
         controlChannel = sapi.Network.RegisterChannel(VoiceConstants.ControlChannelName)
             .RegisterMessageType<ClientVoiceStatePacket>()
             .RegisterMessageType<ServerVoiceConfigPacket>()
+            .RegisterMessageType<AdminVoiceConfigPacket>()
             .RegisterMessageType<MutePlayerPacket>()
             .RegisterMessageType<AdminVoiceControlPacket>()
             .RegisterMessageType<VoiceHelloPacket>()
@@ -126,6 +127,7 @@ public sealed class ServerVoiceController : IDisposable
             .SetMessageHandler<ClientVoiceStatePacket>(OnClientState)
             .SetMessageHandler<MutePlayerPacket>(OnMutePlayer)
             .SetMessageHandler<AdminVoiceControlPacket>(OnAdminVoiceControl)
+            .SetMessageHandler<AdminVoiceConfigPacket>(OnAdminVoiceConfig)
             .SetMessageHandler<VoiceHelloPacket>(OnVoiceHello)
             .SetMessageHandler<DirectorVoiceListenerUpdatePacket>(OnDirectorVoiceListenerUpdate)
             .SetMessageHandler<RecorderVoiceListenerPacket>(OnRecorderVoiceListenerUpdate)
@@ -851,6 +853,108 @@ public sealed class ServerVoiceController : IDisposable
 
         TextCommandResult result = HandleAdminVoiceControl(action, targetNameOrUid, fromPlayer);
         SendPlayerMessage(fromPlayer, result.StatusMessage);
+    }
+
+    private void OnAdminVoiceConfig(IServerPlayer fromPlayer, AdminVoiceConfigPacket packet)
+    {
+        if (!lifecycle.IsStarted
+            || packet == null
+            || !sessionsByUid.TryGetValue(fromPlayer.PlayerUID, out VoiceClientSession? session)
+            || !session.ControlRate.TryConsume(1, sapi.World.ElapsedMilliseconds))
+        {
+            return;
+        }
+        if (!fromPlayer.HasPrivilege(Privilege.controlserver))
+        {
+            SendPlayerMessage(fromPlayer, SVCLang.Get("server-no-voice-admin-permission"));
+            return;
+        }
+
+        if (packet.Reload)
+        {
+            if (!TryReloadConfig(out string reloadError))
+            {
+                SendPlayerMessage(fromPlayer, SVCLang.Get("server-config-reload-failed", reloadError));
+                return;
+            }
+            RebuildRoutingLimits();
+            BroadcastConfig();
+            RecordAudit(fromPlayer, "config-reload", reason: "administrator requested server configuration reload");
+            SendPlayerMessage(fromPlayer, SVCLang.Get("server-config-reloaded"));
+            return;
+        }
+
+        if (!packet.Apply || packet.Config == null)
+        {
+            return;
+        }
+        SimpleVoiceChatServerConfig updated = BuildConfigFromPacket(packet.Config);
+        updated.Normalize();
+        config = updated;
+        auditLog.SetRetention(config.AuditRetention);
+        SaveConfig();
+        RebuildRoutingLimits();
+        BroadcastConfig();
+        RecordAudit(fromPlayer, "config-apply", reason: "administrator applied server configuration");
+        SendPlayerMessage(fromPlayer, SVCLang.Get("server-config-applied"));
+    }
+
+    private SimpleVoiceChatServerConfig BuildConfigFromPacket(ServerVoiceConfigPacket packet)
+    {
+        SimpleVoiceChatServerConfig updated = new()
+        {
+            ConfigVersion = config.ConfigVersion,
+            ServerInstanceId = config.ServerInstanceId,
+            NextChannelNumber = config.NextChannelNumber,
+            GloballyMutedPlayerUids = config.GloballyMutedPlayerUids,
+            ForceBlockedPlayerUids = config.ForceBlockedPlayerUids,
+            PersistentChannels = config.PersistentChannels,
+            Enabled = packet.Enabled,
+            AllowAdpcmFallback = packet.AllowAdpcmFallback,
+            DefaultOpusBitrateKbps = packet.DefaultOpusBitrateKbps,
+            MaxOpusBitrateKbps = packet.MaxOpusBitrateKbps,
+            EnableAdaptiveBitrate = packet.EnableAdaptiveBitrate,
+            AllowWhisper = packet.AllowWhisper,
+            AllowShout = packet.AllowShout,
+            ForceImmersive = packet.ForceImmersive,
+            MaxRange = packet.MaxRange,
+            WhisperRange = packet.WhisperRange,
+            TalkRange = packet.TalkRange,
+            ShoutRange = packet.ShoutRange,
+            EnableOcclusion = packet.EnableOcclusion,
+            EnableWeatherEffects = packet.EnableWeatherEffects,
+            EnableHudIndicators = packet.EnableHudIndicators,
+            MaxVoicePacketsPerSecond = packet.MaxVoicePacketsPerSecond,
+            MaxVoiceBytesPerSecond = packet.MaxVoiceBytesPerSecond,
+            MaxVoicePayloadBytes = packet.MaxVoicePayloadBytes,
+            MaxServerEgressKbps = packet.MaxServerEgressKbps,
+            MaxListenerEgressKbps = packet.MaxListenerEgressKbps,
+            MaxDirectorEgressKbps = packet.MaxDirectorEgressKbps,
+            SpatialCellSize = packet.SpatialCellSize,
+            MaxStreamsPerListener = packet.MaxStreamsPerListener,
+            MaxProximityStreams = packet.MaxProximityStreams,
+            MaxChannelTalkers = packet.MaxChannelTalkers,
+            MaxChannelMembers = packet.MaxChannelMembers,
+            MaxChannelsPerPlayer = packet.MaxChannelsPerPlayer,
+            MaxChannels = packet.MaxChannels,
+            MaxChannelNameLength = packet.MaxChannelNameLength,
+            ChannelMemberPageSize = packet.ChannelMemberPageSize,
+            AuditRetention = packet.AuditRetention,
+            AllowContinuousTalk = packet.AllowContinuousTalk,
+            EnableChannels = packet.EnableChannels,
+            AllowPlayerChannelCreation = packet.AllowPlayerChannelCreation,
+            EnableDirectorProximityCapture = packet.EnableDirectorProximityCapture,
+            MaxDirectorListeners = packet.MaxDirectorListeners,
+            MaxDirectorStreamsPerListener = packet.MaxDirectorStreamsPerListener,
+            EnableRecorderCapture = packet.EnableRecorderCapture,
+            MaxRecorderListeners = packet.MaxRecorderListeners,
+            MaxRecorderEgressKbps = packet.MaxRecorderEgressKbps,
+            RecorderCheckpointSeconds = packet.RecorderCheckpointSeconds,
+            MaxRecorderSessionMinutes = packet.MaxRecorderSessionMinutes,
+            MaxRecorderClockSkewMilliseconds = packet.MaxRecorderClockSkewMilliseconds,
+            MaxRecorderDownloadKbps = packet.MaxRecorderDownloadKbps
+        };
+        return updated;
     }
 
     private void OnVoiceHello(IServerPlayer player, VoiceHelloPacket packet)
@@ -2789,8 +2893,10 @@ public sealed class ServerVoiceController : IDisposable
         listenerEgressBudget.SetLimit(config.MaxListenerEgressKbps);
         directorEgressBudget.SetLimit(config.MaxDirectorEgressKbps);
         recorderEgressBudget.SetLimit(config.MaxRecorderEgressKbps);
+        hostedRecorder.SetCheckpointInterval(config.RecorderCheckpointSeconds);
         StopAllTalkerNotifications();
         RestorePersistentChannels();
+        SynchronizeChannelProviders();
         RefreshOnlinePlayerSnapshot();
         long now = sapi.World.ElapsedMilliseconds;
         foreach (KeyValuePair<string, VoiceClientSession> pair in sessionsByUid)

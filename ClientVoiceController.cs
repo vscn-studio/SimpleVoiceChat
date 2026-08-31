@@ -304,6 +304,7 @@ public sealed class ClientVoiceController : IDisposable
         controlChannel = capi.Network.RegisterChannel(VoiceConstants.ControlChannelName)
             .RegisterMessageType<ClientVoiceStatePacket>()
             .RegisterMessageType<ServerVoiceConfigPacket>()
+            .RegisterMessageType<AdminVoiceConfigPacket>()
             .RegisterMessageType<MutePlayerPacket>()
             .RegisterMessageType<AdminVoiceControlPacket>()
             .RegisterMessageType<VoiceHelloPacket>()
@@ -745,6 +746,7 @@ public sealed class ClientVoiceController : IDisposable
         }
         SaveConfig();
         hud?.Refresh();
+        settingsDialog?.OnServerConfigRefreshed();
         settingsDialog?.RefreshConfiguration();
     }
 
@@ -2326,6 +2328,22 @@ public sealed class ClientVoiceController : IDisposable
     }
 
     internal bool HasServerControl => hasServerControl;
+
+    internal ServerVoiceConfigPacket ServerSettings => serverConfig;
+
+    internal void ApplyServerConfigFromSettings(ServerVoiceConfigPacket settings, bool reload)
+    {
+        if (!hasServerControl || controlChannel?.Connected != true)
+        {
+            return;
+        }
+        controlChannel.SendPacket(new AdminVoiceConfigPacket
+        {
+            Apply = !reload,
+            Reload = reload,
+            Config = settings ?? new ServerVoiceConfigPacket()
+        });
+    }
 
     internal void RequestSettingsRefresh()
     {
