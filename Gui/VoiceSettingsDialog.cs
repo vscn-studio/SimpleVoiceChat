@@ -553,15 +553,11 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     public override void OnMouseWheel(MouseWheelEventArgs args)
     {
-        base.OnMouseWheel(args);
-        if (args.IsHandled)
-        {
-            return;
-        }
-
         if (!IsOpened() || SingleComposer == null
+            || contentHeight <= activeViewportHeight
             || !SingleComposer.Bounds.PointInside(capi.Input.MouseX, capi.Input.MouseY))
         {
+            base.OnMouseWheel(args);
             return;
         }
 
@@ -573,7 +569,10 @@ public sealed class VoiceSettingsDialog : GuiDialog
         {
             OnScroll(next);
             args.SetHandled();
+            return;
         }
+
+        base.OnMouseWheel(args);
     }
 
     private void RegisterFontAwesomeIcons()
