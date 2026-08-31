@@ -1117,20 +1117,20 @@ public sealed class VoiceSettingsDialog : GuiDialog
         if (!localProvider)
         {
             composer.AddStaticText(SVCLang.Get("label-speech-recognition-api-key"), label, ElementBounds.Fixed(labelX, y, 220, 30))
-                .AddTextInput(ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), controller.SetSpeechRecognitionApiKeyFromSettings,
+                .AddVoiceTextInput(ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), controller.SetSpeechRecognitionApiKeyFromSettings,
                     CairoFont.TextInput(), "speech-recognition-api-key");
             y += 46;
         }
         composer
             .AddStaticText(SVCLang.Get(localProvider ? "label-speech-recognition-model-path" : "label-speech-recognition-model"), label, ElementBounds.Fixed(labelX, y, 220, 30))
-            .AddTextInput(ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), controller.SetSpeechRecognitionModelFromSettings,
+            .AddVoiceTextInput(ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), controller.SetSpeechRecognitionModelFromSettings,
                 CairoFont.TextInput(), "speech-recognition-model")
             ;
         if (!localProvider)
         {
             composer
                 .AddStaticText(SVCLang.Get("label-speech-recognition-endpoint"), label, ElementBounds.Fixed(labelX, y += 46, 220, 30))
-                .AddTextInput(ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), controller.SetSpeechRecognitionEndpointFromSettings,
+                .AddVoiceTextInput(ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), controller.SetSpeechRecognitionEndpointFromSettings,
                     CairoFont.TextInput(), "speech-recognition-endpoint");
         }
 
@@ -1211,7 +1211,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         VoiceSettingsChannelOption[] channels = controller.BuildChannelOptions();
         double y = 0;
         composer.AddStaticText(SVCLang.Get("tab-channels"), section, ElementBounds.Fixed(x, y, width, 28));
-        composer.AddTextInput(ElementBounds.Fixed(x + 300, y - 2, 330, 34), value =>
+        composer.AddVoiceTextInput(ElementBounds.Fixed(x + 300, y - 2, 330, 34), value =>
         {
             channelSearchDraft = value;
         }, CairoFont.TextInput(), "channel-search");
@@ -1637,7 +1637,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "join-channel-close");
         CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
         composer.AddStaticText(Truncate(channel.Name, 46), label, ElementBounds.Fixed(x + 24, y + 54, 240, 28));
-        composer.AddTextInput(ElementBounds.Fixed(x + 270, y + 50, 260, 34), value => { joinPassword = value; }, CairoFont.TextInput(), "join-channel-password");
+        composer.AddVoiceTextInput(ElementBounds.Fixed(x + 270, y + 50, 260, 34), value => { joinPassword = value; }, CairoFont.TextInput(), "join-channel-password");
         composer.GetTextInput("join-channel-password").SetValue(joinPassword);
         composer.GetTextInput("join-channel-password").SetMaxLength(VoiceProtocol.MaxControlStringLength);
         AddFlatButton(composer, SVCLang.Get("button-join-channel"), () =>
@@ -1769,7 +1769,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("players-title"));
         AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "players-overlay-close");
         VoiceSettingsPlayerOption[] players = controller.BuildPlayerOptions();
-        composer.AddTextInput(ElementBounds.Fixed(x + 300, y + 12, 360, 32), value =>
+        composer.AddVoiceTextInput(ElementBounds.Fixed(x + 300, y + 12, 360, 32), value =>
         {
             playerSearchDraft = value;
         }, CairoFont.TextInput(), "players-search");
@@ -1897,9 +1897,9 @@ public sealed class VoiceSettingsDialog : GuiDialog
         CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
         CairoFont input = CairoFont.TextInput();
         composer.AddStaticText(SVCLang.Get("label-channel-name"), label, ElementBounds.Fixed(x + 24, y + 68, 180, 28))
-            .AddTextInput(ElementBounds.Fixed(x + 214, y + 64, 340, 34), OnCreateNameChanged, input, "overlay-create-name")
+            .AddVoiceTextInput(ElementBounds.Fixed(x + 214, y + 64, 340, 34), OnCreateNameChanged, input, "overlay-create-name")
             .AddStaticText(SVCLang.Get("label-channel-password"), label, ElementBounds.Fixed(x + 24, y + 124, 180, 28))
-            .AddTextInput(ElementBounds.Fixed(x + 214, y + 120, 340, 34), OnCreatePasswordChanged, input, "overlay-create-password");
+            .AddVoiceTextInput(ElementBounds.Fixed(x + 214, y + 120, 340, 34), OnCreatePasswordChanged, input, "overlay-create-password");
         string[] visibilityValues = { "open", "password", "hidden" };
         string[] visibilityNames = visibilityValues.Select(value => SVCLang.Get("channel-visibility-" + value)).ToArray();
         composer.AddStaticText(SVCLang.Get("label-channel-visibility"), label, ElementBounds.Fixed(x + 24, y + 180, 180, 28))
@@ -1996,7 +1996,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         AddFlatButton(composer, SVCLang.Get("button-apply"), ExecuteAdminChannelAction, ElementBounds.Fixed(rightX + 345, rightY, 76, 32), "adminApply");
         composer
             .AddStaticText(SVCLang.Get("label-channel-name"), section, ElementBounds.Fixed(rightX, rightY += 52, columnWidth, 26))
-            .AddTextInput(ElementBounds.Fixed(rightX + 217, rightY += 38, 120, 32), OnRenameTextChanged, input, "adminRenameInput");
+            .AddVoiceTextInput(ElementBounds.Fixed(rightX + 217, rightY += 38, 120, 32), OnRenameTextChanged, input, "adminRenameInput");
         AddFlatButton(composer, SVCLang.Get("button-rename-channel"), RenameAdminChannel, ElementBounds.Fixed(rightX + 345, rightY, 76, 32), "adminRename");
         composer.GetTextInput("adminRenameInput").SetValue(renameText);
         composer.GetTextInput("adminRenameInput").SetMaxLength(controller.MaxChannelNameLength);
