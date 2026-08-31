@@ -22,6 +22,34 @@ internal static class VoiceSettingsVisibility
             && element.Bounds.renderY + element.Bounds.OuterHeight > clip.renderY
             && element.Bounds.renderY < clip.renderY + clip.OuterHeight;
     }
+
+    internal static VoiceSettingsClipScope EnterClip(ICoreClientAPI api, GuiElement element)
+    {
+        ElementBounds? clip = element.InsideClipBounds;
+        if (clip == null)
+        {
+            return default;
+        }
+
+        clip.CalcWorldBounds();
+        api.Render.PushScissor(clip);
+        return new VoiceSettingsClipScope(api);
+    }
+}
+
+internal readonly struct VoiceSettingsClipScope : IDisposable
+{
+    private readonly ICoreClientAPI? api;
+
+    internal VoiceSettingsClipScope(ICoreClientAPI api)
+    {
+        this.api = api;
+    }
+
+    public void Dispose()
+    {
+        api?.Render.PopScissor();
+    }
 }
 
 internal sealed class VoiceSettingsSlider : GuiElementSlider
@@ -102,6 +130,7 @@ internal sealed class VoiceSettingsSlider : GuiElementSlider
     public override void RenderInteractiveElements(float deltaTime)
     {
         if (!VoiceSettingsVisibility.IsVisibleInClip(this)) return;
+        using VoiceSettingsClipScope clip = VoiceSettingsVisibility.EnterClip(api, this);
         Bounds.CalcWorldBounds();
         double fraction = Math.Clamp((GetValue() - minimum) / (double)(maximum - minimum), 0, 1);
         double fillWidth = Bounds.InnerWidth * fraction;
@@ -237,6 +266,7 @@ internal sealed class VoiceSettingsTextInput : GuiElementTextInput
     public override void RenderInteractiveElements(float deltaTime)
     {
         if (!VoiceSettingsVisibility.IsVisibleInClip(this)) return;
+        using VoiceSettingsClipScope clip = VoiceSettingsVisibility.EnterClip(api, this);
         base.RenderInteractiveElements(deltaTime);
     }
 }
@@ -285,6 +315,7 @@ internal sealed class VoiceSettingsScrollbar : GuiElementControl
     public override void RenderInteractiveElements(float deltaTime)
     {
         if (!VoiceSettingsVisibility.IsVisibleInClip(this)) return;
+        using VoiceSettingsClipScope clip = VoiceSettingsVisibility.EnterClip(api, this);
         if (texture.TextureId == 0 || Math.Abs(renderedValue - value) > 0.01f)
         {
             Redraw();
@@ -480,6 +511,7 @@ internal sealed class VoiceSettingsTextButton : GuiElementTextButton
     public override void RenderInteractiveElements(float deltaTime)
     {
         if (!VoiceSettingsVisibility.IsVisibleInClip(this)) return;
+        using VoiceSettingsClipScope clip = VoiceSettingsVisibility.EnterClip(api, this);
         LoadedTexture background = !Enabled
             ? disabledBackground
             : pressed ? pressedBackground : normalBackground;
@@ -607,6 +639,7 @@ internal sealed class VoiceSettingsExtensionButtonElement : GuiElementControl
     public override void RenderInteractiveElements(float deltaTime)
     {
         if (!VoiceSettingsVisibility.IsVisibleInClip(this)) return;
+        using VoiceSettingsClipScope clip = VoiceSettingsVisibility.EnterClip(api, this);
         api.Render.Render2DTexturePremultipliedAlpha(textureId, Bounds);
     }
 
@@ -710,6 +743,7 @@ internal sealed class VoiceSettingsExtensionImageButtonElement : GuiElementContr
     public override void RenderInteractiveElements(float deltaTime)
     {
         if (!VoiceSettingsVisibility.IsVisibleInClip(this)) return;
+        using VoiceSettingsClipScope clip = VoiceSettingsVisibility.EnterClip(api, this);
         api.Render.Render2DTexturePremultipliedAlpha(textureId, Bounds);
     }
 
@@ -842,6 +876,7 @@ internal sealed class VoiceSettingsLevelMeter : GuiElementControl
     public override void RenderInteractiveElements(float deltaTime)
     {
         if (!VoiceSettingsVisibility.IsVisibleInClip(this)) return;
+        using VoiceSettingsClipScope clip = VoiceSettingsVisibility.EnterClip(api, this);
         double fraction = Math.Clamp(level() / 0.2f, 0f, 1f);
         if (fraction > 0.001)
         {
@@ -907,6 +942,7 @@ internal sealed class VoiceActivationThresholdControl : GuiElementControl
     public override void RenderInteractiveElements(float deltaTime)
     {
         if (!VoiceSettingsVisibility.IsVisibleInClip(this)) return;
+        using VoiceSettingsClipScope clip = VoiceSettingsVisibility.EnterClip(api, this);
         float level = Math.Clamp(microphoneLevel(), 0f, 0.2f);
         if (texture.TextureId == 0
             || Math.Abs(level - lastMicrophoneLevel) > 0.001f
@@ -1107,6 +1143,7 @@ internal sealed class VoiceSettingsKeyBinding : GuiElementControl
     public override void RenderInteractiveElements(float deltaTime)
     {
         if (!VoiceSettingsVisibility.IsVisibleInClip(this)) return;
+        using VoiceSettingsClipScope clip = VoiceSettingsVisibility.EnterClip(api, this);
         api.Render.Render2DTexturePremultipliedAlpha(texture.TextureId, Bounds);
     }
 
@@ -1255,6 +1292,7 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
     public override void RenderInteractiveElements(float deltaTime)
     {
         if (!VoiceSettingsVisibility.IsVisibleInClip(this)) return;
+        using VoiceSettingsClipScope clip = VoiceSettingsVisibility.EnterClip(api, this);
         Bounds.CalcWorldBounds();
         api.Render.Render2DTexturePremultipliedAlpha(valueTexture.TextureId,
             Bounds.renderX, Bounds.renderY, Bounds.OuterWidth, Bounds.OuterHeight);
@@ -1910,6 +1948,7 @@ internal sealed class VoiceSettingsIconButton : GuiElementControl
     public override void RenderInteractiveElements(float deltaTime)
     {
         if (!VoiceSettingsVisibility.IsVisibleInClip(this)) return;
+        using VoiceSettingsClipScope clip = VoiceSettingsVisibility.EnterClip(api, this);
         api.Render.Render2DTexturePremultipliedAlpha(textureId, Bounds);
     }
 
@@ -2089,6 +2128,7 @@ internal sealed class VoiceSettingsImageButton : GuiElementControl
     public override void RenderInteractiveElements(float deltaTime)
     {
         if (!VoiceSettingsVisibility.IsVisibleInClip(this)) return;
+        using VoiceSettingsClipScope clip = VoiceSettingsVisibility.EnterClip(api, this);
         api.Render.Render2DTexturePremultipliedAlpha(textureId, Bounds);
     }
 
@@ -2215,6 +2255,7 @@ internal sealed class VoiceSettingsCheckBox : GuiElementControl
     public override void RenderInteractiveElements(float deltaTime)
     {
         if (!VoiceSettingsVisibility.IsVisibleInClip(this)) return;
+        using VoiceSettingsClipScope clip = VoiceSettingsVisibility.EnterClip(api, this);
         api.Render.Render2DTexturePremultipliedAlpha(textureId, Bounds);
     }
 
@@ -2341,6 +2382,7 @@ internal sealed class VoiceSettingsMuteButton : GuiElementControl
     public override void RenderInteractiveElements(float deltaTime)
     {
         if (!VoiceSettingsVisibility.IsVisibleInClip(this)) return;
+        using VoiceSettingsClipScope clip = VoiceSettingsVisibility.EnterClip(api, this);
         api.Render.Render2DTexturePremultipliedAlpha(textureId, Bounds);
     }
 
@@ -2432,6 +2474,7 @@ internal sealed class VoiceSettingsIconToggleButton : GuiElementControl
     public override void RenderInteractiveElements(float deltaTime)
     {
         if (!VoiceSettingsVisibility.IsVisibleInClip(this)) return;
+        using VoiceSettingsClipScope clip = VoiceSettingsVisibility.EnterClip(api, this);
         api.Render.Render2DTexturePremultipliedAlpha(textureId, Bounds);
     }
 

@@ -417,7 +417,11 @@ public sealed class VoiceSettingsDialog : GuiDialog
                 const string scrollbarKey = "settings-scrollbar";
                 VoiceSettingsScrollbar scrollbar = new(
                     composer.Api,
-                    ElementBounds.Fixed(windowWidth - 20, viewportTop + 4, 8, activeViewportHeight - 8),
+                    ElementBounds.Fixed(
+                        windowWidth - 20,
+                        activeContentHeaderHeight + 6,
+                        8,
+                        Math.Max(1, activeViewportHeight - activeContentHeaderHeight - 12)),
                     OnScroll);
                 scrollbar.SetHeights(activeViewportHeight, contentHeight, scrollPosition);
                 composer.AddInteractiveElement(scrollbar, scrollbarKey);
