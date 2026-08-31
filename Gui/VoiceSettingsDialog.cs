@@ -390,6 +390,16 @@ public sealed class VoiceSettingsDialog : GuiDialog
             {
                 composer = composer.EndClip();
             }
+            if (contentHeight > activeViewportHeight)
+            {
+                const string scrollbarKey = "settings-scrollbar";
+                VoiceSettingsScrollbar scrollbar = new(
+                    composer.Api,
+                    ElementBounds.Fixed(windowWidth - 20, viewportTop + 4, 8, activeViewportHeight - 8),
+                    OnScroll);
+                scrollbar.SetHeights(activeViewportHeight, contentHeight, scrollPosition);
+                composer.AddInteractiveElement(scrollbar, scrollbarKey);
+            }
         }
         if (overlay != VoiceSettingsOverlay.None)
         {
@@ -751,7 +761,9 @@ public sealed class VoiceSettingsDialog : GuiDialog
         secondaryBehaviorY += 40;
 
         GetCheckBox(composer, "occlusion").Enabled = !controller.OcclusionForced;
-        return Math.Max(behaviorY, secondaryBehaviorY) + 24;
+        // Include the full final control row and bottom padding so the page
+        // activates the shared scrollbar instead of clipping the last row.
+        return Math.Max(behaviorY, secondaryBehaviorY) + 44;
     }
 
     private double AddHomePage(
