@@ -255,6 +255,7 @@
   "simplevoicechat:label-noise-gate": "噪声门",
   "simplevoicechat:label-voice-trigger-threshold": "自由麦触发阈值",
   "simplevoicechat:label-noise-suppression": "噪声抑制",
+  "simplevoicechat:label-start-noise-suppression": "启动降噪",
   "simplevoicechat:label-occlusion": "遮挡/传播修正",
   "simplevoicechat:label-output-volume": "播放音量",
   "simplevoicechat:label-pending-invite": "邀请状态",

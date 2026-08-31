@@ -255,6 +255,7 @@
   "simplevoicechat:label-noise-gate": "Noise Gate",
   "simplevoicechat:label-voice-trigger-threshold": "Voice Activation Threshold",
   "simplevoicechat:label-noise-suppression": "Noise suppression",
+  "simplevoicechat:label-start-noise-suppression": "Start noise suppression",
   "simplevoicechat:label-occlusion": "Occlusion / Propagation",
   "simplevoicechat:label-output-volume": "Playback Volume",
   "simplevoicechat:label-pending-invite": "Invite status",

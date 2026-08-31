@@ -67,7 +67,11 @@ public sealed class VoiceCapturePreprocessor
     private float automaticGain = 1f;
     private int vadHangover;
 
-    public VoiceFrameStats Process(Span<short> samples, float microphoneGain, float noiseGate)
+    public VoiceFrameStats Process(
+        Span<short> samples,
+        float microphoneGain,
+        float noiseGate,
+        RnnoiseNoiseSuppressor? noiseSuppressor = null)
     {
         if (samples.IsEmpty)
         {
@@ -84,6 +88,8 @@ public sealed class VoiceCapturePreprocessor
             squareSumBeforeGain += filtered * filtered;
             samples[i] = (short)Math.Clamp((int)Math.Round(filtered), short.MinValue, short.MaxValue);
         }
+
+        noiseSuppressor?.Process(samples);
 
         float rawRms = (float)(Math.Sqrt(squareSumBeforeGain / samples.Length) / short.MaxValue);
         float desiredAutomaticGain = rawRms > 0.0005f

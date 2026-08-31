@@ -784,6 +784,21 @@ public sealed class VoiceSettingsDialog : GuiDialog
             () => { controller.OpenHudPositionDialogFromSettings(); return true; },
             ElementBounds.Fixed(labelX + 430, secondaryBehaviorY - 4, 220, 32), "adjust-hud-position");
         secondaryBehaviorY += 40;
+        composer.AddStaticText(
+            SVCLang.Get("label-start-noise-suppression"),
+            label,
+            ElementBounds.Fixed(labelX + 430, secondaryBehaviorY, 220, 28));
+        string[] noiseSuppressionValues = { "off", "rnnoise" };
+        string[] noiseSuppressionNames = { SVCLang.Get("state-off"), "RNNoise" };
+        composer.AddVoiceDropDown(
+            noiseSuppressionValues,
+            noiseSuppressionNames,
+            config.EnableNoiseSuppression ? 1 : 0,
+            OnNoiseSuppressionChanged,
+            ElementBounds.Fixed(labelX + 430, secondaryBehaviorY += 28, 220, 32),
+            "noise-suppression");
+        ((VoiceSettingsDropDown)composer.GetElement("noise-suppression")).Enabled = VoiceProcessingCapabilities.NoiseSuppressionAvailable;
+        secondaryBehaviorY += 44;
 
         GetCheckBox(composer, "occlusion").Enabled = !controller.OcclusionForced;
         // Include the full final control row and bottom padding so the page
@@ -2302,6 +2317,14 @@ public sealed class VoiceSettingsDialog : GuiDialog
         {
             controller.SetPreferredOpusBitrateFromSettings(value);
             QueueCompose();
+        }
+    }
+
+    private void OnNoiseSuppressionChanged(string value, bool selected)
+    {
+        if (selected)
+        {
+            controller.SetNoiseSuppressionFromSettings(value == "rnnoise");
         }
     }
 

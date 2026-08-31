@@ -78,6 +78,7 @@ public sealed class ClientVoiceController : IDisposable
     private VoiceHudPositionDialog? hudPositionDialog;
     private readonly short[] captureBuffer = new short[VoiceConstants.SamplesPerFrame];
     private readonly VoiceCapturePreprocessor capturePreprocessor = new();
+    private RnnoiseNoiseSuppressor? noiseSuppressor;
     private readonly VoiceFrameSendQueue pendingVoiceFrames = new();
     private readonly VoiceProbeTracker voiceProbeTracker = new();
     private readonly AdaptiveVoiceBitrateController adaptiveBitrate = new();
@@ -237,6 +238,11 @@ public sealed class ClientVoiceController : IDisposable
         }
         config.EnableNoiseSuppression &= VoiceProcessingCapabilities.NoiseSuppressionAvailable;
         config.EnableEchoCancellation &= VoiceProcessingCapabilities.EchoCancellationAvailable;
+        if (config.EnableNoiseSuppression)
+        {
+            noiseSuppressor = RnnoiseNoiseSuppressor.TryCreate();
+            config.EnableNoiseSuppression = noiseSuppressor != null;
+        }
         SaveConfig();
         RegisterChannels();
         RegisterHotkeys();
@@ -1789,8 +1795,13 @@ public sealed class ClientVoiceController : IDisposable
 
     internal void SetNoiseSuppressionFromSettings(bool enabled)
     {
-        config.EnableNoiseSuppression = enabled && VoiceProcessingCapabilities.NoiseSuppressionAvailable;
+        noiseSuppressor?.Dispose();
+        noiseSuppressor = enabled && VoiceProcessingCapabilities.NoiseSuppressionAvailable
+            ? RnnoiseNoiseSuppressor.TryCreate()
+            : null;
+        config.EnableNoiseSuppression = noiseSuppressor != null;
         SaveConfig();
+        settingsDialog?.RefreshConfiguration();
     }
 
     internal void SetEchoCancellationFromSettings(bool enabled)
@@ -3086,7 +3097,11 @@ public sealed class ClientVoiceController : IDisposable
             hadFrame = true;
             processedFrames++;
 
-            VoiceFrameStats stats = capturePreprocessor.Process(captureBuffer, config.MicGain, config.NoiseGate);
+            VoiceFrameStats stats = capturePreprocessor.Process(
+                captureBuffer,
+                config.MicGain,
+                config.NoiseGate,
+                noiseSuppressor);
             lastMicRms = stats.Rms;
             if (requireVoiceActivation && stats.Active && stats.Rms >= config.VoiceActivationThreshold)
             {
@@ -3372,6 +3387,7 @@ public sealed class ClientVoiceController : IDisposable
         sessionId = NextSessionId();
         sequence = 0;
         pendingVoiceFrames.Clear();
+        noiseSuppressor?.Reset();
         voiceEncoder?.Reset();
         capturePreprocessor.Reset();
     }
@@ -3648,6 +3664,8 @@ public sealed class ClientVoiceController : IDisposable
         }
         capture?.Dispose();
         capture = null;
+        noiseSuppressor?.Dispose();
+        noiseSuppressor = null;
         voiceEncoder?.Dispose();
         voiceEncoder = null;
         playback?.Dispose();

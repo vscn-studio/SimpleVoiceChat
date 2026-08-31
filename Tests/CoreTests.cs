@@ -87,6 +87,20 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void RnnoiseBackendLoadsAndProcessesVoiceFrames()
+    {
+        Assert.True(RnnoiseNoiseSuppressor.IsAvailable);
+        using RnnoiseNoiseSuppressor suppressor = Assert.IsType<RnnoiseNoiseSuppressor>(RnnoiseNoiseSuppressor.TryCreate());
+        short[] samples = new short[VoiceConstants.SamplesPerFrame];
+        samples[0] = short.MaxValue;
+
+        suppressor.Process(samples);
+
+        Assert.NotEqual(short.MaxValue, samples[0]);
+        suppressor.Reset();
+    }
+
+    [Fact]
     public void VoiceFrameSendQueueDropsOldestFramesAndBoundsBacklog()
     {
         VoiceFrameSendQueue queue = new();
