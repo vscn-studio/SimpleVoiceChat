@@ -20,6 +20,8 @@ public static class PacketMapper
             ProximityChatRange = config.ProximityChatRange,
             EnableOcclusion = config.EnableOcclusion,
             EnableWeatherEffects = config.EnableWeatherEffects,
+            EnableEnvironmentalVoiceEffects = config.EnableEnvironmentalVoiceEffects,
+            ApplyUnderwaterEffectsToChannels = config.ApplyUnderwaterEffectsToChannels,
             EnableHudIndicators = config.EnableHudIndicators,
             ProtocolVersion = VoiceProtocol.CurrentVersion,
             MaxStreamsPerListener = config.MaxStreamsPerListener,

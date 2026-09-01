@@ -968,6 +968,16 @@ public sealed class ServerVoiceController : IDisposable
             ProximityChatRange = packet.ProximityChatRange,
             EnableOcclusion = packet.EnableOcclusion,
             EnableWeatherEffects = packet.EnableWeatherEffects,
+            EnableEnvironmentalVoiceEffects = packet.EnableEnvironmentalVoiceEffects,
+            ApplyUnderwaterEffectsToChannels = packet.ApplyUnderwaterEffectsToChannels,
+            EquipmentVoiceEffectRules = config.EquipmentVoiceEffectRules
+                .Select(rule => new VoiceEquipmentEffectRule
+                {
+                    Slot = rule.Slot,
+                    ItemCodePattern = rule.ItemCodePattern,
+                    Effect = rule.Effect
+                })
+                .ToList(),
             EnableHudIndicators = packet.EnableHudIndicators,
             MaxVoicePacketsPerSecond = packet.MaxVoicePacketsPerSecond,
             MaxVoiceBytesPerSecond = packet.MaxVoiceBytesPerSecond,
@@ -2481,7 +2491,8 @@ public sealed class ServerVoiceController : IDisposable
                 Z = (float)position.Z,
                 Codec = session.Codec,
                 SenderUid = speaker.PlayerUID,
-                CaptureServerTimestampMilliseconds = frame.CaptureServerTimestampMilliseconds
+                CaptureServerTimestampMilliseconds = frame.CaptureServerTimestampMilliseconds,
+                SourceEffects = ResolveSourceEffects(speaker, session, group.Key.RelayKind, now)
             };
             long packetAllocationBytes = GC.GetAllocatedBytesForCurrentThread() - packetAllocationBefore;
             IServerPlayer[] finalTargets = group.PreparePermittedTargets();
@@ -2629,6 +2640,150 @@ public sealed class ServerVoiceController : IDisposable
 
     private static float CalculateReferenceDistance(float range)
         => (float)Math.Max(3d, Math.Sqrt(Math.Max(range, 1f)) - 2d);
+
+    private VoiceSourceEffectFlags ResolveSourceEffects(
+        IServerPlayer speaker,
+        VoiceClientSession session,
+        VoiceRelayKind relayKind,
+        long now)
+    {
+        if (!config.EnableEnvironmentalVoiceEffects || speaker.Entity == null)
+        {
+            return VoiceSourceEffectFlags.None;
+        }
+
+        if (session.LastSourceEffectMilliseconds < 0 || now - session.LastSourceEffectMilliseconds >= 150)
+        {
+            session.CachedEquipmentEffects = ResolveEquipmentEffects(speaker, session.EquippedSlots);
+            session.CachedEyeInLiquid = IsEyeInLiquid(speaker.Entity);
+            session.LastSourceEffectMilliseconds = now;
+        }
+
+        VoiceSourceEffectFlags effects = session.CachedEquipmentEffects;
+        if (session.CachedEyeInLiquid
+            && (relayKind == VoiceRelayKind.Proximity || config.ApplyUnderwaterEffectsToChannels))
+        {
+            effects |= VoiceSourceEffectFlags.Underwater;
+        }
+        return effects;
+    }
+
+    private VoiceSourceEffectFlags ResolveEquipmentEffects(IServerPlayer player, List<ItemSlotCharacter> equippedSlots)
+    {
+        if (config.EquipmentVoiceEffectRules.Count == 0)
+        {
+            return VoiceSourceEffectFlags.None;
+        }
+
+        equippedSlots.Clear();
+        foreach (InventoryBase inventory in player.InventoryManager.InventoriesOrdered)
+        {
+            foreach (ItemSlot slot in inventory)
+            {
+                if (slot is ItemSlotCharacter characterSlot && !slot.Empty && slot.Itemstack?.Collectible?.Code != null)
+                {
+                    equippedSlots.Add(characterSlot);
+                }
+            }
+        }
+
+        foreach (VoiceEquipmentEffectRule rule in config.EquipmentVoiceEffectRules)
+        {
+            foreach (ItemSlotCharacter slot in equippedSlots)
+            {
+                if (!MatchesSlot(slot.Type, rule.Slot))
+                {
+                    continue;
+                }
+
+                AssetLocation? code = slot.Itemstack?.Collectible?.Code;
+                if (code == null)
+                {
+                    continue;
+                }
+                string fullCode = code.ToString().ToLowerInvariant();
+                string path = code.Path.ToLowerInvariant();
+                if (!MatchesWildcard(rule.ItemCodePattern, fullCode)
+                    && !MatchesWildcard(rule.ItemCodePattern, path))
+                {
+                    continue;
+                }
+
+                return rule.Effect == VoiceEquipmentVoiceEffect.Helmet
+                    ? VoiceSourceEffectFlags.Helmet
+                    : VoiceSourceEffectFlags.Mask;
+            }
+        }
+
+        return VoiceSourceEffectFlags.None;
+    }
+
+    private bool IsEyeInLiquid(Vintagestory.API.Common.Entities.Entity entity)
+    {
+        Vec3d eye = new(
+            entity.Pos.X + entity.LocalEyePos.X,
+            entity.Pos.Y + entity.LocalEyePos.Y,
+            entity.Pos.Z + entity.LocalEyePos.Z);
+        BlockPos blockPos = new((int)Math.Floor(eye.X), (int)Math.Floor(eye.Y), (int)Math.Floor(eye.Z));
+        return sapi.World.BlockAccessor.GetBlock(blockPos, 2).IsLiquid();
+    }
+
+    private static bool MatchesSlot(EnumCharacterDressType slot, VoiceEquipmentSlot configuredSlot)
+    {
+        return configuredSlot switch
+        {
+            VoiceEquipmentSlot.Head => slot == EnumCharacterDressType.Head,
+            VoiceEquipmentSlot.Face => slot == EnumCharacterDressType.Face,
+            VoiceEquipmentSlot.ArmorHead => slot == EnumCharacterDressType.ArmorHead,
+            _ => false
+        };
+    }
+
+    internal static bool MatchesWildcard(string pattern, string value)
+    {
+        if (!pattern.Contains(':', StringComparison.Ordinal))
+        {
+            int domainSeparator = value.IndexOf(':');
+            if (domainSeparator >= 0 && domainSeparator + 1 < value.Length)
+            {
+                value = value[(domainSeparator + 1)..];
+            }
+        }
+
+        int patternIndex = 0;
+        int valueIndex = 0;
+        int starIndex = -1;
+        int retryValueIndex = 0;
+        while (valueIndex < value.Length)
+        {
+            if (patternIndex < pattern.Length
+                && (pattern[patternIndex] == value[valueIndex] || pattern[patternIndex] == '?'))
+            {
+                patternIndex++;
+                valueIndex++;
+            }
+            else if (patternIndex < pattern.Length && pattern[patternIndex] == '*')
+            {
+                starIndex = patternIndex++;
+                retryValueIndex = valueIndex;
+            }
+            else if (starIndex >= 0)
+            {
+                patternIndex = starIndex + 1;
+                valueIndex = ++retryValueIndex;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        while (patternIndex < pattern.Length && pattern[patternIndex] == '*')
+        {
+            patternIndex++;
+        }
+        return patternIndex == pattern.Length;
+    }
 
     private static bool IsWithinCaptureRegion(
         Vec3d position,
@@ -3509,6 +3664,10 @@ public sealed class ServerVoiceController : IDisposable
         public long LastQualityMilliseconds { get; set; }
         public long LastBitrateControlMilliseconds { get; set; }
         public int LastGuidedBitrate { get; set; }
+        public long LastSourceEffectMilliseconds { get; set; } = -1;
+        public VoiceSourceEffectFlags CachedEquipmentEffects { get; set; }
+        public bool CachedEyeInLiquid { get; set; }
+        public List<ItemSlotCharacter> EquippedSlots { get; } = new(8);
         public VoiceTokenBucket PacketRate { get; private set; }
         public VoiceTokenBucket ByteRate { get; private set; }
         public VoiceTokenBucket NewSessionRate { get; }

@@ -13,7 +13,7 @@ public sealed class SimpleVoiceChatClientConfig
     public const string DeepgramSpeechRecognitionModel = "nova-3";
     public const string DeepgramSpeechRecognitionEndpoint = "https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true";
 
-    private const int CurrentConfigVersion = 10;
+    private const int CurrentConfigVersion = 11;
     private const int MaxServerProfiles = 128;
 
     public int ConfigVersion { get; set; } = CurrentConfigVersion;
@@ -33,6 +33,7 @@ public sealed class SimpleVoiceChatClientConfig
     public bool ShowHudIndicator { get; set; } = true;
     public bool ShowMicrophoneHud { get; set; } = true;
     public bool EnableOcclusionEffects { get; set; } = true;
+    public bool EnableEnvironmentalVoiceEffects { get; set; } = true;
     public bool PerformanceMode { get; set; } = false;
     public bool AdaptiveJitterBuffer { get; set; } = true;
     public int PreferredOpusBitrateKbps { get; set; }
@@ -189,6 +190,12 @@ public sealed class SimpleVoiceChatClientConfig
             VoiceHudOffsetY = 0;
             VoiceInviteOffsetY = 85;
             ConfigVersion = 10;
+        }
+
+        if (ConfigVersion < 11)
+        {
+            EnableEnvironmentalVoiceEffects = true;
+            ConfigVersion = 11;
         }
 
         ConfigVersion = Math.Max(CurrentConfigVersion, ConfigVersion);
@@ -380,6 +387,7 @@ public sealed class SpeechRecognitionProviderConfig
 public sealed class SimpleVoiceChatServerProfile
 {
     public bool EnableOcclusionEffects { get; set; } = true;
+    public bool EnableEnvironmentalVoiceEffects { get; set; } = true;
     public bool AdaptiveJitterBuffer { get; set; } = true;
     public float ChannelOutputVolume { get; set; } = 1f;
     public string SelectedChannelId { get; set; } = string.Empty;
@@ -392,6 +400,7 @@ public sealed class SimpleVoiceChatServerProfile
         return new SimpleVoiceChatServerProfile
         {
             EnableOcclusionEffects = source.EnableOcclusionEffects,
+            EnableEnvironmentalVoiceEffects = source.EnableEnvironmentalVoiceEffects,
             AdaptiveJitterBuffer = source.AdaptiveJitterBuffer,
             ChannelOutputVolume = source.ChannelOutputVolume,
             SelectedChannelId = source.SelectedChannelId,
@@ -404,6 +413,7 @@ public sealed class SimpleVoiceChatServerProfile
     internal void ApplyTo(SimpleVoiceChatClientConfig target)
     {
         target.EnableOcclusionEffects = EnableOcclusionEffects;
+        target.EnableEnvironmentalVoiceEffects = EnableEnvironmentalVoiceEffects;
         target.AdaptiveJitterBuffer = AdaptiveJitterBuffer;
         target.ChannelOutputVolume = ChannelOutputVolume;
         target.SelectedChannelId = SelectedChannelId;

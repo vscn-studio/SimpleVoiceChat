@@ -52,6 +52,7 @@ public sealed class OpenAlPlaybackService : IDisposable
 
     public Action<short[]>? OutputFrameCaptured { get; set; }
     public Action<long, string, short[], long>? RemoteFrameCaptured { get; set; }
+    public Action<long, string, short[], long>? ProcessedRemoteFrameCaptured { get; set; }
 
     public bool IsRecordingPlaybackActive
     {
@@ -185,6 +186,7 @@ public sealed class OpenAlPlaybackService : IDisposable
             packet.Sequence,
             packet.Mode,
             packet.RelayKind != VoiceRelayKind.Proximity,
+            packet.SourceEffects,
             new Vec3f(packet.X, packet.Y, packet.Z),
             // Network packets are fully deserialized before handlers run; the
             // jitter buffer can retain this immutable payload directly.
@@ -402,7 +404,9 @@ public sealed class OpenAlPlaybackService : IDisposable
         AL.Source(stream.Source, ALSourcef.ReferenceDistance, stream.ChannelRelay ? 1f : referenceDistance);
         AL.Source(stream.Source, ALSourcef.MaxDistance, 9999f);
         AL.Source(stream.Source, ALSourcef.Pitch, env.Pitch);
-        ApplyLowPass(stream, env.LowPass);
+        // Environmental filtering is performed on PCM so every OpenAL backend
+        // uses the same underwater and equipment profiles.
+        ApplyLowPass(stream, 0f);
 
         if (stream.QueuedBuffers > 0 && AL.GetSource(stream.Source, ALGetSourcei.SourceState) != (int)ALSourceState.Playing)
         {
@@ -442,6 +446,11 @@ public sealed class OpenAlPlaybackService : IDisposable
             stream.Position = frame.Position;
             stream.Mode = frame.Mode;
             stream.ChannelRelay = frame.ChannelRelay;
+            if (stream.SourceEffects != frame.SourceEffects)
+            {
+                stream.SourceEffects = frame.SourceEffects;
+                stream.LastEnvironmentMilliseconds = -1;
+            }
             stream.ExternalGain = frame.GainMultiplier;
             stream.CaptureTimestamps[frame.Sequence] = frame.CaptureServerTimestampMilliseconds;
             stream.LastPacketMilliseconds = capi.World.ElapsedMilliseconds;
@@ -534,7 +543,8 @@ public sealed class OpenAlPlaybackService : IDisposable
             clientConfig,
             serverConfig,
             stream.Mode,
-            stream.ChannelRelay);
+            stream.ChannelRelay,
+            stream.SourceEffects);
         stream.LastEnvironmentMilliseconds = now;
         return stream.CachedEnvironment;
     }
@@ -551,7 +561,11 @@ public sealed class OpenAlPlaybackService : IDisposable
             bool queued = false;
             try
             {
+                // Multi-track capture intentionally receives the unprocessed decoded speech.
                 CaptureRemoteFrame(stream, decoded.Samples);
+                VoiceEnvironmentSnapshot environment = GetEnvironment(stream, serverConfig);
+                stream.Effects.Process(decoded.Samples, environment);
+                CaptureProcessedRemoteFrame(stream, decoded.Samples);
                 CaptureOutputFrame(decoded.Samples);
                 AL.BufferData(buffer, ALFormat.Mono16, decoded.Samples, VoiceConstants.SampleRate);
                 AL.SourceQueueBuffer(stream.Source, buffer);
@@ -695,11 +709,6 @@ public sealed class OpenAlPlaybackService : IDisposable
         }
         stream.LastDecodedTimestampMilliseconds = decoded.TimestampMilliseconds;
 
-        if (!hasEffectsExtension)
-        {
-            VoiceEnvironmentSnapshot env = GetEnvironment(stream, serverConfig);
-            stream.Effects.Process(decoded.Samples, env);
-        }
         if (decodeSignal.CurrentCount == 0)
         {
             decodeSignal.Release();
@@ -738,6 +747,23 @@ public sealed class OpenAlPlaybackService : IDisposable
         catch (Exception ex)
         {
             capi.Logger.Warning("SimpleVoiceChat: recording playback frame failed: {0}", ex.Message);
+        }
+    }
+
+    private void CaptureProcessedRemoteFrame(RemoteVoiceStream stream, short[] samples)
+    {
+        if (ProcessedRemoteFrameCaptured == null || samples.Length == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            ProcessedRemoteFrameCaptured(stream.EntityId, stream.SpeakerUid, samples, stream.LastDecodedTimestampMilliseconds);
+        }
+        catch (Exception ex)
+        {
+            capi.Logger.Warning("SimpleVoiceChat: processed remote frame callback failed: {0}", ex.Message);
         }
     }
 
@@ -1090,6 +1116,7 @@ public sealed class OpenAlPlaybackService : IDisposable
         public Vec3f Position { get; set; } = new();
         public VoiceMode Mode { get; set; } = VoiceMode.Talk;
         public bool ChannelRelay { get; set; }
+        public VoiceSourceEffectFlags SourceEffects { get; set; }
         public float ExternalGain { get; set; } = 1f;
         public VoiceEffectsProcessor Effects { get; } = new();
         public float LastLowPassGainHf
@@ -1119,6 +1146,7 @@ public sealed class OpenAlPlaybackService : IDisposable
             Position = new Vec3f();
             Mode = VoiceMode.Talk;
             ChannelRelay = false;
+            SourceEffects = VoiceSourceEffectFlags.None;
             ExternalGain = 1f;
             DecodeErrors = 0;
             LastEnvironmentMilliseconds = -1;
@@ -1291,6 +1319,7 @@ public sealed class OpenAlPlaybackService : IDisposable
         ushort Sequence,
         VoiceMode Mode,
         bool ChannelRelay,
+        VoiceSourceEffectFlags SourceEffects,
         Vec3f Position,
         byte[] Payload,
         int Codec,

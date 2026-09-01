@@ -44,6 +44,7 @@ public static class VoiceProtocolValidation
             || packet.ChannelId == null
             || packet.ChannelId.Length > VoiceProtocol.MaxControlStringLength
             || packet.Flags != 0
+            || (packet.SourceEffects & ~(VoiceSourceEffectFlags.Underwater | VoiceSourceEffectFlags.Helmet | VoiceSourceEffectFlags.Mask)) != 0
             || packet.Payload == null
             || packet.Payload.Length == 0
             || packet.Payload.Length > 200

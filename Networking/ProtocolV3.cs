@@ -4,7 +4,7 @@ namespace SimpleVoiceChat.Networking;
 
 public static class VoiceProtocol
 {
-    public const int CurrentVersion = 8;
+    public const int CurrentVersion = 9;
     public const string GeneratedChannelIdPrefix = "channel-";
     public const int CodecImaAdpcm = 1;
     public const int CodecOpus = 2;
@@ -59,7 +59,17 @@ public enum VoiceCapability
     ProtocolV6 = 1 << 8,
     ServerGuidedBitrate = 1 << 9,
     ProtocolV7 = 1 << 10,
-    ProtocolV8 = 1 << 11
+    ProtocolV8 = 1 << 11,
+    ProtocolV9 = 1 << 12
+}
+
+[Flags]
+public enum VoiceSourceEffectFlags : byte
+{
+    None = 0,
+    Underwater = 1 << 0,
+    Helmet = 1 << 1,
+    Mask = 1 << 2
 }
 
 public enum ChannelMemberDeltaKind
@@ -268,6 +278,10 @@ public sealed class VoiceRelayFrameV3Packet
 
     [ProtoMember(16)]
     public long CaptureServerTimestampMilliseconds;
+
+    /// <summary>Server-authoritative source effects; client input never controls these flags.</summary>
+    [ProtoMember(17)]
+    public VoiceSourceEffectFlags SourceEffects;
 
 }
 

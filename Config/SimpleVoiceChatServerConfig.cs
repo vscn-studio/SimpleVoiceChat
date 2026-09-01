@@ -2,7 +2,7 @@ namespace SimpleVoiceChat.Config;
 
 public sealed class SimpleVoiceChatServerConfig
 {
-    private const int CurrentConfigVersion = 10;
+    private const int CurrentConfigVersion = 11;
 
     public int ConfigVersion { get; set; } = 1;
     public string ServerInstanceId { get; set; } = string.Empty;
@@ -22,6 +22,12 @@ public sealed class SimpleVoiceChatServerConfig
     public float ProximityChatRange { get; set; } = 18f;
     public bool EnableOcclusion { get; set; } = true;
     public bool EnableWeatherEffects { get; set; } = true;
+    /// <summary>Enables server-authoritative underwater and equipment voice effects.</summary>
+    public bool EnableEnvironmentalVoiceEffects { get; set; } = true;
+    /// <summary>When false, only proximity voice is affected by water.</summary>
+    public bool ApplyUnderwaterEffectsToChannels { get; set; }
+    /// <summary>First matching rule determines the speaker's equipment voice effect.</summary>
+    public List<VoiceEquipmentEffectRule> EquipmentVoiceEffectRules { get; set; } = CreateDefaultEquipmentVoiceEffectRules();
     public bool EnableHudIndicators { get; set; } = true;
     public int MaxVoicePacketsPerSecond { get; set; } = 60;
     public int MaxVoiceBytesPerSecond { get; set; } = 16_384;
@@ -100,6 +106,11 @@ public sealed class SimpleVoiceChatServerConfig
         {
             ConfigVersion = 10;
         }
+        if (ConfigVersion < 11)
+        {
+            EquipmentVoiceEffectRules ??= CreateDefaultEquipmentVoiceEffectRules();
+            ConfigVersion = 11;
+        }
         ConfigVersion = Math.Max(CurrentConfigVersion, ConfigVersion);
         if (!Guid.TryParse(ServerInstanceId, out Guid serverInstanceId) || serverInstanceId == Guid.Empty)
         {
@@ -141,6 +152,13 @@ public sealed class SimpleVoiceChatServerConfig
         GloballyMutedPlayerUids ??= new List<string>();
         ForceBlockedPlayerUids ??= new List<string>();
         PersistentChannels ??= new List<PersistentVoiceChannelConfig>();
+        EquipmentVoiceEffectRules ??= new List<VoiceEquipmentEffectRule>();
+        EquipmentVoiceEffectRules = EquipmentVoiceEffectRules
+            .OfType<VoiceEquipmentEffectRule>()
+            .Select(rule => rule.Normalize())
+            .Where(rule => rule.IsValid)
+            .Take(64)
+            .ToList();
         GloballyMutedPlayerUids = GloballyMutedPlayerUids
             .Where(uid => !string.IsNullOrWhiteSpace(uid) && uid.Length <= Networking.VoiceProtocol.MaxControlStringLength)
             .Distinct(StringComparer.Ordinal)
@@ -241,6 +259,56 @@ public sealed class SimpleVoiceChatServerConfig
             VoiceMode.Shout => AllowShout ? ShoutRange : TalkRange,
             _ => TalkRange
         };
+    }
+
+    private static List<VoiceEquipmentEffectRule> CreateDefaultEquipmentVoiceEffectRules()
+    {
+        return new List<VoiceEquipmentEffectRule>
+        {
+            new()
+            {
+                Slot = VoiceEquipmentSlot.ArmorHead,
+                ItemCodePattern = "armor-head-*",
+                Effect = VoiceEquipmentVoiceEffect.Helmet
+            },
+            new()
+            {
+                Slot = VoiceEquipmentSlot.Face,
+                ItemCodePattern = "clothes-face-*mask*",
+                Effect = VoiceEquipmentVoiceEffect.Mask
+            }
+        };
+    }
+}
+
+public enum VoiceEquipmentSlot
+{
+    Head,
+    Face,
+    ArmorHead
+}
+
+public enum VoiceEquipmentVoiceEffect
+{
+    Helmet,
+    Mask
+}
+
+public sealed class VoiceEquipmentEffectRule
+{
+    public VoiceEquipmentSlot Slot { get; set; }
+    public string ItemCodePattern { get; set; } = string.Empty;
+    public VoiceEquipmentVoiceEffect Effect { get; set; }
+
+    internal bool IsValid => !string.IsNullOrWhiteSpace(ItemCodePattern)
+        && ItemCodePattern.Length <= 256
+        && Enum.IsDefined(Slot)
+        && Enum.IsDefined(Effect);
+
+    internal VoiceEquipmentEffectRule Normalize()
+    {
+        ItemCodePattern = (ItemCodePattern ?? string.Empty).Trim().ToLowerInvariant();
+        return this;
     }
 }
 

@@ -138,6 +138,82 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void EnvironmentalVoiceConfigurationMigratesWithServerOwnedRules()
+    {
+        SimpleVoiceChatServerConfig config = new()
+        {
+            ConfigVersion = 10,
+            EquipmentVoiceEffectRules = null!
+        };
+
+        config.Normalize();
+
+        Assert.Equal(11, config.ConfigVersion);
+        Assert.True(config.EnableEnvironmentalVoiceEffects);
+        Assert.False(config.ApplyUnderwaterEffectsToChannels);
+        Assert.Collection(
+            config.EquipmentVoiceEffectRules,
+            helmet =>
+            {
+                Assert.Equal(VoiceEquipmentSlot.ArmorHead, helmet.Slot);
+                Assert.Equal("armor-head-*", helmet.ItemCodePattern);
+                Assert.Equal(VoiceEquipmentVoiceEffect.Helmet, helmet.Effect);
+            },
+            mask =>
+            {
+                Assert.Equal(VoiceEquipmentSlot.Face, mask.Slot);
+                Assert.Equal("clothes-face-*mask*", mask.ItemCodePattern);
+                Assert.Equal(VoiceEquipmentVoiceEffect.Mask, mask.Effect);
+            });
+    }
+
+    [Theory]
+    [InlineData("armor-head-*", "game:armor-head-copper", true)]
+    [InlineData("clothes-face-*mask*", "clothes-face-leather-reinforced-mask", true)]
+    [InlineData("clothes-face-*mask*", "clothes-face-goggles", false)]
+    public void EquipmentRuleWildcardMatchingIsDeterministic(string pattern, string itemCode, bool expected)
+    {
+        Assert.Equal(expected, ServerVoiceController.MatchesWildcard(pattern, itemCode));
+    }
+
+    [Fact]
+    public void EnvironmentalVoiceSettingsAreSentWithoutEquipmentRules()
+    {
+        SimpleVoiceChatServerConfig config = new()
+        {
+            EnableEnvironmentalVoiceEffects = true,
+            ApplyUnderwaterEffectsToChannels = true
+        };
+
+        ServerVoiceConfigPacket packet = PacketMapper.ToPacket(config);
+
+        Assert.True(packet.EnableEnvironmentalVoiceEffects);
+        Assert.True(packet.ApplyUnderwaterEffectsToChannels);
+        Assert.DoesNotContain(packet.GetType().GetMembers(), member => member.Name.Contains("Equipment", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void UnderwaterVoiceProcessorAttenuatesHighFrequencyContent()
+    {
+        short[] dry = Enumerable.Range(0, VoiceConstants.SamplesPerFrame)
+            .Select(index => (short)(index % 2 == 0 ? 12_000 : -12_000))
+            .ToArray();
+        short[] wet = dry.ToArray();
+        VoiceEffectsProcessor processor = new();
+
+        processor.Process(wet, new VoiceEnvironmentSnapshot(
+            1f,
+            1f,
+            0f,
+            VoiceSourceEffectFlags.Underwater));
+
+        double dryRms = Math.Sqrt(dry.Average(sample => (double)sample * sample));
+        double wetRms = Math.Sqrt(wet.Average(sample => (double)sample * sample));
+        Assert.True(wetRms < dryRms * 0.35d, $"Expected underwater RMS below {dryRms * 0.35d:0}, got {wetRms:0}.");
+        Assert.All(wet, sample => Assert.InRange((int)sample, short.MinValue, short.MaxValue));
+    }
+
+    [Fact]
     public void DirectorReplayCaptureRegionUsesChunkBoundaries()
     {
         Assert.True(DirectorVoiceCaptureRegion.Contains(159d, 159d, 0, 16d, 16d, 0, 4));
@@ -156,7 +232,7 @@ public sealed class CoreTests
 
         config.Normalize();
 
-        Assert.Equal(10, config.ConfigVersion);
+        Assert.Equal(11, config.ConfigVersion);
         Assert.Equal(32, config.MaxDirectorStreamsPerListener);
         Assert.Equal(4096, config.MaxDirectorEgressKbps);
     }
@@ -172,10 +248,11 @@ public sealed class CoreTests
     }
 
     [Fact]
-    public void ProtocolVersionEightRejectsOlderVersions()
+    public void ProtocolVersionNineRejectsOlderVersions()
     {
-        Assert.Equal(8, VoiceProtocol.CurrentVersion);
-        Assert.True(VoiceProtocol.IsCompatible(8));
+        Assert.Equal(9, VoiceProtocol.CurrentVersion);
+        Assert.True(VoiceProtocol.IsCompatible(9));
+        Assert.False(VoiceProtocol.IsCompatible(8));
         Assert.False(VoiceProtocol.IsCompatible(7));
         Assert.False(VoiceProtocol.IsCompatible(4));
         Assert.False(VoiceProtocol.IsCompatible(2));
@@ -466,7 +543,7 @@ public sealed class CoreTests
         config.Normalize();
 
         PersistentVoiceChannelConfig channel = Assert.Single(config.PersistentChannels);
-        Assert.Equal(10, config.ConfigVersion);
+        Assert.Equal(11, config.ConfigVersion);
         Assert.Equal("channel-1", channel.Id);
         Assert.Equal(2, config.NextChannelNumber);
         Assert.NotEqual("legacy-general", channel.Id);
@@ -694,7 +771,7 @@ public sealed class CoreTests
 
         existing.Normalize();
 
-        Assert.Equal(10, existing.ConfigVersion);
+        Assert.Equal(11, existing.ConfigVersion);
         Assert.True(existing.InitialSetupCompleted);
         Assert.True(existing.InitialSetupPromptShown);
         Assert.False(existing.HideSelfFromPlayerLists);
@@ -703,7 +780,7 @@ public sealed class CoreTests
 
         SimpleVoiceChatClientConfig firstInstall = new();
         firstInstall.Normalize();
-        Assert.Equal(10, firstInstall.ConfigVersion);
+        Assert.Equal(11, firstInstall.ConfigVersion);
         Assert.False(firstInstall.InitialSetupCompleted);
         Assert.False(firstInstall.InitialSetupPromptShown);
         Assert.False(firstInstall.HideSelfFromPlayerLists);
@@ -1039,6 +1116,7 @@ public sealed class CoreTests
             ChannelId = "channel-7",
             Level = 128,
             Flags = 3,
+            SourceEffects = VoiceSourceEffectFlags.Underwater | VoiceSourceEffectFlags.Helmet,
             Payload = Enumerable.Range(0, 50).Select(value => (byte)value).ToArray(),
             X = 10.5f,
             Y = 64f,

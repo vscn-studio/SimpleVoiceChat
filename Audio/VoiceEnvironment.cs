@@ -10,21 +10,29 @@ namespace SimpleVoiceChat.Audio;
 
 public readonly struct VoiceEnvironmentSnapshot
 {
-    public VoiceEnvironmentSnapshot(float volumeMultiplier, float pitch, float lowPass)
+    public VoiceEnvironmentSnapshot(
+        float volumeMultiplier,
+        float pitch,
+        float lowPass,
+        VoiceSourceEffectFlags sourceEffects = VoiceSourceEffectFlags.None,
+        bool listenerUnderwater = false)
     {
         VolumeMultiplier = volumeMultiplier;
         Pitch = pitch;
         LowPass = lowPass;
+        SourceEffects = sourceEffects;
+        ListenerUnderwater = listenerUnderwater;
     }
 
     public float VolumeMultiplier { get; }
     public float Pitch { get; }
 
     /// <summary>
-    /// 0 = unchanged, 1 = heavily muffled. Playback applies this with OpenAL EFX when available,
-    /// falling back to a simple low-pass on PCM only when the device lacks EFX.
+    /// 0 = unchanged, 1 = heavily muffled. Playback applies this in the shared PCM effect chain.
     /// </summary>
     public float LowPass { get; }
+    public VoiceSourceEffectFlags SourceEffects { get; }
+    public bool ListenerUnderwater { get; }
 }
 
 public static class VoiceEnvironment
@@ -37,11 +45,12 @@ public static class VoiceEnvironment
         SimpleVoiceChatClientConfig clientConfig,
         ServerVoiceConfigPacket serverConfig,
         VoiceMode mode,
-        bool channelRelay)
+        bool channelRelay,
+        VoiceSourceEffectFlags sourceEffects)
     {
         if (channelRelay)
         {
-            return EvaluateChannelRelay(capi, listener, speaker, speakerEntity);
+            return EvaluateChannelRelay(capi, speakerEntity, clientConfig, serverConfig, sourceEffects);
         }
 
         float volume = 1f;
@@ -63,13 +72,25 @@ public static class VoiceEnvironment
             lowPass += 0.48f * far;
         }
 
-        bool listenerInLiquid = IsInLiquid(capi.World.BlockAccessor, listener);
-        bool speakerInLiquid = IsInLiquid(capi.World.BlockAccessor, speaker);
+        bool environmentalEffects = clientConfig.EnableEnvironmentalVoiceEffects
+            && serverConfig.EnableEnvironmentalVoiceEffects;
+        bool listenerInLiquid = environmentalEffects && IsEyeInLiquid(capi.World.BlockAccessor, capi.World.Player.Entity);
+        bool speakerInLiquid = environmentalEffects && sourceEffects.HasFlag(VoiceSourceEffectFlags.Underwater);
+        VoiceSourceEffectFlags effectiveSourceEffects = environmentalEffects
+            ? sourceEffects
+            : VoiceSourceEffectFlags.None;
         if (listenerInLiquid || speakerInLiquid)
         {
-            volume *= listenerInLiquid && speakerInLiquid ? 0.70f : 0.84f;
-            pitch *= listenerInLiquid && speakerInLiquid ? 0.94f : 0.975f;
-            lowPass += listenerInLiquid && speakerInLiquid ? 0.90f : 0.58f;
+            volume *= listenerInLiquid && speakerInLiquid ? 0.65f : speakerInLiquid ? 0.78f : 0.82f;
+            pitch *= listenerInLiquid && speakerInLiquid ? 0.94f : speakerInLiquid ? 0.965f : 0.975f;
+        }
+        if (effectiveSourceEffects.HasFlag(VoiceSourceEffectFlags.Helmet))
+        {
+            volume *= 0.94f;
+        }
+        if (effectiveSourceEffects.HasFlag(VoiceSourceEffectFlags.Mask))
+        {
+            volume *= 0.92f;
         }
 
         if (serverConfig.EnableWeatherEffects)
@@ -99,26 +120,42 @@ public static class VoiceEnvironment
         return new VoiceEnvironmentSnapshot(
             Math.Clamp(volume, 0f, 1.5f),
             Math.Clamp(pitch, 0.9f, 1.05f),
-            Math.Clamp(lowPass, 0f, 0.92f));
+            Math.Clamp(lowPass, 0f, 0.92f),
+            effectiveSourceEffects,
+            listenerInLiquid);
     }
 
     private static VoiceEnvironmentSnapshot EvaluateChannelRelay(
         ICoreClientAPI capi,
-        Vec3d listener,
-        Vec3f speaker,
-        Entity? speakerEntity)
+        Entity? speakerEntity,
+        SimpleVoiceChatClientConfig clientConfig,
+        ServerVoiceConfigPacket serverConfig,
+        VoiceSourceEffectFlags sourceEffects)
     {
         float volume = 0.88f;
         float pitch = 1f;
         float lowPass = 0.04f;
 
-        bool listenerInLiquid = IsInLiquid(capi.World.BlockAccessor, listener);
-        bool speakerInLiquid = IsInLiquid(capi.World.BlockAccessor, speaker);
-        if (listenerInLiquid || speakerInLiquid)
+        VoiceSourceEffectFlags effectiveSourceEffects = clientConfig.EnableEnvironmentalVoiceEffects
+            && serverConfig.EnableEnvironmentalVoiceEffects
+            ? sourceEffects
+            : VoiceSourceEffectFlags.None;
+        bool listenerInLiquid = clientConfig.EnableEnvironmentalVoiceEffects
+            && serverConfig.EnableEnvironmentalVoiceEffects
+            && serverConfig.ApplyUnderwaterEffectsToChannels
+            && IsEyeInLiquid(capi.World.BlockAccessor, capi.World.Player.Entity);
+        if (effectiveSourceEffects.HasFlag(VoiceSourceEffectFlags.Underwater) || listenerInLiquid)
         {
-            volume *= listenerInLiquid && speakerInLiquid ? 0.84f : 0.92f;
-            pitch *= listenerInLiquid && speakerInLiquid ? 0.97f : 0.985f;
-            lowPass += listenerInLiquid && speakerInLiquid ? 0.18f : 0.10f;
+            volume *= effectiveSourceEffects.HasFlag(VoiceSourceEffectFlags.Underwater) && listenerInLiquid ? 0.65f : 0.78f;
+            pitch *= effectiveSourceEffects.HasFlag(VoiceSourceEffectFlags.Underwater) && listenerInLiquid ? 0.94f : 0.965f;
+        }
+        if (effectiveSourceEffects.HasFlag(VoiceSourceEffectFlags.Helmet))
+        {
+            volume *= 0.94f;
+        }
+        if (effectiveSourceEffects.HasFlag(VoiceSourceEffectFlags.Mask))
+        {
+            volume *= 0.92f;
         }
 
         Entity playerEntity = capi.World.Player.Entity;
@@ -141,7 +178,9 @@ public static class VoiceEnvironment
         return new VoiceEnvironmentSnapshot(
             Math.Clamp(volume, 0f, 1.5f),
             Math.Clamp(pitch, 0.9f, 1.05f),
-            Math.Clamp(lowPass, 0f, 0.92f));
+            Math.Clamp(lowPass, 0f, 0.92f),
+            effectiveSourceEffects,
+            listenerInLiquid);
     }
 
     public static string BuildDebugSummary(
@@ -154,8 +193,8 @@ public static class VoiceEnvironment
             Entity playerEntity = capi.World.Player.Entity;
             Vec3d listener = playerEntity.Pos.XYZ;
             Vec3f speaker = new((float)listener.X, (float)listener.Y, (float)listener.Z);
-            VoiceEnvironmentSnapshot snapshot = Evaluate(capi, listener, speaker, playerEntity, clientConfig, serverConfig, VoiceMode.Talk, false);
-            bool inLiquid = IsInLiquid(capi.World.BlockAccessor, listener);
+            VoiceEnvironmentSnapshot snapshot = Evaluate(capi, listener, speaker, playerEntity, clientConfig, serverConfig, VoiceMode.Talk, false, VoiceSourceEffectFlags.None);
+            bool inLiquid = IsEyeInLiquid(capi.World.BlockAccessor, playerEntity);
             WeatherSnapshot weather = serverConfig.EnableWeatherEffects ? EvaluateWeather(capi, listener, speaker) : default;
             double stability = TryReadTemporalStability(playerEntity);
             string stabilityText = stability < 0 ? SVCLang.Get("env-unreadable") : stability.ToString("0.00");
@@ -191,15 +230,13 @@ public static class VoiceEnvironment
         return Math.Clamp(solidHits / 3f, 0f, 1f);
     }
 
-    private static bool IsInLiquid(IBlockAccessor blockAccessor, Vec3d pos)
+    internal static bool IsEyeInLiquid(IBlockAccessor blockAccessor, Entity entity)
     {
-        BlockPos blockPos = new((int)Math.Floor(pos.X), (int)Math.Floor(pos.Y + 0.1), (int)Math.Floor(pos.Z));
-        return blockAccessor.GetBlock(blockPos, 2).IsLiquid();
-    }
-
-    private static bool IsInLiquid(IBlockAccessor blockAccessor, Vec3f pos)
-    {
-        BlockPos blockPos = new((int)Math.Floor(pos.X), (int)Math.Floor(pos.Y + 0.1f), (int)Math.Floor(pos.Z));
+        Vec3d eye = new(
+            entity.Pos.X + entity.LocalEyePos.X,
+            entity.Pos.Y + entity.LocalEyePos.Y,
+            entity.Pos.Z + entity.LocalEyePos.Z);
+        BlockPos blockPos = new((int)Math.Floor(eye.X), (int)Math.Floor(eye.Y), (int)Math.Floor(eye.Z));
         return blockAccessor.GetBlock(blockPos, 2).IsLiquid();
     }
 

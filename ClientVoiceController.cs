@@ -259,7 +259,7 @@ public sealed class ClientVoiceController : IDisposable
         VoiceRecordingService recordingService = recording;
         playback.OutputFrameCaptured = samples => recordingService.AppendOutput(samples);
         playback.RemoteFrameCaptured = (entityId, uid, samples, timestamp) => CaptureMultiTrackRemote(recordingService, entityId, uid, samples, timestamp);
-        playback.RemoteFrameCaptured += (_, _, samples, timestamp) =>
+        playback.ProcessedRemoteFrameCaptured = (_, _, samples, timestamp) =>
         {
             if (!recorderListenerActive)
             {
@@ -780,6 +780,7 @@ public sealed class ClientVoiceController : IDisposable
                 | VoiceCapability.ProtocolV6
                 | VoiceCapability.ProtocolV7
                 | VoiceCapability.ProtocolV8
+                | VoiceCapability.ProtocolV9
                 | VoiceCapability.ServerGuidedBitrate),
             PreferredOpusBitrateKbps = config.PreferredOpusBitrateKbps
         });
@@ -1834,6 +1835,12 @@ public sealed class ClientVoiceController : IDisposable
     internal void SetPerformanceModeFromSettings(bool enabled)
     {
         config.PerformanceMode = enabled;
+        SaveConfig();
+    }
+
+    internal void SetEnvironmentalVoiceEffectsFromSettings(bool enabled)
+    {
+        config.EnableEnvironmentalVoiceEffects = enabled;
         SaveConfig();
     }
 
@@ -3060,7 +3067,7 @@ public sealed class ClientVoiceController : IDisposable
             VoiceRecordingService recordingService = recording;
             playback.OutputFrameCaptured = samples => recordingService.AppendOutput(samples);
             playback.RemoteFrameCaptured = (entityId, uid, samples, timestamp) => CaptureMultiTrackRemote(recordingService, entityId, uid, samples, timestamp);
-            playback.RemoteFrameCaptured += (_, _, samples, timestamp) =>
+            playback.ProcessedRemoteFrameCaptured = (_, _, samples, timestamp) =>
             {
                 if (!recorderListenerActive)
                 {

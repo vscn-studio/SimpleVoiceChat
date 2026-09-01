@@ -92,6 +92,25 @@ public sealed class ProtocolTests
         Assert.False(VoiceProtocolValidation.IsValidDirectorRelayShape(packet));
     }
 
+    [Fact]
+    public void RelayValidatorAcceptsOnlyKnownServerEffectFlags()
+    {
+        VoiceRelayFrameV3Packet packet = new()
+        {
+            SenderEntityId = 12,
+            SessionId = 3,
+            Mode = VoiceMode.Talk,
+            RelayKind = VoiceRelayKind.Proximity,
+            Payload = new byte[20],
+            Codec = VoiceProtocol.CodecOpus,
+            SourceEffects = VoiceSourceEffectFlags.Underwater | VoiceSourceEffectFlags.Mask
+        };
+
+        Assert.True(VoiceProtocolValidation.IsValidRelayShape(packet));
+        packet.SourceEffects = (VoiceSourceEffectFlags)0x80;
+        Assert.False(VoiceProtocolValidation.IsValidRelayShape(packet));
+    }
+
     private static VoiceFrameV3Packet ValidPacket(byte[] payload)
     {
         return new VoiceFrameV3Packet

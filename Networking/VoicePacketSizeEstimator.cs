@@ -30,7 +30,8 @@ public static class VoicePacketSizeEstimator
             + FloatFieldSize(13, packet.Z)
             + Int32FieldSize(14, packet.Codec)
             + StringFieldSize(15, packet.SenderUid)
-            + Int64FieldSize(16, packet.CaptureServerTimestampMilliseconds);
+            + Int64FieldSize(16, packet.CaptureServerTimestampMilliseconds)
+            + UInt32FieldSize(17, (byte)packet.SourceEffects);
     }
 
     public static int EstimateSerializedBytes(DirectorVoiceRelayFrameV3Packet packet)

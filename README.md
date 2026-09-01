@@ -17,7 +17,7 @@ SimpleVoiceChat `1.2.6` 是适用于 Vintage Story `1.22.3` 的客户端/服务�
 - 可将声音发送到接近度范围、当前频道或两者。
 - 自定义频道支持开放、密码和隐藏可见性，以及所有者、主持人、成员、只听和封禁角色。
 - 支持按键说话、语音触发通话（自由麦）、输入/输出设备选择、增益、噪声门、玩家单独音量与静音。
-- 首选 Opus 编码；ADPCM 回退默认关闭并由服务器配置决定。客户端和服务器必须使用协议 V8 兼容版本。
+- 首选 Opus 编码；ADPCM 回退默认关闭并由服务器配置决定。客户端和服务器必须使用协议 V9 兼容版本。
 - 接近度语音在客户端按距离平滑衰减到静音；频道/群组语音不受距离衰减影响，服务端转发范围不会扩大。
 - 可选的公共聊天距离可视：开启后，普通公共聊天只会显示给同维度且处于“聊天可视距离”内的玩家，发言者始终能看到自己的消息。
 - 可在本机进行麦克风试听，并主动保存仅输入或输入+输出 WAV；多人分轨由服务器权威托管。
@@ -125,6 +125,23 @@ Whisper 页面通常直接提供模型文件；填写实际 `.bin` 文件路径�
 
 设置页的“麦克风测试”只保存在内存中，不会生成文件或发送到服务器。
 
+### 水下与装备语音效果
+
+水下状态和头盔/面具规则由服务器判定。装备规则只保存在服务器的 `ModConfig/SimpleVoiceChat.Server.json`，不会发送给客户端，也不能由普通玩家修改。服务器生成的默认规则如下；`Slot` 的 `0/1/2` 分别表示 `Head/Face/ArmorHead`，`Effect` 的 `0/1` 分别表示 `Helmet/Mask`，规则按顺序首个命中生效：
+
+```json
+{
+  "EnableEnvironmentalVoiceEffects": true,
+  "ApplyUnderwaterEffectsToChannels": false,
+  "EquipmentVoiceEffectRules": [
+    { "Slot": 2, "ItemCodePattern": "armor-head-*", "Effect": 0 },
+    { "Slot": 1, "ItemCodePattern": "clothes-face-*mask*", "Effect": 1 }
+  ]
+}
+```
+
+物品代码支持 `*` 和 `?` 通配符；不写域名时会匹配任意域名下的物品路径。修改后执行 `/svc reload` 或重启服务器。水下默认只影响接近度语音；玩家设置中的“环境语音效果”只控制本机播放，不会改变服务器装备规则。多人分轨 WAV 保留未处理语音。
+
 ### 接近度距离渐变
 
 接近度语音在客户端播放时使用距离增益：近距离保持正常音量，接近模式范围边界时逐渐降低，到达边界时静音。服务端仍只转发配置范围内的接收者（空间查询带约 1 格缓冲），因此不会增加网络流量。频道语音不使用距离渐变；选择“接近度和当前频道”时，服务端对同时满足两种条件的接收者优先选择频道路径，其他接近度接收者使用渐变。距离增益会与总音量、玩家音量、静音/拒听和环境效果相乘。
@@ -222,7 +239,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 - Transmit to proximity, the selected custom channel, or both.
 - Open, password-protected, and hidden channels with Owner, Moderator, Member, Listen Only, and Banned roles.
 - Push-to-talk, voice activation, input/output device selection, gain, noise gate, per-player volume, and local mute.
-- Opus is preferred; ADPCM fallback is disabled by default and controlled by the server. Compatible V8 builds are required on both sides.
+- Opus is preferred; ADPCM fallback is disabled by default and controlled by the server. Compatible V9 builds are required on both sides.
 - Proximity playback applies a client-side distance fade to silence at the configured boundary; channel/group voice bypasses that fade and server forwarding does not expand.
 - Optional proximity visibility for public chat can limit ordinary chat messages to players in the same dimension and within a server-configured range; the sender always sees their own message.
 - In-memory microphone testing plus input-only, input-and-output, and server-hosted administrator multi-track WAV recording.
@@ -318,6 +335,23 @@ The home-page recording button offers Input Only, Input+Output, and Multi-track 
 ```
 
 Microphone Test is memory-only and neither creates a file nor sends audio to the server.
+
+### Underwater and Equipment Voice Effects
+
+The server determines underwater state and helmet/mask rules. Equipment rules exist only in the server's `ModConfig/SimpleVoiceChat.Server.json`; they are not sent to clients and ordinary players cannot change them. The generated defaults are shown below. `Slot` values `0/1/2` mean `Head/Face/ArmorHead`, `Effect` values `0/1` mean `Helmet/Mask`, and the first matching rule wins:
+
+```json
+{
+  "EnableEnvironmentalVoiceEffects": true,
+  "ApplyUnderwaterEffectsToChannels": false,
+  "EquipmentVoiceEffectRules": [
+    { "Slot": 2, "ItemCodePattern": "armor-head-*", "Effect": 0 },
+    { "Slot": 1, "ItemCodePattern": "clothes-face-*mask*", "Effect": 1 }
+  ]
+}
+```
+
+Item codes support `*` and `?` wildcards. A pattern without a domain matches the item path in any domain. Run `/svc reload` or restart the server after editing. Underwater effects apply only to proximity voice by default. The player's Environmental Voice Effects switch controls local playback only and cannot alter server equipment rules. Multi-track WAV files retain unprocessed speech.
 
 ### Proximity Fade
 

@@ -769,6 +769,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-deafened"), "globalMute", controller.GlobalMuted, controller.SetGlobalMutedFromSettings);
         AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-adaptive-jitter"), "jitter", config.AdaptiveJitterBuffer, controller.SetAdaptiveJitterFromSettings);
         AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-occlusion"), "occlusion", config.EnableOcclusionEffects, controller.SetOcclusionFromSettings);
+        AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-environmental-voice-effects"), "environmental-effects", config.EnableEnvironmentalVoiceEffects, controller.SetEnvironmentalVoiceEffectsFromSettings);
         AddSwitchRow(composer, labelX, ref behaviorY, SVCLang.Get("label-performance-mode"), "performance", config.PerformanceMode, controller.SetPerformanceModeFromSettings);
 
         double secondaryBehaviorY = y;
@@ -2040,6 +2041,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
         AddAdminConfigSwitch(composer, leftX, ref leftY, label, "force-immersive", SVCLang.Get("admin-config-force-immersive"), value => adminConfigDraft.ForceImmersive = value);
         AddAdminConfigSwitch(composer, leftX, ref leftY, label, "enable-occlusion", SVCLang.Get("admin-config-enable-occlusion"), value => adminConfigDraft.EnableOcclusion = value);
         AddAdminConfigSwitch(composer, leftX, ref leftY, label, "enable-weather", SVCLang.Get("admin-config-enable-weather"), value => adminConfigDraft.EnableWeatherEffects = value);
+        AddAdminConfigSwitch(composer, leftX, ref leftY, label, "environmental-effects", SVCLang.Get("admin-config-environmental-effects"), value => adminConfigDraft.EnableEnvironmentalVoiceEffects = value);
+        AddAdminConfigSwitch(composer, leftX, ref leftY, label, "underwater-channels", SVCLang.Get("admin-config-underwater-channels"), value => adminConfigDraft.ApplyUnderwaterEffectsToChannels = value);
         AddAdminConfigSwitch(composer, leftX, ref leftY, label, "enable-hud", SVCLang.Get("admin-config-enable-hud"), value => adminConfigDraft.EnableHudIndicators = value);
         AddAdminConfigSwitch(composer, leftX, ref leftY, label, "allow-continuous-talk", SVCLang.Get("admin-config-allow-continuous-talk"), value => adminConfigDraft.AllowContinuousTalk = value);
         AddAdminConfigSwitch(composer, leftX, ref leftY, label, "enable-channels", SVCLang.Get("admin-config-enable-channels"), value => adminConfigDraft.EnableChannels = value);
@@ -2108,6 +2111,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
         "force-immersive" => adminConfigDraft.ForceImmersive,
         "enable-occlusion" => adminConfigDraft.EnableOcclusion,
         "enable-weather" => adminConfigDraft.EnableWeatherEffects,
+        "environmental-effects" => adminConfigDraft.EnableEnvironmentalVoiceEffects,
+        "underwater-channels" => adminConfigDraft.ApplyUnderwaterEffectsToChannels,
         "enable-hud" => adminConfigDraft.EnableHudIndicators,
         "allow-continuous-talk" => adminConfigDraft.AllowContinuousTalk,
         "enable-channels" => adminConfigDraft.EnableChannels,
@@ -2154,6 +2159,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
             TalkRange = source.TalkRange, ShoutRange = source.ShoutRange, EnableOcclusion = source.EnableOcclusion,
             EnableProximityChatText = source.EnableProximityChatText, ProximityChatRange = source.ProximityChatRange,
             EnableWeatherEffects = source.EnableWeatherEffects, EnableHudIndicators = source.EnableHudIndicators,
+            EnableEnvironmentalVoiceEffects = source.EnableEnvironmentalVoiceEffects,
+            ApplyUnderwaterEffectsToChannels = source.ApplyUnderwaterEffectsToChannels,
             ProtocolVersion = source.ProtocolVersion, MaxStreamsPerListener = source.MaxStreamsPerListener,
             AllowContinuousTalk = source.AllowContinuousTalk, ServerInstanceId = source.ServerInstanceId,
             EnableDirectorProximityCapture = source.EnableDirectorProximityCapture, EnableRecorderCapture = source.EnableRecorderCapture,
