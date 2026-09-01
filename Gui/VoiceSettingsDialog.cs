@@ -554,7 +554,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     {
         bounds.CalcWorldBounds();
         GuiElement.RoundRectangle(ctx, bounds.bgDrawX, bounds.bgDrawY, bounds.OuterWidth, bounds.OuterHeight, GuiElement.scaled(4));
-        ctx.SetSourceRGBA(0.015, 0.02, 0.028, 0.84);
+        ctx.SetSourceRGBA(0.015, 0.02, 0.028, 0.68);
         ctx.FillPreserve();
         ctx.SetSourceRGBA(0.78, 0.82, 0.9, 0.22);
         ctx.LineWidth = GuiElement.scaled(1);
@@ -1904,9 +1904,9 @@ public sealed class VoiceSettingsDialog : GuiDialog
         const double controlWidth = 190;
         double leftY = 0;
         double rightY = 0;
-        CairoFont section = CairoFont.WhiteSmallishText();
-        CairoFont label = CairoFont.WhiteSmallishText();
-        CairoFont detail = CairoFont.WhiteSmallText();
+        CairoFont section = CairoFont.WhiteSmallishText().WithColor(new[] { 0.96, 0.97, 1.0, 1.0 });
+        CairoFont label = CairoFont.WhiteSmallishText().WithColor(new[] { 0.92, 0.94, 0.98, 1.0 });
+        CairoFont detail = CairoFont.WhiteSmallText().WithColor(new[] { 0.82, 0.86, 0.92, 1.0 });
         CairoFont input = CairoFont.TextInput();
 
         VoiceSettingsChannelOption[] channels = controller.BuildChannelOptions();

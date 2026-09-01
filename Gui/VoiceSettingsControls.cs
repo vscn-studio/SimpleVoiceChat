@@ -1256,8 +1256,10 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
 
     public override void OnFocusLost()
     {
+        // The popup is rendered as part of the control, but the GUI focus
+        // manager may briefly move focus while dispatching the opening click.
+        // Do not treat that transient focus change as an outside click.
         base.OnFocusLost();
-        Close();
     }
 
     public void Close()
