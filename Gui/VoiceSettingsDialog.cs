@@ -81,6 +81,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         "inputDevice",
         "outputDevice",
         "opusBitrate",
+        "noise-suppression",
         "quick-channel",
         "quick-transmit",
         "speech-recognition-provider",
