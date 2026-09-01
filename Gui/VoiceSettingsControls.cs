@@ -271,172 +271,6 @@ internal sealed class VoiceSettingsTextInput : GuiElementTextInput
     }
 }
 
-internal sealed class VoiceSettingsScrollbar : GuiElementControl
-{
-    private const double MinimumThumbHeight = 28;
-
-    private readonly Action<float> changed;
-    private readonly LoadedTexture texture;
-    private double visibleHeight = 1;
-    private double totalHeight = 1;
-    private float value;
-    private float renderedValue = float.NaN;
-    private bool dragging;
-    private double dragOffset;
-
-    public override bool Focusable => false;
-
-    public VoiceSettingsScrollbar(ICoreClientAPI capi, ElementBounds bounds, Action<float> changed)
-        : base(capi, bounds)
-    {
-        this.changed = changed;
-        texture = new LoadedTexture(capi);
-    }
-
-    public void SetHeights(double visible, double total, float position)
-    {
-        visibleHeight = Math.Max(1, visible);
-        totalHeight = Math.Max(visibleHeight, total);
-        SetPosition(position);
-    }
-
-    public void SetPosition(float position)
-    {
-        value = ClampValue(position);
-        renderedValue = float.NaN;
-    }
-
-    public override void ComposeElements(Context ctx, ImageSurface surface)
-    {
-        Bounds.CalcWorldBounds();
-        Redraw();
-    }
-
-    public override void RenderInteractiveElements(float deltaTime)
-    {
-        if (!VoiceSettingsVisibility.IsVisibleInClip(this)) return;
-        using VoiceSettingsClipScope clip = VoiceSettingsVisibility.EnterClip(api, this);
-        if (texture.TextureId == 0 || Math.Abs(renderedValue - value) > 0.01f)
-        {
-            Redraw();
-        }
-
-        api.Render.Render2DTexturePremultipliedAlpha(texture.TextureId, Bounds);
-    }
-
-    public override void OnMouseDownOnElement(ICoreClientAPI api, MouseEvent args)
-    {
-        base.OnMouseDownOnElement(api, args);
-        Bounds.CalcWorldBounds();
-        double localY = args.Y - Bounds.renderY;
-        double thumbOffset = GetThumbOffset();
-        double thumbHeight = GetThumbHeight();
-        if (localY >= thumbOffset && localY <= thumbOffset + thumbHeight)
-        {
-            dragging = true;
-            dragOffset = localY - thumbOffset;
-        }
-        else
-        {
-            SetFromTrack(localY - thumbHeight / 2d);
-        }
-
-        args.Handled = true;
-    }
-
-    public override void OnMouseMove(ICoreClientAPI api, MouseEvent args)
-    {
-        if (!dragging)
-        {
-            return;
-        }
-
-        Bounds.CalcWorldBounds();
-        SetFromTrack(args.Y - Bounds.renderY - dragOffset);
-        args.Handled = true;
-    }
-
-    public override void OnMouseUpOnElement(ICoreClientAPI api, MouseEvent args)
-    {
-        dragging = false;
-        base.OnMouseUpOnElement(api, args);
-    }
-
-    public override void OnMouseUp(ICoreClientAPI api, MouseEvent args)
-    {
-        dragging = false;
-        base.OnMouseUp(api, args);
-    }
-
-    public override void OnFocusLost()
-    {
-        dragging = false;
-        base.OnFocusLost();
-    }
-
-    public override void Dispose()
-    {
-        texture.Dispose();
-        base.Dispose();
-    }
-
-    private void SetFromTrack(double thumbOffset)
-    {
-        double travel = Math.Max(0, Bounds.InnerHeight - GetThumbHeight());
-        float next = travel <= 0 || totalHeight <= visibleHeight
-            ? 0f
-            : (float)(thumbOffset / travel * (totalHeight - visibleHeight));
-        next = ClampValue(next);
-        if (Math.Abs(next - value) > 0.01f)
-        {
-            value = next;
-            changed(value);
-        }
-    }
-
-    private double GetThumbHeight()
-    {
-        return Math.Min(
-            Bounds.InnerHeight,
-            Math.Max(GuiElement.scaled(MinimumThumbHeight), Bounds.InnerHeight * visibleHeight / totalHeight));
-    }
-
-    private double GetThumbOffset()
-    {
-        double travel = Math.Max(0, Bounds.InnerHeight - GetThumbHeight());
-        double maxValue = totalHeight - visibleHeight;
-        return maxValue <= 0 ? 0 : travel * value / maxValue;
-    }
-
-    private float ClampValue(float position)
-    {
-        return Math.Clamp(position, 0f, (float)Math.Max(0, totalHeight - visibleHeight));
-    }
-
-    private void Redraw()
-    {
-        if (Bounds.OuterWidthInt <= 0 || Bounds.OuterHeightInt <= 0)
-        {
-            return;
-        }
-
-        using ImageSurface surface = new(Format.Argb32, Bounds.OuterWidthInt, Bounds.OuterHeightInt);
-        using Context ctx = new(surface);
-        double width = Bounds.OuterWidth;
-        double height = Bounds.OuterHeight;
-        double thumbHeight = GetThumbHeight();
-        double thumbOffset = GetThumbOffset();
-        GuiElement.RoundRectangle(ctx, 0, 0, width, height, GuiElement.scaled(3));
-        ctx.SetSourceRGBA(0.72, 0.78, 0.88, 0.18);
-        ctx.Fill();
-        GuiElement.RoundRectangle(ctx, 0, thumbOffset, width, thumbHeight, GuiElement.scaled(3));
-        ctx.SetSourceRGBA(0.88, 0.92, 0.98, dragging ? 0.92 : 0.68);
-        ctx.Fill();
-        GuiElement.GenerateTexture(api, surface, ref texture.TextureId);
-        renderedValue = value;
-    }
-}
-
 internal sealed class VoiceSettingsTextButton : GuiElementTextButton
 {
     private readonly LoadedTexture normalBackground;
@@ -1305,7 +1139,7 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
                 RebuildPopupTexture();
             }
             api.Render.Render2DTexturePremultipliedAlpha(popupTexture.TextureId,
-                Bounds.renderX, Bounds.renderY + Bounds.InnerHeight, popupWidth, popupHeight, 320f);
+                Bounds.renderX, GetPopupTop(), popupWidth, popupHeight, 320f);
         }
     }
 
@@ -1321,11 +1155,12 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
             return true;
         }
 
+        double popupTop = GetPopupTop();
         return expanded
             && posX >= Bounds.renderX
             && posX <= Bounds.renderX + popupWidth
-            && posY >= Bounds.renderY + Bounds.InnerHeight
-            && posY <= Bounds.renderY + Bounds.InnerHeight + popupHeight;
+            && posY >= popupTop
+            && posY <= popupTop + popupHeight;
     }
 
     public override void OnMouseDownOnElement(ICoreClientAPI api, MouseEvent args)
@@ -1335,6 +1170,9 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
             return;
         }
 
+        // Explicitly claim focus before opening the popup. Without this the
+        // dialog can immediately report focus loss and close the new popup.
+        base.OnMouseDownOnElement(api, args);
         Bounds.CalcWorldBounds();
         if (!expanded)
         {
@@ -1348,7 +1186,7 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
             return;
         }
 
-        double popupTop = Bounds.renderY + Bounds.InnerHeight;
+        double popupTop = GetPopupTop();
         if (args.Y >= popupTop && args.Y <= popupTop + popupHeight)
         {
             int popupRow = (int)((args.Y - popupTop) / rowHeight);
@@ -1382,7 +1220,7 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
             return;
         }
 
-        double popupTop = Bounds.renderY + Bounds.InnerHeight;
+        double popupTop = GetPopupTop();
         if (args.X < Bounds.renderX || args.X > Bounds.renderX + popupWidth
             || args.Y < popupTop || args.Y > popupTop + popupHeight)
         {
@@ -1740,6 +1578,15 @@ internal sealed class VoiceSettingsDropDown : GuiElementControl
                 rowHeight + (rowHeight - extents.Height) / 2d);
         }
         GuiElement.GenerateTexture(api, surface, ref popupTexture.TextureId);
+    }
+
+    private double GetPopupTop()
+    {
+        double below = Bounds.renderY + Bounds.InnerHeight;
+        double frameHeight = api.Render.FrameHeight;
+        return below + popupHeight <= frameHeight - GuiElement.scaled(6)
+            ? below
+            : Math.Max(GuiElement.scaled(6), Bounds.renderY - popupHeight);
     }
 
     private static string FitText(Context context, string text, double maxWidth)

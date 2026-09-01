@@ -163,14 +163,12 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private VoiceSettingsPage selectedPage = VoiceSettingsPage.Home;
     private ElementBounds? contentBounds;
-    private float scrollPosition;
     private double contentHeight = ViewportHeight;
     private double activeViewportHeight = ViewportHeight;
     private double activeContentWidth = ContentWidth;
     private double activeContentHeaderHeight;
     private bool composeQueued;
     private bool composePending;
-    private bool scrollComposeQueued;
     private bool pointerPressed;
     private ServerVoiceConfigPacket adminConfigDraft = new();
     private bool adminConfigDirty;
@@ -262,7 +260,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
     {
         controller.RequestSettingsRefresh();
         selectedPage = VoiceSettingsPage.Home;
-        scrollPosition = 0;
         composePending = false;
         pointerPressed = false;
         overlay = VoiceSettingsOverlay.None;
@@ -285,7 +282,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
         if (selectedPage == VoiceSettingsPage.Admin && !controller.HasServerControl)
         {
             selectedPage = VoiceSettingsPage.Home;
-            scrollPosition = 0;
         }
         if (IsOpened())
         {
@@ -307,7 +303,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
         if (selectedPage == VoiceSettingsPage.Admin && !controller.HasServerControl)
         {
             selectedPage = VoiceSettingsPage.Home;
-            scrollPosition = 0;
         }
 
         DropdownSnapshot? expandedDropdown = CaptureExpandedDropdown();
@@ -337,9 +332,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
         activeContentWidth = home ? windowWidth - ContentLeft * 2 : ContentWidth;
         ElementBounds root = ElementBounds.Fixed(EnumDialogArea.CenterMiddle, 0, 0, windowWidth, windowHeight);
         ElementBounds background = ElementBounds.Fixed(0, 0, windowWidth, windowHeight);
-        bool clipContent = !home || requestedHomeHeight > windowHeight;
-        double viewportTop = 0;
-        ElementBounds viewport = ElementBounds.Fixed(ContentLeft, viewportTop, activeContentWidth, activeViewportHeight);
         contentBounds = ElementBounds.Fixed(0, 0, activeContentWidth, activeViewportHeight);
         bool overlayActive = overlay != VoiceSettingsOverlay.None;
 
@@ -370,10 +362,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
                     _ => OnClose()),
                 "close");
 
-            if (clipContent)
-            {
-                composer.BeginClip(viewport);
-            }
             composer.BeginChildElements(contentBounds);
 
             if (!home)
@@ -401,31 +389,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
                 contentHeight += activeContentHeaderHeight;
             }
             contentHeight = Math.Max(activeViewportHeight, contentHeight);
-            scrollPosition = Math.Clamp(
-                scrollPosition,
-                0f,
-                (float)Math.Max(0d, contentHeight - activeViewportHeight));
-            contentBounds.fixedY = -scrollPosition;
 
             composer = composer.EndChildElements();
-            if (clipContent)
-            {
-                composer = composer.EndClip();
-            }
-            if (!home && contentHeight > activeViewportHeight)
-            {
-                const string scrollbarKey = "settings-scrollbar";
-                VoiceSettingsScrollbar scrollbar = new(
-                    composer.Api,
-                    ElementBounds.Fixed(
-                        windowWidth - 20,
-                        activeContentHeaderHeight + 6,
-                        8,
-                        Math.Max(1, activeViewportHeight - activeContentHeaderHeight - 12)),
-                    OnScroll);
-                scrollbar.SetHeights(activeViewportHeight, contentHeight, scrollPosition);
-                composer.AddInteractiveElement(scrollbar, scrollbarKey);
-            }
         }
         if (overlay != VoiceSettingsOverlay.None)
         {
@@ -575,30 +540,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
         joinPassword = string.Empty;
         overlay = VoiceSettingsOverlay.JoinChannel;
         QueueCompose();
-    }
-
-    public override void OnMouseWheel(MouseWheelEventArgs args)
-    {
-        if (!IsOpened() || SingleComposer == null
-            || contentHeight <= activeViewportHeight
-            || !SingleComposer.Bounds.PointInside(capi.Input.MouseX, capi.Input.MouseY))
-        {
-            base.OnMouseWheel(args);
-            return;
-        }
-
-        float next = Math.Clamp(
-            scrollPosition - (float)(args.delta * GuiElement.scaled(36)),
-            0f,
-            (float)Math.Max(0d, contentHeight - activeViewportHeight));
-        if (Math.Abs(next - scrollPosition) > 0.01f)
-        {
-            OnScroll(next);
-            args.SetHandled();
-            return;
-        }
-
-        base.OnMouseWheel(args);
     }
 
     private void RegisterFontAwesomeIcons()
@@ -2018,7 +1959,10 @@ public sealed class VoiceSettingsDialog : GuiDialog
         composer.GetTextInput("adminRenameInput").SetMaxLength(controller.MaxChannelNameLength);
         composer.GetButton("adminApply").Enabled = CanExecuteAdminAction();
         composer.GetButton("adminRename").Enabled = CanRenameAdminChannel(channels);
-        return AddAdminConfigSection(composer, Math.Max(leftY, rightY) + 30);
+        // Server configuration is edited in SimpleVoiceChat.Server.json or
+        // with the /svc reload command. The player-facing admin page only
+        // exposes moderation and channel management actions.
+        return Math.Max(leftY, rightY) + 24;
     }
 
     private double AddAdminConfigSection(GuiComposer composer, double startY)
@@ -2294,7 +2238,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
             return false;
         }
         selectedPage = page;
-        scrollPosition = 0;
         if (page == VoiceSettingsPage.Admin)
         {
             adminConfigDraft = CloneServerConfig(controller.ServerSettings);
@@ -2850,35 +2793,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
         }
     }
 
-    private void OnScroll(float value)
-    {
-        scrollPosition = Math.Clamp(
-            value,
-            0f,
-            (float)Math.Max(0d, contentHeight - activeViewportHeight));
-        if (contentBounds == null) return;
-        contentBounds.fixedY = -scrollPosition;
-        contentBounds.CalcWorldBounds();
-        if (SingleComposer?.GetElement("settings-scrollbar") is VoiceSettingsScrollbar scrollbar)
-        {
-            scrollbar.SetPosition(scrollPosition);
-        }
-        if (scrollComposeQueued)
-        {
-            return;
-        }
-
-        scrollComposeQueued = true;
-        capi.Event.EnqueueMainThreadTask(() =>
-        {
-            scrollComposeQueued = false;
-            if (IsOpened())
-            {
-                SingleComposer?.ReCompose();
-            }
-        }, "simplevoicechat-settings-scroll");
-    }
-
     private void QueueCompose()
     {
         composePending = true;
@@ -2893,12 +2807,23 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private void FlushQueuedCompose()
     {
-        if (pointerPressed || !composePending || !IsOpened())
+        if (pointerPressed || !composePending || !IsOpened() || IsTextInputFocused())
         {
             return;
         }
         composePending = false;
         Compose();
+    }
+
+    private bool IsTextInputFocused()
+    {
+        if (SingleComposer == null)
+        {
+            return false;
+        }
+
+        return TextInputElementKeys.Any(key =>
+            SingleComposer.GetElement(key) is GuiElementTextInput { HasFocus: true });
     }
 
     private void OnClose()
@@ -2911,7 +2836,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
         if (selectedPage != VoiceSettingsPage.Home)
         {
             selectedPage = VoiceSettingsPage.Home;
-            scrollPosition = 0;
             Compose();
             return;
         }
