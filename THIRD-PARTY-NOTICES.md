@@ -14,7 +14,16 @@ Redistribution and use in source and binary forms, with or without modification,
 The settings controls include Lucide icons from https://lucide.dev/ under the ISC License.
 The complete license text is included at `assets/simplevoicechat/licenses/LUCIDE.txt`.
 
-SimpleVoiceChat retains an optional RNNoise integration for local microphone noise suppression, but the current release package does not bundle an RNNoise native library. RNNoise is distributed under the BSD 3-Clause License.
+SimpleVoiceChat bundles the third-party `YellowDogMan.RRNoise.NET` 0.1.9 package for local microphone noise suppression. Its native builds are included for Windows x64/x86 and Linux x64/arm64. The package is maintained and built by Yellow Dog Man Studios S.r.o.; SimpleVoiceChat does not claim authorship of these binaries.
+
+- https://github.com/Yellow-Dog-Man/RNNoise.Net
+- https://www.nuget.org/packages/YellowDogMan.RRNoise.NET/0.1.9
+
+The `YellowDogMan.RRNoise.NET` managed wrapper is distributed under the MIT License. The complete license text is available at:
+
+- https://licenses.nuget.org/MIT
+
+The bundled native RNNoise library is distributed under the BSD 3-Clause License.
 
 - https://gitlab.xiph.org/xiph/rnnoise
 

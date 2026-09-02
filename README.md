@@ -17,7 +17,7 @@ SimpleVoiceChat `1.2.7-pre.2` 是适用于 Vintage Story `1.22.3` 的客户端/�
 - 可将声音发送到接近度范围、当前频道或两者。
 - 自定义频道支持开放、密码和隐藏可见性，以及所有者、主持人、成员、只听和封禁角色。
 - 支持按键说话、语音触发通话（自由麦）、输入/输出设备选择、增益、噪声门、玩家单独音量与静音。
-- 本发行包不内置 RNNoise 原生库；噪声抑制选项在无外部后端时自动回退到内置 AGC/噪声门处理。
+- 本发行包内置第三方构建的 `YellowDogMan.RRNoise.NET 0.1.9` RNNoise 原生库，支持 Windows x64/x86 以及 Linux x64/arm64，无需玩家手动部署。该包不提供 macOS 原生库；macOS 会自动回退到内置 AGC/噪声门处理，也仍可从 `VintagestoryData\ModData\SimpleVoiceChat\native` 加载兼容的外部库。
 - 全链路使用 48 kHz 单声道、20 ms 帧和 Opus；默认 24 Kbps，自适应范围为 12-48 Kbps。客户端和服务器必须使用协议 V10 兼容版本，旧版 V9 不互通。
 - 接近度语音在客户端按距离平滑衰减到静音；频道/群组语音不受距离衰减影响，服务端转发范围不会扩大。
 - 可选的公共聊天距离可视：开启后，普通公共聊天只会显示给同维度且处于“聊天可视距离”内的玩家，发言者始终能看到自己的消息。
@@ -220,7 +220,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 - Transmit to proximity, the selected custom channel, or both.
 - Open, password-protected, and hidden channels with Owner, Moderator, Member, Listen Only, and Banned roles.
 - Push-to-talk, voice activation, input/output device selection, gain, noise gate, per-player volume, and local mute.
-- This release does not bundle an RNNoise native library; noise suppression falls back to the built-in AGC/gate processing when no external backend is available.
+- This release bundles the third-party `YellowDogMan.RRNoise.NET 0.1.9` RNNoise native builds for Windows x64/x86 and Linux x64/arm64; players do not need to install them manually. That package has no macOS native build, so macOS falls back to the built-in AGC/gate processing and may still load a compatible external library from `VintagestoryData\ModData\SimpleVoiceChat\native`.
 - The V10 protocol uses 48 kHz mono Opus only; compatible V10 builds are required on both sides. V9 clients are rejected.
 - Proximity playback applies a client-side distance fade to silence at the configured boundary; channel/group voice bypasses that fade and server forwarding does not expand.
 - Optional proximity visibility for public chat can limit ordinary chat messages to players in the same dimension and within a server-configured range; the sender always sees their own message.
