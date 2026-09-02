@@ -630,6 +630,8 @@
   "simplevoicechat:speech-recognition-error-cancelled": "语音识别请求已取消。",
   "simplevoicechat:speech-recognition-error-model-path": "本地模型路径不存在或无法访问。",
   "simplevoicechat:speech-recognition-error-audio": "当前录音格式不受支持。",
+  "simplevoicechat:speech-recognition-error-provider-unavailable": "此识别服务商不可用。",
+  "simplevoicechat:speech-recognition-error-whisper-native": "缺少 Whisper 原生库或无法加载。请将匹配的文件放入 VintagestoryData/ModData/SimpleVoiceChat/native。",
   "simplevoicechat:speech-recognition-whisper-download": "请下载 Whisper GGML 模型，然后在上方填写 .bin 文件路径。",
   "simplevoicechat:button-open-browser": "打开下载页面"
 }

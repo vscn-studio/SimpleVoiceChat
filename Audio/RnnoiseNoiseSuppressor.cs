@@ -122,13 +122,7 @@ public sealed class RnnoiseNoiseSuppressor : IDisposable
             return false;
         }
 
-        string[] roots =
-        {
-            Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? string.Empty,
-            AppContext.BaseDirectory,
-            Directory.GetCurrentDirectory()
-        };
-        foreach (string root in roots.Where(root => !string.IsNullOrWhiteSpace(root)).Distinct(StringComparer.OrdinalIgnoreCase))
+        foreach (string root in GetNativeSearchRoots())
         {
             string candidate = Path.Combine(root, "native", "rnnoise.dll");
             if (File.Exists(candidate))
@@ -140,6 +134,32 @@ public sealed class RnnoiseNoiseSuppressor : IDisposable
 
         path = null;
         return false;
+    }
+
+    internal static IReadOnlyList<string> GetNativeSearchRoots()
+    {
+        List<string> roots = new();
+        AddRoot(roots, Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location));
+        AddRoot(roots, AppContext.BaseDirectory);
+        AddRoot(roots, Directory.GetCurrentDirectory());
+
+        string applicationData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        AddRoot(roots, Path.Combine(applicationData, "VintagestoryData", "ModData", "SimpleVoiceChat"));
+        AddRoot(roots, Path.Combine(AppContext.BaseDirectory, "VintagestoryData", "ModData", "SimpleVoiceChat"));
+        AddRoot(roots, Path.Combine(Directory.GetCurrentDirectory(), "VintagestoryData", "ModData", "SimpleVoiceChat"));
+        AddRoot(roots, Path.Combine(Environment.GetEnvironmentVariable("VINTAGE_STORY_DATA") ?? string.Empty, "ModData", "SimpleVoiceChat"));
+        AddRoot(roots, Path.Combine(Directory.GetParent(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))?.FullName ?? string.Empty, "VintagestoryData", "ModData", "SimpleVoiceChat"));
+        AddRoot(roots, Path.Combine(Directory.GetParent(Directory.GetCurrentDirectory())?.FullName ?? string.Empty, "VintagestoryData", "ModData", "SimpleVoiceChat"));
+        return roots;
+    }
+
+    private static void AddRoot(List<string> roots, string? root)
+    {
+        if (!string.IsNullOrWhiteSpace(root)
+            && !roots.Contains(root, StringComparer.OrdinalIgnoreCase))
+        {
+            roots.Add(root);
+        }
     }
 
     private static bool ProbeAvailability()

@@ -87,11 +87,24 @@ public sealed class CoreTests
     }
 
     [Fact]
-    public void NoiseSuppressionFallsBackWhenNativeBackendIsUnavailable()
+    public void NoiseSuppressionAvailabilityMatchesNativeLibraryLoad()
     {
-        Assert.False(VoiceProcessingCapabilities.NoiseSuppressionAvailable);
-        Assert.Equal("Basic AGC / gate", VoiceProcessingCapabilities.BackendName);
-        Assert.Null(RnnoiseNoiseSuppressor.TryCreate());
+        using RnnoiseNoiseSuppressor? suppressor = RnnoiseNoiseSuppressor.TryCreate();
+
+        Assert.Equal(suppressor != null, VoiceProcessingCapabilities.NoiseSuppressionAvailable);
+        Assert.Equal(
+            suppressor != null ? "RNNoise + AGC / gate" : "Basic AGC / gate",
+            VoiceProcessingCapabilities.BackendName);
+    }
+
+    [Fact]
+    public void NoiseSuppressionSearchIncludesVintageStoryModData()
+    {
+        Assert.Contains(
+            RnnoiseNoiseSuppressor.GetNativeSearchRoots(),
+            root => root.EndsWith(
+                Path.Combine("VintagestoryData", "ModData", "SimpleVoiceChat"),
+                StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -952,7 +965,7 @@ public sealed class CoreTests
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
         JsonElement dependencies = document.RootElement.GetProperty("dependencies");
 
-        Assert.Equal("1.2.7-pre.1", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("1.2.7-pre.2", document.RootElement.GetProperty("version").GetString());
         Assert.True(dependencies.TryGetProperty("game", out _));
         Assert.False(dependencies.TryGetProperty("vsdirector", out _));
         Assert.DoesNotContain(

@@ -1,8 +1,8 @@
 # SimpleVoiceChat / 简单语音对话
 
-SimpleVoiceChat `1.2.7-pre.1` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, server-hosted multi-track recording, moderation, optional speech-to-chat, and optional VS Director capture.
+SimpleVoiceChat `1.2.7-pre.2` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, server-hosted multi-track recording, moderation, optional speech-to-chat, and optional VS Director capture.
 
-SimpleVoiceChat `1.2.7-pre.1` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、服务器托管多人分轨录音、管理功能、可选语音转文字聊天以及可选 VS Director 录制集成。
+SimpleVoiceChat `1.2.7-pre.2` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、服务器托管多人分轨录音、管理功能、可选语音转文字聊天以及可选 VS Director 录制集成。
 
 - [中文说明](#中文说明)
 - [English](#english)
@@ -29,7 +29,7 @@ SimpleVoiceChat `1.2.7-pre.1` 是适用于 Vintage Story `1.22.3` 的客户端/�
 
 1. 关闭 Vintage Story 客户端和服务器。
 2. 删除 `Mods` 目录中的旧版 SimpleVoiceChat 压缩包，避免同时加载多个版本。
-3. 将 `SimpleVoiceChat-v1.2.7-pre.1.zip` 原样放入客户端和服务器的 `Mods` 目录，不要解压模组包。
+3. 将 `SimpleVoiceChat-v1.2.7-pre.2.zip` 原样放入客户端和服务器的 `Mods` 目录，不要解压模组包。
 4. 启动服务器，然后启动客户端。首次按 `'` 会打开设置向导。
 
 SimpleVoiceChat 不依赖 Simple Voice Chat、VS Director 或 `SimpleVoiceChat_VSDirectorIntegration` 等其他模组。单独安装即可使用基本语音功能。
@@ -110,7 +110,9 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");
 - [Deepgram API 入门](https://developers.deepgram.com/guides/fundamentals/make-your-first-api-request)
 - [Whisper.cpp 模型](https://huggingface.co/ggerganov/whisper.cpp/tree/main)
 
-Whisper 页面通常直接提供模型文件；填写实际 `.bin` 文件路径，而不是文件夹。如果浏览器下载的是压缩包，也要先解压。模型可放在任意玩家有读取权限的位置，Windows、Linux 和 macOS 均使用本平台正常路径格式。
+本地 Whisper 由主模组直接提供，但不随包携带原生运行时。填写实际 `.bin` 模型文件路径，而不是文件夹。如果浏览器下载的是压缩包，也要先解压。模型可放在任意玩家有读取权限的位置，Windows、Linux 和 macOS 均使用本平台正常路径格式。请将匹配平台的 Whisper 原生库放入 `%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat\native\`；Windows 可放置 `whisper.dll` 与同目录的 `ggml-*` 依赖，也支持 `native\runtimes\<平台>-<架构>` 结构。
+
+若手动安装 RNNoise（仅 Windows），将导出 `rnnoise_create`、`rnnoise_destroy`、`rnnoise_process_frame` 的 `rnnoise.dll` 放入 `%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat\native\rnnoise.dll`。启动客户端后，设置页的 RNNoise 选项会在库可加载时启用。
 
 云端服务的 API Key 以明文保存在玩家本机的 `SimpleVoiceChat.Client.json` 中，请勿分享该文件。云端识别会把本次录音直接发送给所选服务商；SimpleVoiceChat 服务端不会代理或保存该请求。Whisper 在本机运行，无需 API Key，也不会将识别音频发送给识别服务商。
 
@@ -251,7 +253,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 
 1. Stop the Vintage Story client and server.
 2. Remove older SimpleVoiceChat archives from each `Mods` directory so that only one version can load.
-3. Place `SimpleVoiceChat-v1.2.7-pre.1.zip` unchanged in the client and server `Mods` directories. Do not extract the mod archive.
+3. Place `SimpleVoiceChat-v1.2.7-pre.2.zip` unchanged in the client and server `Mods` directories. Do not extract the mod archive.
 4. Start the server and client. Press `'` to open the first-run setup wizard.
 
 SimpleVoiceChat does not require Simple Voice Chat, VS Director, or `SimpleVoiceChat_VSDirectorIntegration`. The base voice features work with this package alone.
@@ -321,7 +323,9 @@ Documentation and model downloads:
 - [Deepgram API guide](https://developers.deepgram.com/guides/fundamentals/make-your-first-api-request)
 - [Whisper.cpp models](https://huggingface.co/ggerganov/whisper.cpp/tree/main)
 
-Whisper downloads are normally model files; select the actual `.bin` file, not its parent directory. Extract it first if it was distributed in an archive. Models may be stored in any readable location using normal Windows, Linux, or macOS path syntax.
+Local Whisper is provided directly by the main mod, but native runtime libraries are not bundled. Whisper downloads are normally model files; select the actual `.bin` file, not its parent directory. Extract it first if it was distributed in an archive. Models may be stored in any readable location using normal Windows, Linux, or macOS path syntax. Install matching native libraries under `%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat\native\`; on Windows place `whisper.dll` and its `ggml-*` dependencies there, or use `native\runtimes\<platform>-<architecture>`.
+
+To install RNNoise manually on Windows, place a compatible `rnnoise.dll` exporting `rnnoise_create`, `rnnoise_destroy`, and `rnnoise_process_frame` at `%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat\native\rnnoise.dll`. The RNNoise selector becomes available after the client can load the library.
 
 Cloud API keys are stored as plain text in the local `SimpleVoiceChat.Client.json`; do not share that file. Cloud recognition sends each captured recording directly to the selected provider. The SimpleVoiceChat server neither proxies nor stores those requests. Whisper runs locally, requires no API key, and does not upload recognition audio to a provider.
 
@@ -440,4 +444,4 @@ dotnet test Tests\SimpleVoiceChat.Tests.csproj
 dotnet build SimpleVoiceChat.csproj -c Release
 ```
 
-Release output is written to `bin\Release\Mods\mod`. Unmanaged Whisper libraries must remain under `native/`; Vintage Story rejects unmanaged DLLs placed in the mod root.
+The release is written to `bin\Release\Mods\mod`. Whisper native libraries are intentionally excluded from the ZIP and must be installed under the player's `VintagestoryData\ModData\SimpleVoiceChat\native` directory.

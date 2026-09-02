@@ -4,7 +4,7 @@
 <th style="padding: 6px 8px; text-align: left;">当前版本口径</th>
 </tr></thead><tbody>
 <tr><td style="padding: 6px 8px; vertical-align: top;">模组名称</td><td style="padding: 6px 8px; vertical-align: top;">SimpleVoiceChat（简单语音对话）</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">模组版本</td><td style="padding: 6px 8px; vertical-align: top;"><code>1.2.7-pre.1</code></td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">模组版本</td><td style="padding: 6px 8px; vertical-align: top;"><code>1.2.7-pre.2</code></td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">游戏版本</td><td style="padding: 6px 8px; vertical-align: top;">Vintage Story <code>1.22.3</code></td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">语音协议</td><td style="padding: 6px 8px; vertical-align: top;">协议 V9；Opus 为首选编码，ADPCM 回退默认关闭并由服务器配置决定</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">安装范围</td><td style="padding: 6px 8px; vertical-align: top;">客户端和服务器均需安装同一版本</td></tr>
@@ -17,7 +17,7 @@
 <ol>
 <li>关闭 Vintage Story 客户端和服务器。</li>
 <li>删除 Mods 目录中旧的 SimpleVoiceChat 压缩包，只保留目标版本。</li>
-<li>将 <code>SimpleVoiceChat-v1.2.7-pre.1.zip</code> 原样放入客户端和服务器的 <code>Mods</code> 目录，不要解压模组包。</li>
+<li>将 <code>SimpleVoiceChat-v1.2.7-pre.2.zip</code> 原样放入客户端和服务器的 <code>Mods</code> 目录，不要解压模组包。</li>
 <li>先启动服务器，再启动客户端并进入世界。</li>
 <li>第一次使用时，聊天框会提示按 <code>'</code> 进入设置。该提示不会直接打开窗口。</li>
 <li>按 <code>'</code> 打开首次设置向导。欢迎页可以选择“跳过初始设置，进入设置窗口”，也可以按“取消”关闭或按“确认”开始配置。</li>
@@ -79,7 +79,7 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");</code></pre>
 <h3>设置（音频）</h3>
 <p>“设置”页使用单行控件，包含输入设备、输出设备、播放音量和麦克风增益。自由麦的噪声门和触发阈值在首次设置向导中配置，也可继续在对应设置项中调整。滑块内部直接显示数值，数值不会被滑块遮挡。</p>
 <p>“麦克风测试”用于本机测试，不会发送到服务器，也不会写入录音文件：点击“开始录音”开始，点击“停止录音”结束，再点击“播放录音”或“停止播放”检查扬声器。测试音频保存在内存中，离开游戏后不会保留。</p>
-<p>下面的开关包括麦克风静音、拒听、自适应抖动缓冲、遮挡/传播修正、环境语音效果和性能模式。本版本不随包提供 RNNoise 原生库，因此“噪声抑制”下拉框会禁用，音频回退到内置的 AGC/噪声门处理。回声消除目前不可用。遮挡效果在服务器强制开启时不能关闭。</p>
+<p>下面的开关包括麦克风静音、拒听、自适应抖动缓冲、遮挡/传播修正、环境语音效果和性能模式。本版本不随包提供 RNNoise 原生库，因此“噪声抑制”下拉框会禁用，音频回退到内置的 AGC/噪声门处理；Windows 用户可手动将兼容的 <code>rnnoise.dll</code> 放入 <code>%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat\native\rnnoise.dll</code>，加载成功后选项会启用。回声消除目前不可用。遮挡效果在服务器强制开启时不能关闭。</p>
 <p>设置页内容超过窗口高度时会启用统一滚动视口，可使用鼠标滚轮或可见滚动条；滚动时控件、文本输入框和下拉弹窗都会限制在视口内，不会溢出。</p>
 
 <h2>五、语音识别与文字聊天</h2>
@@ -91,8 +91,8 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");</code></pre>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Whisper</td><td style="padding: 6px 8px; vertical-align: top;">本地</td><td style="padding: 6px 8px; vertical-align: top;">Whisper.cpp GGML <code>.bin</code> 模型文件</td><td style="padding: 6px 8px; vertical-align: top;">不需要</td></tr>
 </tbody></table>
 <p>文档与下载：<a href="https://bailian.console.aliyun.com/cn-beijing?tab=doc#/doc/?type=model&amp;url=2989727">阿里百炼</a>、<a href="https://api-docs.siliconflow.cn/docs/api/audio-transcriptions-post">SiliconFlow</a>、<a href="https://developers.deepgram.com/guides/fundamentals/make-your-first-api-request">Deepgram</a>、<a href="https://huggingface.co/ggerganov/whisper.cpp/tree/main">Whisper.cpp 模型</a>。设置页中的“打开下载页面”位于模型提示下方的独立一行。</p>
-<p><strong>Whisper：</strong>填写实际 GGML <code>.bin</code> 模型文件路径，不要只填写所在文件夹；如果下载内容是压缩包，也要先解压。Windows、Linux 和 macOS 均可填写本平台的正常绝对或相对路径，只要游戏进程具有读取权限。</p>
-<div style="border-left: 4px solid #d69e2e; padding: 8px 12px; margin: 12px 0; background-color: #fffaf0;"><p style="margin: 0;"><strong>隐私：</strong>云端 API Key 以明文保存在本机 <code>SimpleVoiceChat.Client.json</code>，请勿分享该文件。云端识别音频由客户端直接发送给所选服务商，不经过 SimpleVoiceChat 服务端。Whisper 在本机处理，不需要 API Key，也不会把识别音频上传给识别服务商。</p></div>
+<p><strong>Whisper：</strong>主模组直接提供本地识别，但不随包包含原生库。请填写实际 GGML <code>.bin</code> 模型文件路径，不要只填写所在文件夹；如果下载内容是压缩包，也要先解压。手动提供的 Windows 原生库可放在 <code>%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat\native\whisper.dll</code>（及同目录的 <code>ggml-*</code> 依赖），也支持该目录下的 <code>native\runtimes\&lt;平台&gt;-&lt;架构&gt;</code> 结构。</p>
+<div style="border-left: 4px solid #d69e2e; padding: 8px 12px; margin: 12px 0; background-color: #fffaf0;"><p style="margin: 0;"><strong>隐私：</strong>云端 API Key 以明文保存在本机 <code>SimpleVoiceChat.Client.json</code>，请勿分享该文件。云端识别音频由客户端直接发送给所选服务商，不经过 SimpleVoiceChat 服务端。安装可选扩展后的 Whisper 在本机处理，不需要 API Key，也不会把识别音频上传给识别服务商。</p></div>
 
 <h2>六、接近度语音</h2>
 <p>接近度语音不要求加入频道。服务器默认范围为：</p>
@@ -281,7 +281,7 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");</code></pre>
 <tr><td style="padding: 6px 8px; vertical-align: top;">列表看不到第七行</td><td style="padding: 6px 8px; vertical-align: top;">频道和玩家列表每页最多 6 行，使用底部分页器切换。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">频道无法加入</td><td style="padding: 6px 8px; vertical-align: top;">检查频道是否锁定、密码是否正确、是否被封禁、是否达到每人 8 个频道上限。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">频道发言席位已满</td><td style="padding: 6px 8px; vertical-align: top;">频道同时发言人数达到上限，稍后重试；只听角色和禁言玩家不能发言。</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">提示协议 V9 不兼容</td><td style="padding: 6px 8px; vertical-align: top;">客户端和服务器必须都使用兼容的协议 V9 版本；建议双方均安装 <code>1.2.7-pre.1</code>，并删除旧压缩包。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">提示协议 V9 不兼容</td><td style="padding: 6px 8px; vertical-align: top;">客户端和服务器必须都使用兼容的协议 V9 版本；建议双方均安装 <code>1.2.7-pre.2</code>，并删除旧压缩包。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">麦克风测试没有文件</td><td style="padding: 6px 8px; vertical-align: top;">这是设计行为。设置页“麦克风测试”只在内存中录制；需要保存文件时使用主页录音图标。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;"><code>Ctrl + F9</code> 没有可用的开始按钮，或一直显示 <code>0/3</code></td><td style="padding: 6px 8px; vertical-align: top;">确认已进入世界、语音握手完成、录音客户端拥有 <code>controlserver</code>，并且当前服务器的 <code>EnableRecorderCapture</code> 为 <code>true</code>；修改后执行 <code>/svc reload</code> 或重启服务器。单人模式等待一秒后会自动尝试可靠控制通道；仍不增长时检查客户端/服务器版本和游戏日志。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">已经添加 <code>SimpleVoiceChat Player Voice</code>，但没有逐玩家 WAV</td><td style="padding: 6px 8px; vertical-align: top;">OBS 来源只是混合监听总线。必须启动服务器托管多人分轨，等待参与者就绪，让对应玩家实际发送语音，再停止并等待下载。恢复或历史会话可用 <code>/svc recording list</code> 和 <code>/svc recording download &lt;session-id&gt;</code>。</td></tr>
@@ -289,8 +289,7 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");</code></pre>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Resolve 提示 Media Offline</td><td style="padding: 6px 8px; vertical-align: top;">FCPXML 引用绝对路径。恢复原文件位置，或在 Media Pool 中使用“Relink Selected Clips”，分别指向 OBS 视频和包含逐玩家 WAV 的会话目录。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">导入后声音重复</td><td style="padding: 6px 8px; vertical-align: top;">OBS 原视频中的混合语音轨与逐玩家 WAV 同时播放。静音或删除混合语音轨，保留逐玩家轨；不要删除仍需要的游戏音效、音乐等其他音轨。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">视频属性是 60 FPS，但 Resolve 时间线显示 24 FPS</td><td style="padding: 6px 8px; vertical-align: top;">在导入前把新项目/时间线帧率设为 60 FPS，或新建匹配源视频的时间线。音频由 FCPXML 按毫秒偏移和采样位置对齐，不需要按时间尺上的帧编号手算。</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Whisper 提示模型路径错误</td><td style="padding: 6px 8px; vertical-align: top;">Whisper 必须填写实际 <code>.bin</code> 模型文件。确认路径属于当前平台且游戏有读取权限。</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">日志提示原生 DLL 不在模组根目录</td><td style="padding: 6px 8px; vertical-align: top;">不要手工移动 Whisper 原生库。发布包已将它放在 <code>native/</code> 下；删除手工拆出的 DLL，并重新安装完整压缩包。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">Whisper 未显示或提示模型路径错误</td><td style="padding: 6px 8px; vertical-align: top;">安装与主模组版本匹配的 <code>Simple Voice Chat: Local Whisper</code> 客户端扩展，再填写实际 <code>.bin</code> 模型文件。确认路径属于当前平台且游戏有读取权限。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">VS Director 回放或离屏没有语音</td><td style="padding: 6px 8px; vertical-align: top;">确认服务器开启 <code>EnableDirectorProximityCapture</code>、VS Director 开启对应捕获选项、导演玩家拥有 <code>controlserver</code>，并检查日志中是否存在“optional VS Director integration is unavailable”。不需要额外集成模组。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">所有者离开频道</td><td style="padding: 6px 8px; vertical-align: top;">多人频道必须转移所有权给当前成员或确认删除；不会随机转移。离开和解散都有二次确认。</td></tr>
 </tbody></table>

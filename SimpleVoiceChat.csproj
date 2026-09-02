@@ -4,7 +4,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
-    <Version>1.2.7-pre.1</Version>
+    <Version>1.2.7-pre.2</Version>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <OutputPath>bin\$(Configuration)\Mods\mod</OutputPath>
@@ -75,25 +75,10 @@
     </Content>
   </ItemGroup>
 
-  <Target Name="OrganizeNativeSpeechRecognitionLibraries" AfterTargets="Build">
-    <ItemGroup>
-      <WhisperNativeFile Include="$(TargetDir)runtimes\**\*" />
-    </ItemGroup>
-
-    <Copy
-      SourceFiles="@(WhisperNativeFile)"
-      DestinationFiles="@(WhisperNativeFile->'$(TargetDir)native\runtimes\%(RecursiveDir)%(Filename)%(Extension)')"
-      SkipUnchangedFiles="true"
-      Condition="'@(WhisperNativeFile)' != ''" />
-    <Delete Files="@(WhisperNativeFile)" />
+  <Target Name="RemoveWhisperNativeRuntimeFromPackage" AfterTargets="Build">
+    <Delete Files="$(TargetDir)ggml-metal.metal" />
     <RemoveDir Directories="$(TargetDir)runtimes" Condition="Exists('$(TargetDir)runtimes')" />
-
-    <ItemGroup>
-      <InvalidNestedDll Include="$(TargetDir)**\*.dll"
-                        Exclude="$(TargetDir)*.dll;$(TargetDir)native\**\*.dll" />
-    </ItemGroup>
-    <Error Condition="'@(InvalidNestedDll)' != ''"
-           Text="Managed DLLs must be in the mod root and unmanaged DLLs must be under native/. Invalid files: @(InvalidNestedDll)" />
+    <RemoveDir Directories="$(TargetDir)native\runtimes" Condition="Exists('$(TargetDir)native\runtimes')" />
   </Target>
 
 </Project>

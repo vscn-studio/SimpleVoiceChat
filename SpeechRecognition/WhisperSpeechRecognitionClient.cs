@@ -42,6 +42,14 @@ public sealed class WhisperSpeechRecognitionClient : ISpeechRecognitionClient
         {
             return SpeechRecognitionResult.Failure(SVCLang.Get("speech-recognition-error-cancelled"));
         }
+        catch (FileNotFoundException)
+        {
+            return SpeechRecognitionResult.Failure(SVCLang.Get("speech-recognition-error-whisper-native"));
+        }
+        catch (DllNotFoundException)
+        {
+            return SpeechRecognitionResult.Failure(SVCLang.Get("speech-recognition-error-whisper-native"));
+        }
         catch (Exception exception)
         {
             return SpeechRecognitionResult.Failure(exception.Message);
