@@ -8,7 +8,7 @@ public static class VoiceConstants
     public const string ClientConfigFileName = "SimpleVoiceChat.Client.json";
     public const string AuditConfigFileName = "SimpleVoiceChat.Audit.json";
 
-    public const int SampleRate = 16000;
+    public const int SampleRate = 48000;
     public const int FrameMilliseconds = 20;
     public const int SamplesPerFrame = SampleRate * FrameMilliseconds / 1000;
     public const int MaxUdpPacketBytes = 508;

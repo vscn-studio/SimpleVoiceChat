@@ -4,7 +4,7 @@ namespace SimpleVoiceChat.Networking;
 
 public static class VoiceProtocol
 {
-    public const int CurrentVersion = 9;
+    public const int CurrentVersion = 10;
     public const string GeneratedChannelIdPrefix = "channel-";
     public const int CodecImaAdpcm = 1;
     public const int CodecOpus = 2;
@@ -60,7 +60,8 @@ public enum VoiceCapability
     ServerGuidedBitrate = 1 << 9,
     ProtocolV7 = 1 << 10,
     ProtocolV8 = 1 << 11,
-    ProtocolV9 = 1 << 12
+    ProtocolV9 = 1 << 12,
+    ProtocolV10 = 1 << 13
 }
 
 [Flags]

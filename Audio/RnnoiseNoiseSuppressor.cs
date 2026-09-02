@@ -6,9 +6,8 @@ namespace SimpleVoiceChat.Audio;
 /// <summary>Optional RNNoise backend for local microphone denoising.</summary>
 public sealed class RnnoiseNoiseSuppressor : IDisposable
 {
-    private const int InputSampleRate = 16_000;
-    private const int RnnoiseSampleRate = 48_000;
-    private const int InputSamplesPerBlock = InputSampleRate / 100;
+    private const int RnnoiseSampleRate = VoiceConstants.SampleRate;
+    private const int SamplesPerBlock = RnnoiseSampleRate / 100;
 
     private static readonly Lazy<bool> Availability = new(ProbeAvailability);
 
@@ -16,8 +15,8 @@ public sealed class RnnoiseNoiseSuppressor : IDisposable
     private readonly CreateDelegate create;
     private readonly DestroyDelegate destroy;
     private readonly ProcessFrameDelegate processFrame;
-    private readonly float[] input = new float[RnnoiseSampleRate / 100];
-    private readonly float[] output = new float[RnnoiseSampleRate / 100];
+    private readonly float[] input = new float[SamplesPerBlock];
+    private readonly float[] output = new float[SamplesPerBlock];
     private IntPtr state;
 
     private RnnoiseNoiseSuppressor(
@@ -69,20 +68,19 @@ public sealed class RnnoiseNoiseSuppressor : IDisposable
             return;
         }
 
-        for (int block = 0; block < VoiceConstants.SamplesPerFrame / InputSamplesPerBlock; block++)
+        for (int block = 0; block < VoiceConstants.SamplesPerFrame / SamplesPerBlock; block++)
         {
-            int inputOffset = block * InputSamplesPerBlock;
+            int inputOffset = block * SamplesPerBlock;
             for (int index = 0; index < input.Length; index++)
             {
-                input[index] = samples[inputOffset + index / 3];
+                input[index] = samples[inputOffset + index];
             }
 
             processFrame(state, output, input);
-            for (int index = 0; index < InputSamplesPerBlock; index++)
+            for (int index = 0; index < SamplesPerBlock; index++)
             {
-                float downsampled = (output[index * 3] + output[index * 3 + 1] + output[index * 3 + 2]) / 3f;
                 samples[inputOffset + index] = (short)Math.Clamp(
-                    (int)Math.Round(downsampled),
+                    (int)Math.Round(output[index]),
                     short.MinValue,
                     short.MaxValue);
             }
@@ -116,7 +114,8 @@ public sealed class RnnoiseNoiseSuppressor : IDisposable
 
     private static bool TryGetLibraryPath(out string? path)
     {
-        if (!OperatingSystem.IsWindows())
+        string fileName = GetLibraryFileName();
+        if (string.IsNullOrEmpty(fileName))
         {
             path = null;
             return false;
@@ -124,16 +123,46 @@ public sealed class RnnoiseNoiseSuppressor : IDisposable
 
         foreach (string root in GetNativeSearchRoots())
         {
-            string candidate = Path.Combine(root, "native", "rnnoise.dll");
-            if (File.Exists(candidate))
+            string nativeRoot = Path.Combine(root, "native");
+            string[] candidates =
             {
-                path = candidate;
-                return true;
+                Path.Combine(nativeRoot, fileName),
+                Path.Combine(nativeRoot, "runtimes", GetRuntimeIdentifier(), fileName)
+            };
+            foreach (string candidate in candidates)
+            {
+                if (File.Exists(candidate))
+                {
+                    path = candidate;
+                    return true;
+                }
             }
         }
 
         path = null;
         return false;
+    }
+
+    private static string GetLibraryFileName()
+        => OperatingSystem.IsWindows() ? "rnnoise.dll"
+            : OperatingSystem.IsLinux() ? "librnnoise.so"
+            : OperatingSystem.IsMacOS() ? "librnnoise.dylib"
+            : string.Empty;
+
+    private static string GetRuntimeIdentifier()
+    {
+        string platform = OperatingSystem.IsWindows() ? "win"
+            : OperatingSystem.IsLinux() ? "linux"
+            : OperatingSystem.IsMacOS() ? "osx" : string.Empty;
+        string architecture = RuntimeInformation.ProcessArchitecture switch
+        {
+            Architecture.X64 => "x64",
+            Architecture.X86 => "x86",
+            Architecture.Arm64 => "arm64",
+            Architecture.Arm => "arm",
+            _ => string.Empty
+        };
+        return $"{platform}-{architecture}";
     }
 
     internal static IReadOnlyList<string> GetNativeSearchRoots()

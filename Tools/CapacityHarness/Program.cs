@@ -1,9 +1,14 @@
 using System.Diagnostics;
+using SimpleVoiceChat;
+using SimpleVoiceChat.Audio;
 using SimpleVoiceChat.Networking;
 using SimpleVoiceChat.Server;
 
 const int playerCount = 100;
 const double normalBatchP95LimitMilliseconds = 3.0;
+const double maliciousBatchP95LimitMilliseconds = 3.0;
+const double maximumRouteAllocationBytesPerIteration = 128 * 1024;
+const double clientAudioP95LimitMilliseconds = 2.0;
 int iterations = int.TryParse(Environment.GetEnvironmentVariable("SVC_CAPACITY_ITERATIONS"), out int configuredIterations)
     ? Math.Clamp(configuredIterations, 50, 10_000)
     : 200;
@@ -15,6 +20,7 @@ SpatialScenario dispersed = CreateDispersedScenario(playerUids);
 ScenarioResult dispersedResult = MeasureScenario("dispersed-10-talkers", dispersed, talkerCount: 10, radius: 20);
 ScenarioResult normal = MeasureScenario("gathering-25-talkers", clustered, talkerCount: 25, radius: 40);
 ScenarioResult malicious = MeasureScenario("malicious-100-talkers", clustered, talkerCount: 100, radius: 40);
+ClientAudioResult clientAudio = MeasureClientAudio();
 
 ChannelService channels = new();
 VoiceChannel channel = channels.Create("capacity", playerUids[0], playerCount, 3);
@@ -27,6 +33,7 @@ int channelTalkers = playerUids.Count(uid => channel.TryAdmitTalker(uid, 0));
 Print(dispersedResult);
 Print(normal);
 Print(malicious);
+Console.WriteLine($"client_audio_8_streams_ms_p95={clientAudio.P95Milliseconds:0.0000} allocated_bytes_per_tick={clientAudio.AllocatedBytesPerTick:0}");
 Console.WriteLine($"channel_members={channel.Members.Count} channel_admitted_talkers={channelTalkers} channel_limit={channel.MaxActiveTalkers}");
 
 bool bounded = dispersedResult.MaximumListenerSlots <= playerCount * 8
@@ -34,7 +41,11 @@ bool bounded = dispersedResult.MaximumListenerSlots <= playerCount * 8
     && malicious.MaximumListenerSlots <= playerCount * 8
     && channel.Members.Count == playerCount
     && channelTalkers == 3
-    && normal.BatchP95Milliseconds <= normalBatchP95LimitMilliseconds;
+    && normal.BatchP95Milliseconds <= normalBatchP95LimitMilliseconds
+    && malicious.BatchP95Milliseconds <= maliciousBatchP95LimitMilliseconds
+    && normal.AllocatedBytesPerIteration <= maximumRouteAllocationBytesPerIteration
+    && malicious.AllocatedBytesPerIteration <= maximumRouteAllocationBytesPerIteration
+    && clientAudio.P95Milliseconds <= clientAudioP95LimitMilliseconds;
 Console.WriteLine($"capacity_result={(bounded ? "PASS" : "FAIL")}");
 return bounded ? 0 : 1;
 
@@ -42,6 +53,7 @@ ScenarioResult MeasureScenario(string name, SpatialScenario scenario, int talker
 {
     List<double> elapsedMilliseconds = new(iterations);
     List<VoiceSpatialCandidate> candidates = new(playerCount);
+    ListenerStreamArbiter arbiter = new();
     long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
     int gen0Before = GC.CollectionCount(0);
     int gen1Before = GC.CollectionCount(1);
@@ -49,7 +61,7 @@ ScenarioResult MeasureScenario(string name, SpatialScenario scenario, int talker
     int maximumSlots = 0;
     for (int iteration = 0; iteration < iterations; iteration++)
     {
-        ListenerStreamArbiter arbiter = new();
+        arbiter.Clear();
         long started = Stopwatch.GetTimestamp();
         for (int talker = 0; talker < talkerCount; talker++)
         {
@@ -82,6 +94,35 @@ ScenarioResult MeasureScenario(string name, SpatialScenario scenario, int talker
         GC.CollectionCount(0) - gen0Before,
         GC.CollectionCount(1) - gen1Before,
         GC.CollectionCount(2) - gen2Before);
+}
+
+ClientAudioResult MeasureClientAudio()
+{
+    const int streamCount = 8;
+    List<double> elapsedMilliseconds = new(iterations);
+    short[][] frames = new short[streamCount][];
+    for (int i = 0; i < frames.Length; i++)
+    {
+        frames[i] = new short[VoiceConstants.SamplesPerFrame];
+        for (int sample = 0; sample < frames[i].Length; sample++)
+        {
+            frames[i][sample] = (short)((sample * (i + 1)) % short.MaxValue);
+        }
+    }
+
+    long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+    for (int iteration = 0; iteration < iterations; iteration++)
+    {
+        long started = Stopwatch.GetTimestamp();
+        for (int stream = 0; stream < streamCount; stream++)
+        {
+            AudioPreprocessor.Process(frames[stream], 1f, 0.015f);
+        }
+        elapsedMilliseconds.Add(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+    }
+    long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+    elapsedMilliseconds.Sort();
+    return new ClientAudioResult(Percentile(elapsedMilliseconds, 0.95), allocated / (double)iterations);
 }
 
 static SpatialScenario CreateClusteredScenario(string[] playerUids)
@@ -140,6 +181,8 @@ internal readonly record struct ScenarioResult(
     int Gen0Collections,
     int Gen1Collections,
     int Gen2Collections);
+
+internal readonly record struct ClientAudioResult(double P95Milliseconds, double AllocatedBytesPerTick);
 
 internal readonly record struct SpatialScenario(
     VoiceSpatialIndex Spatial,

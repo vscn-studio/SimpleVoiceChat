@@ -28,12 +28,7 @@ public static class VoiceProtocolValidation
             return false;
         }
 
-        return negotiatedCodec switch
-        {
-            VoiceProtocol.CodecImaAdpcm => packet.Payload.Length == VoiceProtocol.ImaAdpcmPayloadBytes,
-            VoiceProtocol.CodecOpus => packet.Payload.Length <= 200,
-            _ => false
-        };
+        return negotiatedCodec == VoiceProtocol.CodecOpus && packet.Payload.Length <= 200;
     }
 
     public static bool IsValidRelayShape(VoiceRelayFrameV3Packet? packet)
@@ -57,12 +52,7 @@ public static class VoiceProtocolValidation
             return false;
         }
 
-        return packet.Codec switch
-        {
-            VoiceProtocol.CodecImaAdpcm => packet.Payload.Length == VoiceProtocol.ImaAdpcmPayloadBytes,
-            VoiceProtocol.CodecOpus => true,
-            _ => false
-        };
+        return packet.Codec == VoiceProtocol.CodecOpus;
     }
 
     public static bool IsValidDirectorRelayShape(DirectorVoiceRelayFrameV3Packet? packet)
@@ -93,12 +83,7 @@ public static class VoiceProtocolValidation
             return false;
         }
 
-        return packet.Codec switch
-        {
-            VoiceProtocol.CodecImaAdpcm => packet.Payload.Length == VoiceProtocol.ImaAdpcmPayloadBytes,
-            VoiceProtocol.CodecOpus => true,
-            _ => false
-        };
+        return packet.Codec == VoiceProtocol.CodecOpus;
     }
 
     public static bool IsValidRecorderRelayShape(RecorderVoiceRelayFrameV3Packet? packet)
@@ -117,12 +102,7 @@ public static class VoiceProtocolValidation
             return false;
         }
 
-        return packet.Codec switch
-        {
-            VoiceProtocol.CodecImaAdpcm => packet.Payload.Length == VoiceProtocol.ImaAdpcmPayloadBytes,
-            VoiceProtocol.CodecOpus => true,
-            _ => false
-        };
+        return packet.Codec == VoiceProtocol.CodecOpus;
     }
 
     public static bool IsValidRecorderParticipantState(
@@ -155,12 +135,7 @@ public static class VoiceProtocolValidation
             return false;
         }
 
-        return negotiatedCodec switch
-        {
-            VoiceProtocol.CodecImaAdpcm => packet.Payload.Length == VoiceProtocol.ImaAdpcmPayloadBytes,
-            VoiceProtocol.CodecOpus => true,
-            _ => false
-        };
+        return negotiatedCodec == VoiceProtocol.CodecOpus;
     }
 
     public static bool IsSafeRecorderSessionId(string? sessionId)

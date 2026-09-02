@@ -24,7 +24,14 @@ public sealed class ListenerStreamArbiter
         RemoveExpired(slots, nowMilliseconds);
         int boundedMaxStreams = Math.Max(1, maxStreams);
         int boundedMaxProximityStreams = Math.Clamp(maxProximityStreams, 1, boundedMaxStreams);
-        int proximityStreams = slots.Values.Count(slot => slot.Proximity);
+        int proximityStreams = 0;
+        foreach (Slot slot in slots.Values)
+        {
+            if (slot.Proximity)
+            {
+                proximityStreams++;
+            }
+        }
         if (slots.TryGetValue(speakerUid, out Slot current))
         {
             if (proximity && !current.Proximity && proximityStreams >= boundedMaxProximityStreams)
@@ -76,6 +83,15 @@ public sealed class ListenerStreamArbiter
         foreach (Dictionary<string, Slot> slots in slotsByListener.Values)
         {
             slots.Remove(playerUid);
+        }
+    }
+
+    /// <summary>Clears all listener slots while retaining the allocated dictionaries.</summary>
+    public void Clear()
+    {
+        foreach (Dictionary<string, Slot> slots in slotsByListener.Values)
+        {
+            slots.Clear();
         }
     }
 

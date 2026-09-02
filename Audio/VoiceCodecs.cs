@@ -63,7 +63,7 @@ public static class VoiceDecoderSafety
 
 public static class VoiceCodecFactory
 {
-    public static IVoiceEncoder CreateEncoder(int codecId, int bitrate = 20_000)
+    public static IVoiceEncoder CreateEncoder(int codecId, int bitrate = 24_000)
     {
         return codecId switch
         {
@@ -93,7 +93,7 @@ public sealed class OpusVoiceEncoder : IVoiceEncoder, INetworkAdaptiveVoiceEncod
     {
         OpusCodecFactory.AttemptToUseNativeLibrary = false;
         encoder = OpusCodecFactory.CreateEncoder(VoiceConstants.SampleRate, 1, OpusApplication.OPUS_APPLICATION_VOIP, null);
-        encoder.Bitrate = Math.Clamp(bitrate, 8_000, 32_000);
+        encoder.Bitrate = Math.Clamp(bitrate, 12_000, 48_000);
         encoder.Complexity = 5;
         encoder.UseVBR = true;
         encoder.UseConstrainedVBR = true;
@@ -108,7 +108,7 @@ public sealed class OpusVoiceEncoder : IVoiceEncoder, INetworkAdaptiveVoiceEncod
 
     public void ConfigureNetwork(int bitrate, int packetLossPercent)
     {
-        int boundedBitrate = Math.Clamp(bitrate, 8_000, 32_000);
+        int boundedBitrate = Math.Clamp(bitrate, 12_000, 48_000);
         int boundedPacketLoss = Math.Clamp(packetLossPercent, 0, 20);
         if (encoder.Bitrate != boundedBitrate)
         {

@@ -123,7 +123,7 @@ public sealed class ClientVoiceController : IDisposable
     private bool selectedChannelRestorePending;
     private bool hasServerControl;
     private int connectionEpoch;
-    private int negotiatedCodec = VoiceProtocol.CodecImaAdpcm;
+    private int negotiatedCodec = VoiceProtocol.CodecOpus;
     private IVoiceEncoder? voiceEncoder;
     private long fastTickListenerId;
     private long playbackTickListenerId;
@@ -768,7 +768,7 @@ public sealed class ClientVoiceController : IDisposable
         {
             ProtocolVersion = VoiceProtocol.CurrentVersion,
             ModVersion = "1.2.7-pre.2",
-            SupportedCodecs = new[] { VoiceProtocol.CodecOpus, VoiceProtocol.CodecImaAdpcm },
+            SupportedCodecs = new[] { VoiceProtocol.CodecOpus },
             Capabilities = (int)(VoiceCapability.ProtocolV4
                 | VoiceCapability.ChannelDeltas
                 | VoiceCapability.ChannelMemberPaging
@@ -781,6 +781,7 @@ public sealed class ClientVoiceController : IDisposable
                 | VoiceCapability.ProtocolV7
                 | VoiceCapability.ProtocolV8
                 | VoiceCapability.ProtocolV9
+                | VoiceCapability.ProtocolV10
                 | VoiceCapability.ServerGuidedBitrate),
             PreferredOpusBitrateKbps = config.PreferredOpusBitrateKbps
         });
@@ -808,7 +809,9 @@ public sealed class ClientVoiceController : IDisposable
         }
         voiceHandshakeAccepted = packet.Accepted
             && VoiceProtocol.IsCompatible(packet.ProtocolVersion)
-            && packet.Codec is VoiceProtocol.CodecImaAdpcm or VoiceProtocol.CodecOpus;
+            && packet.Codec == VoiceProtocol.CodecOpus
+            && packet.SampleRate == VoiceConstants.SampleRate
+            && packet.FrameMilliseconds == VoiceConstants.FrameMilliseconds;
         if (voiceHandshakeAccepted)
         {
             transmitBlockedUntilMs = 0;
@@ -838,8 +841,8 @@ public sealed class ClientVoiceController : IDisposable
         voiceEncoder?.Dispose();
         int configuredMaximum = config.PreferredOpusBitrateKbps > 0
             ? config.PreferredOpusBitrateKbps * 1_000
-            : serverConfig.MaxOpusBitrateKbps > 0 ? serverConfig.MaxOpusBitrateKbps * 1_000 : 32_000;
-        int encoderBitrate = packet.Bitrate > 0 ? packet.Bitrate : 20_000;
+            : serverConfig.MaxOpusBitrateKbps > 0 ? serverConfig.MaxOpusBitrateKbps * 1_000 : 48_000;
+        int encoderBitrate = packet.Bitrate > 0 ? packet.Bitrate : 24_000;
         adaptiveBitrate.Reset(configuredMaximum, capi.World.ElapsedMilliseconds);
         if (packet.Codec == VoiceProtocol.CodecOpus && packet.Bitrate > 0)
         {
@@ -1542,7 +1545,7 @@ public sealed class ClientVoiceController : IDisposable
         {
             int maximum = config.PreferredOpusBitrateKbps > 0
                 ? config.PreferredOpusBitrateKbps * 1_000
-                : Math.Max(8_000, serverConfig.MaxOpusBitrateKbps * 1_000);
+                : Math.Max(12_000, serverConfig.MaxOpusBitrateKbps * 1_000);
             adaptiveBitrate.SetMaximum(maximum, capi.World.ElapsedMilliseconds);
             encoder.ConfigureNetwork(adaptiveBitrate.CurrentBitrate, adaptiveBitrate.PacketLossPercent);
         }

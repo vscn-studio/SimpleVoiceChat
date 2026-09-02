@@ -120,7 +120,7 @@ internal static class LocalSpeechRecognitionRuntime
             ? "win"
             : OperatingSystem.IsLinux()
                 ? "linux"
-                : OperatingSystem.IsMacOS() ? "macos" : string.Empty;
+                : OperatingSystem.IsMacOS() ? "osx" : string.Empty;
         string architecture = RuntimeInformation.ProcessArchitecture switch
         {
             Architecture.X64 => "x64",

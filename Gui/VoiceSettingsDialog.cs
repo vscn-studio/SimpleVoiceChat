@@ -1993,7 +1993,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
         AddAdminConfigSwitch(composer, leftX, ref leftY, label, "enable-channels", SVCLang.Get("admin-config-enable-channels"), value => adminConfigDraft.EnableChannels = value);
         AddAdminConfigSwitch(composer, leftX, ref leftY, label, "allow-channel-creation", SVCLang.Get("admin-config-allow-channel-creation"), value => adminConfigDraft.AllowPlayerChannelCreation = value);
         AddAdminConfigSwitch(composer, leftX, ref leftY, label, "adaptive-bitrate", SVCLang.Get("admin-config-adaptive-bitrate"), value => adminConfigDraft.EnableAdaptiveBitrate = value);
-        AddAdminConfigSwitch(composer, leftX, ref leftY, label, "adpcm-fallback", SVCLang.Get("admin-config-adpcm-fallback"), value => adminConfigDraft.AllowAdpcmFallback = value);
         AddAdminConfigSwitch(composer, leftX, ref leftY, label, "director-capture", SVCLang.Get("admin-config-director-capture"), value => adminConfigDraft.EnableDirectorProximityCapture = value);
         AddAdminConfigSwitch(composer, leftX, ref leftY, label, "recorder-capture", SVCLang.Get("admin-config-recorder-capture"), value => adminConfigDraft.EnableRecorderCapture = value);
         AddAdminConfigSwitch(composer, leftX, ref leftY, label, "proximity-chat-text", SVCLang.Get("admin-config-proximity-chat-text"), value => adminConfigDraft.EnableProximityChatText = value);
@@ -2004,8 +2003,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
         AddAdminConfigSlider(composer, rightX, ref rightY, label, "talk-range", SVCLang.Get("admin-config-talk-range"), adminConfigDraft.TalkRange, 10, 1280, value => adminConfigDraft.TalkRange = value / 10f, true);
         AddAdminConfigSlider(composer, rightX, ref rightY, label, "shout-range", SVCLang.Get("admin-config-shout-range"), adminConfigDraft.ShoutRange, 10, 1280, value => adminConfigDraft.ShoutRange = value / 10f, true);
         AddAdminConfigSlider(composer, rightX, ref rightY, label, "proximity-chat-range", SVCLang.Get("admin-config-proximity-chat-range"), adminConfigDraft.ProximityChatRange, 10, 1280, value => adminConfigDraft.ProximityChatRange = value / 10f, true);
-        AddAdminConfigSlider(composer, rightX, ref rightY, label, "default-opus", SVCLang.Get("admin-config-default-opus"), adminConfigDraft.DefaultOpusBitrateKbps, 8, 32, value => adminConfigDraft.DefaultOpusBitrateKbps = value);
-        AddAdminConfigSlider(composer, rightX, ref rightY, label, "max-opus", SVCLang.Get("admin-config-max-opus"), adminConfigDraft.MaxOpusBitrateKbps, 8, 32, value => adminConfigDraft.MaxOpusBitrateKbps = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "default-opus", SVCLang.Get("admin-config-default-opus"), adminConfigDraft.DefaultOpusBitrateKbps, 12, 48, value => adminConfigDraft.DefaultOpusBitrateKbps = value);
+        AddAdminConfigSlider(composer, rightX, ref rightY, label, "max-opus", SVCLang.Get("admin-config-max-opus"), adminConfigDraft.MaxOpusBitrateKbps, 12, 48, value => adminConfigDraft.MaxOpusBitrateKbps = value);
         AddAdminConfigSlider(composer, rightX, ref rightY, label, "max-streams", SVCLang.Get("admin-config-max-streams"), adminConfigDraft.MaxStreamsPerListener, 1, 32, value => adminConfigDraft.MaxStreamsPerListener = value);
         AddAdminConfigSlider(composer, rightX, ref rightY, label, "max-proximity-streams", SVCLang.Get("admin-config-max-proximity-streams"), adminConfigDraft.MaxProximityStreams, 1, 32, value => adminConfigDraft.MaxProximityStreams = value);
         AddAdminConfigSlider(composer, rightX, ref rightY, label, "channel-talkers", SVCLang.Get("admin-config-channel-talkers"), adminConfigDraft.MaxChannelTalkers, 1, 12, value => adminConfigDraft.MaxChannelTalkers = value);
@@ -2063,7 +2062,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
         "enable-channels" => adminConfigDraft.EnableChannels,
         "allow-channel-creation" => adminConfigDraft.AllowPlayerChannelCreation,
         "adaptive-bitrate" => adminConfigDraft.EnableAdaptiveBitrate,
-        "adpcm-fallback" => adminConfigDraft.AllowAdpcmFallback,
         "director-capture" => adminConfigDraft.EnableDirectorProximityCapture,
         "recorder-capture" => adminConfigDraft.EnableRecorderCapture,
         "proximity-chat-text" => adminConfigDraft.EnableProximityChatText,

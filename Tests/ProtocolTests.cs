@@ -9,10 +9,8 @@ public sealed class ProtocolTests
     public void FrameShapeValidatorAcceptsNegotiatedBoundaryPackets()
     {
         VoiceFrameV3Packet opus = ValidPacket(new byte[200]);
-        VoiceFrameV3Packet adpcm = ValidPacket(new byte[VoiceProtocol.ImaAdpcmPayloadBytes]);
 
         Assert.True(VoiceProtocolValidation.IsValidFrameShape(opus, VoiceProtocol.CodecOpus, 42, 476));
-        Assert.True(VoiceProtocolValidation.IsValidFrameShape(adpcm, VoiceProtocol.CodecImaAdpcm, 42, 476));
     }
 
     [Fact]

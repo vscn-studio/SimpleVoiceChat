@@ -4,7 +4,7 @@ internal readonly record struct ServerBitrateDecision(int TargetBitrate, int Pac
 
 internal static class ServerAdaptiveBitrateController
 {
-    private static readonly int[] BitrateSteps = { 8_000, 12_000, 16_000, 20_000, 24_000, 32_000 };
+    private static readonly int[] BitrateSteps = { 12_000, 16_000, 20_000, 24_000, 32_000, 48_000 };
 
     internal static ServerBitrateDecision Evaluate(
         int maximumBitrate,
@@ -12,14 +12,14 @@ internal static class ServerAdaptiveBitrateController
         double listenerLossP75,
         double egressBudgetPressure)
     {
-        int maximum = Math.Clamp(maximumBitrate, 8_000, 32_000);
+        int maximum = Math.Clamp(maximumBitrate, 12_000, 48_000);
         int target = fanOut switch
         {
             <= 4 => maximum,
             <= 8 => Math.Min(maximum, 20_000),
             <= 16 => Math.Min(maximum, 16_000),
             <= 32 => Math.Min(maximum, 12_000),
-            _ => 8_000
+            _ => 12_000
         };
 
         int downshifts = listenerLossP75 switch
@@ -41,7 +41,7 @@ internal static class ServerAdaptiveBitrateController
         }
 
         int packetLossPercent = Math.Clamp((int)Math.Ceiling(listenerLossP75), 2, 20);
-        return new ServerBitrateDecision(Math.Clamp(target, 8_000, maximum), packetLossPercent);
+        return new ServerBitrateDecision(Math.Clamp(target, 12_000, maximum), packetLossPercent);
     }
 
     private static int NextLower(int current)

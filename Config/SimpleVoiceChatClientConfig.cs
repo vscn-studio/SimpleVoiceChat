@@ -202,7 +202,7 @@ public sealed class SimpleVoiceChatClientConfig
     }
 
     internal static int NormalizePreferredOpusBitrate(int value)
-        => value is 8 or 12 or 16 or 20 or 24 or 32 ? value : 0;
+        => value is 12 or 16 or 20 or 24 or 32 or 48 ? value : 0;
 
     internal bool SelectSpeechRecognitionProvider(string? value)
     {

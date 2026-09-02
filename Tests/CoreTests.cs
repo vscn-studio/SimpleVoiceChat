@@ -72,7 +72,7 @@ public sealed class CoreTests
         ServerBitrateDecision crowded = ServerAdaptiveBitrateController.Evaluate(32_000, 20, 10, 0.8);
 
         Assert.Equal(32_000, lowFanOut.TargetBitrate);
-        Assert.Equal(8_000, crowded.TargetBitrate);
+        Assert.Equal(12_000, crowded.TargetBitrate);
         Assert.Equal(10, crowded.PacketLossPercent);
     }
 
@@ -155,7 +155,7 @@ public sealed class CoreTests
 
         config.Normalize();
 
-        Assert.Equal(11, config.ConfigVersion);
+        Assert.Equal(12, config.ConfigVersion);
         Assert.True(config.EnableEnvironmentalVoiceEffects);
         Assert.False(config.ApplyUnderwaterEffectsToChannels);
         Assert.Collection(
@@ -239,7 +239,7 @@ public sealed class CoreTests
 
         config.Normalize();
 
-        Assert.Equal(11, config.ConfigVersion);
+        Assert.Equal(12, config.ConfigVersion);
         Assert.Equal(32, config.MaxDirectorStreamsPerListener);
         Assert.Equal(4096, config.MaxDirectorEgressKbps);
     }
@@ -255,10 +255,13 @@ public sealed class CoreTests
     }
 
     [Fact]
-    public void ProtocolVersionNineRejectsOlderVersions()
+    public void ProtocolVersionTenUses48KhzAndRejectsOlderVersions()
     {
-        Assert.Equal(9, VoiceProtocol.CurrentVersion);
-        Assert.True(VoiceProtocol.IsCompatible(9));
+        Assert.Equal(10, VoiceProtocol.CurrentVersion);
+        Assert.True(VoiceProtocol.IsCompatible(10));
+        Assert.False(VoiceProtocol.IsCompatible(9));
+        Assert.Equal(48_000, VoiceConstants.SampleRate);
+        Assert.Equal(960, VoiceConstants.SamplesPerFrame);
         Assert.False(VoiceProtocol.IsCompatible(8));
         Assert.False(VoiceProtocol.IsCompatible(7));
         Assert.False(VoiceProtocol.IsCompatible(4));
@@ -369,10 +372,10 @@ public sealed class CoreTests
     {
         CaptureFrameTimestampClock clock = new();
 
-        Assert.Equal(60L, clock.ResolveFrameEndTimestamp(100L, 960));
-        Assert.Equal(80L, clock.ResolveFrameEndTimestamp(100L, 640));
-        Assert.Equal(100L, clock.ResolveFrameEndTimestamp(100L, 320));
-        Assert.Equal(120L, clock.ResolveFrameEndTimestamp(125L, 320));
+        Assert.Equal(100L, clock.ResolveFrameEndTimestamp(100L, 960));
+        Assert.Equal(120L, clock.ResolveFrameEndTimestamp(100L, 640));
+        Assert.Equal(140L, clock.ResolveFrameEndTimestamp(100L, 320));
+        Assert.Equal(160L, clock.ResolveFrameEndTimestamp(125L, 320));
     }
 
     [Fact]
@@ -550,7 +553,7 @@ public sealed class CoreTests
         config.Normalize();
 
         PersistentVoiceChannelConfig channel = Assert.Single(config.PersistentChannels);
-        Assert.Equal(11, config.ConfigVersion);
+        Assert.Equal(12, config.ConfigVersion);
         Assert.Equal("channel-1", channel.Id);
         Assert.Equal(2, config.NextChannelNumber);
         Assert.NotEqual("legacy-general", channel.Id);
@@ -1030,9 +1033,9 @@ public sealed class CoreTests
             Mode = VoiceMode.Talk,
             Target = VoiceTransmitTarget.SelectedChannel,
             ChannelId = "channel-1",
-            Payload = new byte[VoiceProtocol.ImaAdpcmPayloadBytes]
+            Payload = new byte[200]
         };
-        Assert.True(VoiceProtocolValidation.IsValidFrameShape(frame, VoiceProtocol.CodecImaAdpcm, 1, 200));
+        Assert.True(VoiceProtocolValidation.IsValidFrameShape(frame, VoiceProtocol.CodecOpus, 1, 200));
 
         VoiceRelayFrameV3Packet relay = new()
         {
@@ -1041,8 +1044,8 @@ public sealed class CoreTests
             Mode = VoiceMode.Talk,
             RelayKind = VoiceRelayKind.Channel,
             ChannelId = "channel-1",
-            Codec = VoiceProtocol.CodecImaAdpcm,
-            Payload = new byte[VoiceProtocol.ImaAdpcmPayloadBytes]
+            Codec = VoiceProtocol.CodecOpus,
+            Payload = new byte[20]
         };
         Assert.True(VoiceProtocolValidation.IsValidRelayShape(relay));
     }

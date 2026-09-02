@@ -215,4 +215,14 @@ public sealed class CapacityTests
         Assert.InRange(arbiter.ActiveSlotCount(0), 0, players * 8);
         Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5));
     }
+
+    [Fact]
+    public void ListenerArbiterClearRetainsBoundedBehavior()
+    {
+        ListenerStreamArbiter arbiter = new();
+        Assert.True(arbiter.TryAdmit("listener", "speaker", 1, 1, 8, 0));
+        arbiter.Clear();
+        Assert.Equal(0, arbiter.ActiveSlotCount(0));
+        Assert.True(arbiter.TryAdmit("listener", "speaker", 1, 1, 8, 0));
+    }
 }

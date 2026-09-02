@@ -5,16 +5,16 @@ internal sealed class AdaptiveVoiceBitrateController
     private const long EvaluationIntervalMilliseconds = 1_000;
     private const long DownshiftCooldownMilliseconds = 2_000;
     private const int HealthyEvaluationsBeforeUpshift = 10;
-    private static readonly int[] BitrateSteps = { 8_000, 12_000, 16_000, 20_000, 24_000, 32_000 };
+    private static readonly int[] BitrateSteps = { 12_000, 16_000, 20_000, 24_000, 32_000, 48_000 };
 
-    private int maximumBitrate = 20_000;
-    private int serverCeiling = 20_000;
+    private int maximumBitrate = 24_000;
+    private int serverCeiling = 24_000;
     private int healthyEvaluations;
     private int impairedEvaluations;
     private long lastEvaluationMilliseconds;
     private long lastBitrateChangeMilliseconds;
 
-    internal int CurrentBitrate { get; private set; } = 20_000;
+    internal int CurrentBitrate { get; private set; } = 24_000;
     internal int PacketLossPercent { get; private set; } = 5;
 
     internal bool IsEvaluationDue(long nowMilliseconds)
@@ -22,7 +22,7 @@ internal sealed class AdaptiveVoiceBitrateController
 
     internal void Reset(int maximum, long nowMilliseconds)
     {
-        maximumBitrate = Math.Clamp(maximum, 8_000, 32_000);
+        maximumBitrate = Math.Clamp(maximum, 12_000, 48_000);
         serverCeiling = maximumBitrate;
         CurrentBitrate = maximumBitrate;
         PacketLossPercent = 5;
@@ -34,7 +34,7 @@ internal sealed class AdaptiveVoiceBitrateController
 
     internal void SetMaximum(int maximum, long nowMilliseconds)
     {
-        maximumBitrate = Math.Clamp(maximum, 8_000, 32_000);
+        maximumBitrate = Math.Clamp(maximum, 12_000, 48_000);
         serverCeiling = Math.Min(serverCeiling, maximumBitrate);
         if (CurrentBitrate > EffectiveMaximum)
         {
@@ -44,7 +44,7 @@ internal sealed class AdaptiveVoiceBitrateController
 
     internal void SetServerGuidance(int targetBitrate, int packetLossPercent, long nowMilliseconds)
     {
-        serverCeiling = Math.Clamp(targetBitrate, 8_000, 32_000);
+        serverCeiling = Math.Clamp(targetBitrate, 12_000, 48_000);
         PacketLossPercent = Math.Clamp(Math.Max(PacketLossPercent, packetLossPercent), 2, 20);
         if (CurrentBitrate > EffectiveMaximum)
         {

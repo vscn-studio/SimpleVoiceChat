@@ -18,7 +18,7 @@ SimpleVoiceChat `1.2.7-pre.2` 是适用于 Vintage Story `1.22.3` 的客户端/�
 - 自定义频道支持开放、密码和隐藏可见性，以及所有者、主持人、成员、只听和封禁角色。
 - 支持按键说话、语音触发通话（自由麦）、输入/输出设备选择、增益、噪声门、玩家单独音量与静音。
 - 本发行包不内置 RNNoise 原生库；噪声抑制选项在无外部后端时自动回退到内置 AGC/噪声门处理。
-- 首选 Opus 编码；ADPCM 回退默认关闭并由服务器配置决定。客户端和服务器必须使用协议 V9 兼容版本。
+- 全链路使用 48 kHz 单声道、20 ms 帧和 Opus；默认 24 Kbps，自适应范围为 12-48 Kbps。客户端和服务器必须使用协议 V10 兼容版本，旧版 V9 不互通。
 - 接近度语音在客户端按距离平滑衰减到静音；频道/群组语音不受距离衰减影响，服务端转发范围不会扩大。
 - 可选的公共聊天距离可视：开启后，普通公共聊天只会显示给同维度且处于“聊天可视距离”内的玩家，发言者始终能看到自己的消息。
 - 可在本机进行麦克风试听，并主动保存仅输入或输入+输出 WAV；多人分轨由服务器权威托管。
@@ -109,10 +109,14 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");
 - [SiliconFlow Audio Transcriptions API](https://api-docs.siliconflow.cn/docs/api/audio-transcriptions-post)
 - [Deepgram API 入门](https://developers.deepgram.com/guides/fundamentals/make-your-first-api-request)
 - [Whisper.cpp 模型](https://huggingface.co/ggerganov/whisper.cpp/tree/main)
+- [Whisper.net.Runtime 1.9.1 原生库](https://www.nuget.org/packages/Whisper.net.Runtime/1.9.1)
+- [YellowDogMan.RRNoise.NET 0.1.9 原生库](https://www.nuget.org/packages/YellowDogMan.RRNoise.NET/0.1.9)，第三方构建，非 RNNoise 官方发布
 
 本地 Whisper 由主模组直接提供，但不随包携带原生运行时。填写实际 `.bin` 模型文件路径，而不是文件夹。如果浏览器下载的是压缩包，也要先解压。模型可放在任意玩家有读取权限的位置，Windows、Linux 和 macOS 均使用本平台正常路径格式。请将匹配平台的 Whisper 原生库放入 `%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat\native\`；Windows 可放置 `whisper.dll` 与同目录的 `ggml-*` 依赖，也支持 `native\runtimes\<平台>-<架构>` 结构。
 
-若手动安装 RNNoise（仅 Windows），将导出 `rnnoise_create`、`rnnoise_destroy`、`rnnoise_process_frame` 的 `rnnoise.dll` 放入 `%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat\native\rnnoise.dll`。启动客户端后，设置页的 RNNoise 选项会在库可加载时启用。
+若手动安装 RNNoise，将导出 `rnnoise_create`、`rnnoise_destroy`、`rnnoise_process_frame` 的平台库放入 `%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat\native\`：Windows 为 `rnnoise.dll`，Linux 为 `librnnoise.so`，macOS 为 `librnnoise.dylib`；也支持 `native\runtimes\<平台>-<架构>`。启动客户端后，设置页的 RNNoise 选项会在库可加载时启用。
+
+Windows、Linux 与 macOS 用户可使用仓库或模组包中的 `tools/Install-NativeRuntimes.ps1` 自动安装固定版本的运行时。脚本从 NuGet 下载、校验 SHA-256，并只提取当前平台和架构的文件；默认安装 `Whisper.net.Runtime 1.9.1`，并安装第三方 `YellowDogMan.RRNoise.NET 0.1.9` 的 Windows/Linux RNNoise。该第三方包不提供 macOS RNNoise。详细命令和来源见 [native 运行时安装说明](docs/NATIVE-RUNTIME.md)。
 
 云端服务的 API Key 以明文保存在玩家本机的 `SimpleVoiceChat.Client.json` 中，请勿分享该文件。云端识别会把本次录音直接发送给所选服务商；SimpleVoiceChat 服务端不会代理或保存该请求。Whisper 在本机运行，无需 API Key，也不会将识别音频发送给识别服务商。
 
@@ -194,7 +198,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 
 保存后，以拥有 `controlserver` 的管理员执行 `/svc reload`，或重启服务器。开始前所有已握手参与者必须报告至少三个稳定的 NTP 风格时钟样本，并通过 UTC 偏差检查；状态窗口会显示就绪人数、音轨数和缺失帧。录制帧通过可靠控制通道上传，服务器解码并持续 checkpoint WAV 和 `recording-state.json`。录音管理员崩溃、断开或重连都不会停止会话；任意在线管理员都可以停止。服务器重启会修复活动会话的 WAV 头、补齐轨道并标记为 `recovered`。
 
-多人分轨是管理员专用功能：录音客户端必须拥有 `controlserver`。按 `Ctrl + F9` 打开设置，等待参与者状态就绪后点击开始。管理员也可使用 `/svc recording start|stop|status|list|download <session-id>`。停止时服务器先完成最终写盘，再发送结束时间线和文件分块；客户端收到全部 WAV、`session.core.json` 和 `recording-state.json` 后才生成 `session.json`。不要在服务器完成前手工导出。16 kHz 单声道 PCM 每位玩家约占 115 MB/小时；请预留服务器磁盘和下载带宽。
+多人分轨是管理员专用功能：录音客户端必须拥有 `controlserver`。按 `Ctrl + F9` 打开设置，等待参与者状态就绪后点击开始。管理员也可使用 `/svc recording start|stop|status|list|download <session-id>`。停止时服务器先完成最终写盘，再发送结束时间线和文件分块；客户端收到全部 WAV、`session.core.json` 和 `recording-state.json` 后才生成 `session.json`。不要在服务器完成前手工导出。48 kHz 单声道 PCM 每位玩家约占 345 MB/小时；请预留服务器磁盘和下载带宽。
 
 单人游戏也可测试该流程；单人客户端的上传仍由内置服务器托管。玩家必须实际发送语音才会生成对应的 `玩家名-UID.wav`；没有任何语音帧时会话不会提供可下载 WAV。网络中断会在清单中记录连接事件和序列缺口，无法凭空恢复断线期间从未上传的音频，但不会造成其他音轨位移。OBS 的 `SimpleVoiceChat Player Voice` 仍只提供一条混合总线，不会增加 OBS 固定音轨数。
 
@@ -202,7 +206,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 
 解压与系统匹配的插件包到 OBS 安装根目录：Windows 会得到 `obs-plugins/64bit/simplevoicechat_obs.dll`；Linux 保留包内的 `lib/.../obs-plugins` 路径；macOS 将 `PlugIns/simplevoicechat_obs.plugin` 放入 `OBS.app/Contents/PlugIns`。重启 OBS 后，在“来源”中添加一次 `SimpleVoiceChat Player Voice`，并在高级音频属性中把它分配给所需的 OBS 音轨。麦克风、游戏、桌面音频和音乐仍由 OBS 自己分别采集。
 
-模组对本机 OBS 插件提供唯一的 PCM 总线：`PlayerVoice`。Windows 通过命名管道 `simplevoicechat-audiobuses` 输出 16 kHz 单声道 PCM16 帧；Linux 和 macOS 使用同名协议的本地 Unix socket，优先位于 `XDG_RUNTIME_DIR`，否则使用当前临时目录。服务器与 OBS 主机必须使用 NTP 保持 UTC 接近；多人分轨会话和 OBS 录制必须有重叠时间，启动先后不限。插件会回传实际 OBS 录制 UTC 起点，模组将其写入会话目录的 `obs-sync.json` 并合并到 `session.json` 的 `obsAlignment`。服务器崩溃后的 `recovered` 会话可用 `/svc recording list` 查看，再用 `/svc recording download <session-id>` 拉回管理员客户端。
+模组对本机 OBS 插件提供唯一的 PCM 总线：`PlayerVoice`。Windows 通过命名管道 `simplevoicechat-audiobuses` 输出 48 kHz 单声道 PCM16 帧；Linux 和 macOS 使用同名协议的本地 Unix socket，优先位于 `XDG_RUNTIME_DIR`，否则使用当前临时目录。服务器与 OBS 主机必须使用 NTP 保持 UTC 接近；多人分轨会话和 OBS 录制必须有重叠时间，启动先后不限。插件会回传实际 OBS 录制 UTC 起点，模组将其写入会话目录的 `obs-sync.json` 并合并到 `session.json` 的 `obsAlignment`。服务器崩溃后的 `recovered` 会话可用 `/svc recording list` 查看，再用 `/svc recording download <session-id>` 拉回管理员客户端。
 
 停止 OBS 录制后，插件会取得 OBS 实际写出的原视频文件，并等待该会话的 `session.json`、`obs-sync.json` 和所有 WAV 完成。随后自动在原视频同目录生成 `<视频名>-<会话ID>-multitrack.mkv` 与同名 `.fcpxml`：MKV 保留 OBS 的原视频和原有音频流，并增加每位玩家一条原始 PCM 音频流；FCPXML 直接引用原 OBS 视频和逐玩家 WAV，以 `obs-sync.json` 的精确毫秒偏移创建独立音轨。会话目录的 `obs-export.json` 记录 `waiting`、`exporting`、`completed` 或 `failed` 状态、输出路径和错误原因。完成前请保持 OBS 打开。
 
@@ -242,7 +246,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 - Open, password-protected, and hidden channels with Owner, Moderator, Member, Listen Only, and Banned roles.
 - Push-to-talk, voice activation, input/output device selection, gain, noise gate, per-player volume, and local mute.
 - This release does not bundle an RNNoise native library; noise suppression falls back to the built-in AGC/gate processing when no external backend is available.
-- Opus is preferred; ADPCM fallback is disabled by default and controlled by the server. Compatible V9 builds are required on both sides.
+- The V10 protocol uses 48 kHz mono Opus only; compatible V10 builds are required on both sides. V9 clients are rejected.
 - Proximity playback applies a client-side distance fade to silence at the configured boundary; channel/group voice bypasses that fade and server forwarding does not expand.
 - Optional proximity visibility for public chat can limit ordinary chat messages to players in the same dimension and within a server-configured range; the sender always sees their own message.
 - In-memory microphone testing plus input-only, input-and-output, and server-hosted administrator multi-track WAV recording.
@@ -322,10 +326,14 @@ Documentation and model downloads:
 - [SiliconFlow Audio Transcriptions API](https://api-docs.siliconflow.cn/docs/api/audio-transcriptions-post)
 - [Deepgram API guide](https://developers.deepgram.com/guides/fundamentals/make-your-first-api-request)
 - [Whisper.cpp models](https://huggingface.co/ggerganov/whisper.cpp/tree/main)
+- [Whisper.net.Runtime 1.9.1 native libraries](https://www.nuget.org/packages/Whisper.net.Runtime/1.9.1)
+- [YellowDogMan.RRNoise.NET 0.1.9 native libraries](https://www.nuget.org/packages/YellowDogMan.RRNoise.NET/0.1.9), a third-party build and not an official RNNoise release
 
 Local Whisper is provided directly by the main mod, but native runtime libraries are not bundled. Whisper downloads are normally model files; select the actual `.bin` file, not its parent directory. Extract it first if it was distributed in an archive. Models may be stored in any readable location using normal Windows, Linux, or macOS path syntax. Install matching native libraries under `%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat\native\`; on Windows place `whisper.dll` and its `ggml-*` dependencies there, or use `native\runtimes\<platform>-<architecture>`.
 
-To install RNNoise manually on Windows, place a compatible `rnnoise.dll` exporting `rnnoise_create`, `rnnoise_destroy`, and `rnnoise_process_frame` at `%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat\native\rnnoise.dll`. The RNNoise selector becomes available after the client can load the library.
+To install RNNoise manually, place a platform library exporting `rnnoise_create`, `rnnoise_destroy`, and `rnnoise_process_frame` under `%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat\native\`: `rnnoise.dll` on Windows, `librnnoise.so` on Linux, or `librnnoise.dylib` on macOS. The `native\runtimes\<platform>-<architecture>` layout is also supported. The RNNoise selector becomes available after the client can load the library.
+
+Windows, Linux, and macOS users can run `tools/Install-NativeRuntimes.ps1` from this repository or the mod package to install fixed runtime versions. It downloads directly from NuGet, verifies SHA-256 before extraction, and installs only the detected platform and architecture. It installs `Whisper.net.Runtime 1.9.1` by default, plus the third-party `YellowDogMan.RRNoise.NET 0.1.9` Windows/Linux RNNoise build. That third-party package has no macOS RNNoise build. See [native runtime installation](docs/NATIVE-RUNTIME.md) for the command and source details.
 
 Cloud API keys are stored as plain text in the local `SimpleVoiceChat.Client.json`; do not share that file. Cloud recognition sends each captured recording directly to the selected provider. The SimpleVoiceChat server neither proxies nor stores those requests. Whisper runs locally, requires no API key, and does not upload recognition audio to a provider.
 
@@ -380,7 +388,7 @@ Start the server once so Vintage Story creates the configuration, then edit the 
 
 Save the file, then run `/svc reload` as an administrator with `controlserver`, or restart the server. Before start, every handshaken participant must report at least three stable NTP-style clock samples and pass the UTC skew check. The panel reports ready participants, tracks, and missing frames. Encoded frames travel over the reliable control channel; the server decodes them and checkpoints WAV files plus `recording-state.json`. An administrator crash, disconnect, or reconnect does not stop the session, and any online administrator can stop it. A server restart repairs WAV headers, pads tracks, and marks an interrupted session `recovered`.
 
-Multi-track recording is administrator-only and requires `controlserver`. `Ctrl + F9` opens the panel; start only after the participant status is ready. Administrators can also use `/svc recording start|stop|status|list|download <session-id>`. The server finalizes files before sending the end timeline and chunks. The client creates `session.json` only after all WAV files, `session.core.json`, and `recording-state.json` arrive. Do not export before that point. 16 kHz mono PCM uses about 115 MB per player-hour; reserve server disk and download bandwidth.
+Multi-track recording is administrator-only and requires `controlserver`. `Ctrl + F9` opens the panel; start only after the participant status is ready. Administrators can also use `/svc recording start|stop|status|list|download <session-id>`. The server finalizes files before sending the end timeline and chunks. The client creates `session.json` only after all WAV files, `session.core.json`, and `recording-state.json` arrive. Do not export before that point. 48 kHz mono PCM uses about 345 MB per player-hour; reserve server disk and download bandwidth.
 
 Single-player worlds use the same server-hosted workflow. A speaker must actually transmit voice to create a `PlayerName-UID.wav`; a session with no uploaded audio has no downloadable WAV. Disconnects are recorded as connection events and sequence gaps. Audio that never reached the server cannot be reconstructed, but other tracks remain aligned. OBS `SimpleVoiceChat Player Voice` still exposes one mixed player-voice bus and never increases the fixed OBS track count.
 

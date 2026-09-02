@@ -1045,9 +1045,7 @@ public sealed class ServerVoiceController : IDisposable
 
         int selectedCodec = packet.SupportedCodecs?.Contains(VoiceProtocol.CodecOpus) == true
             ? VoiceProtocol.CodecOpus
-            : config.AllowAdpcmFallback && packet.SupportedCodecs?.Contains(VoiceProtocol.CodecImaAdpcm) == true
-                ? VoiceProtocol.CodecImaAdpcm
-                : 0;
+            : 0;
         if (selectedCodec == 0)
         {
             controlChannel?.SendPacket(new VoiceWelcomePacket
@@ -1059,7 +1057,7 @@ public sealed class ServerVoiceController : IDisposable
             return;
         }
 
-        int preferredMaximum = packet.PreferredOpusBitrateKbps is >= 8 and <= 32
+        int preferredMaximum = packet.PreferredOpusBitrateKbps is >= 12 and <= 48
             ? packet.PreferredOpusBitrateKbps
             : config.MaxOpusBitrateKbps;
         VoiceClientSession session = new(
@@ -1085,9 +1083,7 @@ public sealed class ServerVoiceController : IDisposable
             Codec = selectedCodec,
             SampleRate = VoiceConstants.SampleRate,
             FrameMilliseconds = VoiceConstants.FrameMilliseconds,
-            Bitrate = selectedCodec == VoiceProtocol.CodecOpus
-                ? config.DefaultOpusBitrateKbps * 1_000
-                : 32_800,
+            Bitrate = config.DefaultOpusBitrateKbps * 1_000,
             ConnectionEpoch = session.ConnectionEpoch,
             MaxStreamsPerListener = config.MaxStreamsPerListener,
             AllowContinuousTalk = config.AllowContinuousTalk,
@@ -3638,7 +3634,7 @@ public sealed class ServerVoiceController : IDisposable
         {
             ConnectionEpoch = connectionEpoch;
             Codec = codec;
-            MaximumOpusBitrateKbps = Math.Clamp(preferredMaximumOpusBitrateKbps, 8, config.MaxOpusBitrateKbps);
+            MaximumOpusBitrateKbps = Math.Clamp(preferredMaximumOpusBitrateKbps, 12, config.MaxOpusBitrateKbps);
             SupportsServerGuidedBitrate = supportsServerGuidedBitrate;
             PacketRate = new VoiceTokenBucket(1, 1, nowMilliseconds);
             ByteRate = new VoiceTokenBucket(1, 1, nowMilliseconds);

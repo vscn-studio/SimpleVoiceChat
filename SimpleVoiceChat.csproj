@@ -78,7 +78,7 @@
   <Target Name="RemoveWhisperNativeRuntimeFromPackage" AfterTargets="Build">
     <Delete Files="$(TargetDir)ggml-metal.metal" />
     <RemoveDir Directories="$(TargetDir)runtimes" Condition="Exists('$(TargetDir)runtimes')" />
-    <RemoveDir Directories="$(TargetDir)native\runtimes" Condition="Exists('$(TargetDir)native\runtimes')" />
+    <RemoveDir Directories="$(TargetDir)native" Condition="Exists('$(TargetDir)native')" />
   </Target>
 
 </Project>
