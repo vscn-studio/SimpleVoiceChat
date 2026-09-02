@@ -34,16 +34,16 @@
 <tr><td style="padding: 6px 8px; vertical-align: top;">拒听/恢复收听</td><td style="padding: 6px 8px; vertical-align: top;"><code>;</code></td><td style="padding: 6px 8px; vertical-align: top;">停止或恢复播放全部远端语音。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">打开语音窗口</td><td style="padding: 6px 8px; vertical-align: top;"><code>'</code></td><td style="padding: 6px 8px; vertical-align: top;">首次使用打开向导，之后打开主设置窗口。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">多人分轨设置</td><td style="padding: 6px 8px; vertical-align: top;"><code>Ctrl + F9</code></td><td style="padding: 6px 8px; vertical-align: top;">打开管理员的多人分轨录制设置。</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">语音转文字聊天</td><td style="padding: 6px 8px; vertical-align: top;"><code>V</code></td><td style="padding: 6px 8px; vertical-align: top;">功能启用后按住录音，松开识别并发送到当前聊天频道。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">语音转文字聊天</td><td style="padding: 6px 8px; vertical-align: top;"><code>V</code></td><td style="padding: 6px 8px; vertical-align: top;">由独立的 SimpleVoiceChatASR 客户端模组提供。</td></tr>
 </tbody></table>
-<p>默认按住说话键为 <code>N</code>，<code>Alt + N</code> 保留为按键触发/自由麦模式切换。需要修改按键时，请在游戏按键设置中的 Simple Voice Chat 分类修改；首次设置向导和语音识别页面均不提供按键捕获控件。</p>
+<p>默认按住说话键为 <code>N</code>，<code>Alt + N</code> 保留为按键触发/自由麦模式切换。需要修改按键时，请在游戏按键设置中的 Simple Voice Chat 分类修改。</p>
 
 <h2>三、发言方式与自由麦</h2>
 <p><strong>按键触发：</strong>按住绑定的按键（默认 <code>N</code>）时发送语音。</p>
 <p><strong>语音触发通话（自由麦）：</strong>麦克风持续监听输入，只有音量超过触发阈值才开始发送。向导中的单条矩形音量条实时显示麦克风声音，并提供两个滑块手柄：噪声门用于过滤底噪，触发阈值用于决定何时开始发送。玩家可以边说话边调整两个手柄。</p>
 
 <h2>四、主窗口与设置页</h2>
-<p>主窗口是紧凑的主页：顶部居中显示 <strong>Simple Voice Chat</strong>，下方是“设置”“语音识别”“频道”，拥有 <code>controlserver</code> 权限的玩家还会看到“管理员”。主页底部是一排正方形图标按钮和两个快速下拉菜单：</p>
+<p>主窗口是紧凑的主页：顶部居中显示 <strong>Simple Voice Chat</strong>，下方是“设置”“频道”，拥有 <code>controlserver</code> 权限的玩家还会看到“管理员”。主页底部是一排正方形图标按钮和两个快速下拉菜单：</p>
 <ul>
 <li>麦克风图标：切换本地麦克风开启/静音。</li>
 <li>扬声器图标：切换拒听/恢复收听。</li>
@@ -82,19 +82,14 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");</code></pre>
 <p>下面的开关包括麦克风静音、拒听、自适应抖动缓冲、遮挡/传播修正、环境语音效果和性能模式。本版本不随包提供 RNNoise 原生库，因此“噪声抑制”下拉框会禁用，音频回退到内置的 AGC/噪声门处理；请将匹配平台的原生库放入 <code>%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat\native</code>，加载成功后选项会启用。回声消除目前不可用。遮挡效果在服务器强制开启时不能关闭。</p>
 <p>设置页内容超过窗口高度时会启用统一滚动视口，可使用鼠标滚轮或可见滚动条；滚动时控件、文本输入框和下拉弹窗都会限制在视口内，不会溢出。</p>
 
-<h2>五、语音识别与文字聊天</h2>
-<p>语音识别默认关闭，并且完全在玩家客户端配置。进入主页的“语音识别”，打开功能开关，从下拉菜单选择服务商，再填写该服务商所需的 API Key、模型、接口地址或模型路径。切换服务商时，每个服务商的配置会分别保存。启用后按住 <code>V</code> 录音，松开后识别并把文字发送到当前聊天频道。</p>
-<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">服务商</th><th style="padding: 6px 8px; text-align: left;">类型</th><th style="padding: 6px 8px; text-align: left;">默认模型或路径</th><th style="padding: 6px 8px; text-align: left;">默认接口</th></tr></thead><tbody>
-<tr><td style="padding: 6px 8px; vertical-align: top;">阿里百炼</td><td style="padding: 6px 8px; vertical-align: top;">云端</td><td style="padding: 6px 8px; vertical-align: top;"><code>qwen3-asr-flash</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions</code></td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">硅基流动</td><td style="padding: 6px 8px; vertical-align: top;">云端</td><td style="padding: 6px 8px; vertical-align: top;"><code>FunAudioLLM/SenseVoiceSmall</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>https://api.siliconflow.cn/v1/audio/transcriptions</code></td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Deepgram</td><td style="padding: 6px 8px; vertical-align: top;">云端</td><td style="padding: 6px 8px; vertical-align: top;"><code>nova-3</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>https://api.deepgram.com/v1/listen?model=nova-3&amp;smart_format=true</code></td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Whisper</td><td style="padding: 6px 8px; vertical-align: top;">本地</td><td style="padding: 6px 8px; vertical-align: top;">Whisper.cpp GGML <code>.bin</code> 模型文件</td><td style="padding: 6px 8px; vertical-align: top;">不需要</td></tr>
+<h2>五、语音转文字扩展</h2>
+<p>语音转文字由独立的客户端模组 <code>SimpleVoiceChatASR</code> 提供。安装后在 <code>SimpleVoiceChatASR.Client.json</code> 中设置 Whisper GGML <code>.bin</code> 模型，按住 <code>V</code> 录音，松开后本地识别并发送文字。主模组不包含语音识别或云端服务商。</p>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">组件</th><th style="padding: 6px 8px; text-align: left;">位置</th><th style="padding: 6px 8px; text-align: left;">要求</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;">SimpleVoiceChatASR</td><td style="padding: 6px 8px; vertical-align: top;">客户端模组</td><td style="padding: 6px 8px; vertical-align: top;">在 <code>SimpleVoiceChatASR.Client.json</code> 设置 Whisper GGML <code>.bin</code> 模型</td></tr>
 </tbody></table>
-<p>文档与下载：<a href="https://bailian.console.aliyun.com/cn-beijing?tab=doc#/doc/?type=model&amp;url=2989727">阿里百炼</a>、<a href="https://api-docs.siliconflow.cn/docs/api/audio-transcriptions-post">SiliconFlow</a>、<a href="https://developers.deepgram.com/guides/fundamentals/make-your-first-api-request">Deepgram</a>、<a href="https://huggingface.co/ggerganov/whisper.cpp/tree/main">Whisper.cpp 模型</a>。设置页中的“打开下载页面”位于模型提示下方的独立一行。</p>
-<p><strong>Whisper：</strong>主模组直接提供本地识别，但不随包包含原生库。请填写实际 GGML <code>.bin</code> 模型文件路径，不要只填写所在文件夹；如果下载内容是压缩包，也要先解压。手动提供的 Windows 原生库可放在 <code>%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat\native\whisper.dll</code>（及同目录的 <code>ggml-*</code> 依赖），也支持该目录下的 <code>native\runtimes\&lt;平台&gt;-&lt;架构&gt;</code> 结构。</p>
-<div style="border-left: 4px solid #d69e2e; padding: 8px 12px; margin: 12px 0; background-color: #fffaf0;"><p style="margin: 0;"><strong>隐私：</strong>云端 API Key 以明文保存在本机 <code>SimpleVoiceChat.Client.json</code>，请勿分享该文件。云端识别音频由客户端直接发送给所选服务商，不经过 SimpleVoiceChat 服务端。Whisper 已内置于主模组，安装原生运行时后在本机处理，不需要 API Key，也不会把识别音频上传给识别服务商。</p></div>
+<p>模型下载：<a href="https://huggingface.co/ggerganov/whisper.cpp/tree/main">Whisper.cpp 模型</a>。Whisper 原生依赖已嵌入 ASR 模组，不属于 SimpleVoiceChat。</p>
+<div style="border-left: 4px solid #d69e2e; padding: 8px 12px; margin: 12px 0; background-color: #fffaf0;"><p style="margin: 0;"><strong>隐私：</strong>SimpleVoiceChatASR 使用本地 Whisper 处理音频，不会上传识别音频。</p></div>
 
-<p><strong>原生依赖下载：</strong>Whisper 原生文件请使用 <a href="https://www.nuget.org/packages/Whisper.net.Runtime/1.9.1">Whisper.net.Runtime 1.9.1</a>。<a href="https://www.nuget.org/packages/YellowDogMan.RRNoise.NET/0.1.9">YellowDogMan.RRNoise.NET 0.1.9</a> 提供 Windows/Linux 的第三方 RNNoise 构建，并非 RNNoise 官方发布。随包提供的 <code>tools/Install-NativeRuntimes.ps1</code> 会下载这些包、校验 SHA-256 并安装当前平台文件。</p>
 <h2>六、接近度语音</h2>
 <p>接近度语音不要求加入频道。服务器默认范围为：</p>
 <table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">模式</th><th style="padding: 6px 8px; text-align: left;">默认距离</th><th style="padding: 6px 8px; text-align: left;">用途</th></tr></thead><tbody>
@@ -290,7 +285,6 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");</code></pre>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Resolve 提示 Media Offline</td><td style="padding: 6px 8px; vertical-align: top;">FCPXML 引用绝对路径。恢复原文件位置，或在 Media Pool 中使用“Relink Selected Clips”，分别指向 OBS 视频和包含逐玩家 WAV 的会话目录。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">导入后声音重复</td><td style="padding: 6px 8px; vertical-align: top;">OBS 原视频中的混合语音轨与逐玩家 WAV 同时播放。静音或删除混合语音轨，保留逐玩家轨；不要删除仍需要的游戏音效、音乐等其他音轨。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">视频属性是 60 FPS，但 Resolve 时间线显示 24 FPS</td><td style="padding: 6px 8px; vertical-align: top;">在导入前把新项目/时间线帧率设为 60 FPS，或新建匹配源视频的时间线。音频由 FCPXML 按毫秒偏移和采样位置对齐，不需要按时间尺上的帧编号手算。</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">Whisper 未显示或提示模型路径错误</td><td style="padding: 6px 8px; vertical-align: top;">Whisper 已内置于主模组。请填写实际 <code>.bin</code> 模型文件，并将匹配的原生库放入 <code>%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat\native</code>。确认路径属于当前平台且游戏有读取权限。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">VS Director 回放或离屏没有语音</td><td style="padding: 6px 8px; vertical-align: top;">确认服务器开启 <code>EnableDirectorProximityCapture</code>、VS Director 开启对应捕获选项、导演玩家拥有 <code>controlserver</code>，并检查日志中是否存在“optional VS Director integration is unavailable”。不需要额外集成模组。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">所有者离开频道</td><td style="padding: 6px 8px; vertical-align: top;">多人频道必须转移所有权给当前成员或确认删除；不会随机转移。离开和解散都有二次确认。</td></tr>
 </tbody></table>

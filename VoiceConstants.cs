@@ -22,7 +22,6 @@ public static class VoiceConstants
     public const string GlobalMuteHotKey = "simplevoicechat-globalmute-v2";
     public const string SettingsHotKey = "simplevoicechat-settings-v4";
     public const string MultiTrackSettingsHotKey = "simplevoicechat-multitrack-settings-v1";
-    public const string SpeechRecognitionHotKey = "simplevoicechat-speech-recognition-v1";
     public const string AcceptChannelInviteHotKey = "simplevoicechat-accept-channel-invite-v1";
     public const string DeclineChannelInviteHotKey = "simplevoicechat-decline-channel-invite-v1";
 }

@@ -2,16 +2,6 @@ namespace SimpleVoiceChat.Config;
 
 public sealed class SimpleVoiceChatClientConfig
 {
-    public const string AlibabaSpeechRecognitionProvider = "alibaba";
-    public const string SiliconFlowSpeechRecognitionProvider = "siliconflow";
-    public const string DeepgramSpeechRecognitionProvider = "deepgram";
-    public const string WhisperSpeechRecognitionProvider = "whisper";
-    public const string AlibabaSpeechRecognitionModel = "qwen3-asr-flash";
-    public const string AlibabaSpeechRecognitionEndpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
-    public const string SiliconFlowSpeechRecognitionModel = "FunAudioLLM/SenseVoiceSmall";
-    public const string SiliconFlowSpeechRecognitionEndpoint = "https://api.siliconflow.cn/v1/audio/transcriptions";
-    public const string DeepgramSpeechRecognitionModel = "nova-3";
-    public const string DeepgramSpeechRecognitionEndpoint = "https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true";
 
     private const int CurrentConfigVersion = 11;
     private const int MaxServerProfiles = 128;
@@ -39,12 +29,6 @@ public sealed class SimpleVoiceChatClientConfig
     public int PreferredOpusBitrateKbps { get; set; }
     public bool EnableNoiseSuppression { get; set; } = false;
     public bool EnableEchoCancellation { get; set; } = false;
-    public bool EnableSpeechRecognition { get; set; } = false;
-    public string SpeechRecognitionProvider { get; set; } = AlibabaSpeechRecognitionProvider;
-    public string SpeechRecognitionApiKey { get; set; } = string.Empty;
-    public string SpeechRecognitionModel { get; set; } = AlibabaSpeechRecognitionModel;
-    public string SpeechRecognitionEndpoint { get; set; } = AlibabaSpeechRecognitionEndpoint;
-    public Dictionary<string, SpeechRecognitionProviderConfig> SpeechRecognitionProviders { get; set; } = new(StringComparer.Ordinal);
     public float ChannelOutputVolume { get; set; } = 1f;
     public string SelectedChannelId { get; set; } = string.Empty;
     public Networking.VoiceTransmitTarget TransmitTarget { get; set; } = Networking.VoiceTransmitTarget.ProximityAndChannel;
@@ -70,19 +54,6 @@ public sealed class SimpleVoiceChatClientConfig
         OutputDeviceName = Limit(OutputDeviceName, 256);
         PushToTalkKey = Limit(PushToTalkKey, 64);
         ModeCycleKey = Limit(ModeCycleKey, 64);
-        SpeechRecognitionProvider = NormalizeSpeechRecognitionProvider(SpeechRecognitionProvider);
-        SpeechRecognitionApiKey = Limit(SpeechRecognitionApiKey, 512);
-        SpeechRecognitionModel = Limit(SpeechRecognitionModel, 2048);
-        SpeechRecognitionEndpoint = Limit(SpeechRecognitionEndpoint, 1024);
-        SpeechRecognitionProviders ??= new Dictionary<string, SpeechRecognitionProviderConfig>(StringComparer.Ordinal);
-        SpeechRecognitionProviders = SpeechRecognitionProviders
-            .Where(pair => IsSpeechRecognitionProvider(pair.Key) && pair.Value != null)
-            .Take(4)
-            .ToDictionary(
-                pair => NormalizeSpeechRecognitionProvider(pair.Key),
-                pair => pair.Value.Normalize(),
-                StringComparer.Ordinal);
-        StoreSpeechRecognitionProviderSettings();
         SelectedChannelId = Limit(SelectedChannelId, Networking.VoiceProtocol.MaxControlStringLength);
         if (TransmitTarget is < Networking.VoiceTransmitTarget.Proximity or > Networking.VoiceTransmitTarget.ProximityAndChannel)
         {
@@ -204,83 +175,6 @@ public sealed class SimpleVoiceChatClientConfig
     internal static int NormalizePreferredOpusBitrate(int value)
         => value is 12 or 16 or 20 or 24 or 32 or 48 ? value : 0;
 
-    internal bool SelectSpeechRecognitionProvider(string? value)
-    {
-        string provider = NormalizeSpeechRecognitionProvider(value);
-        if (provider == SpeechRecognitionProvider)
-        {
-            return false;
-        }
-
-        StoreSpeechRecognitionProviderSettings();
-        SpeechRecognitionProvider = provider;
-        if (SpeechRecognitionProviders.TryGetValue(provider, out SpeechRecognitionProviderConfig? saved))
-        {
-            saved.ApplyTo(this);
-        }
-        else
-        {
-            CreateSpeechRecognitionProviderDefaults(provider).ApplyTo(this);
-            StoreSpeechRecognitionProviderSettings();
-        }
-        return true;
-    }
-
-    internal void StoreSpeechRecognitionProviderSettings()
-    {
-        SpeechRecognitionProviders ??= new Dictionary<string, SpeechRecognitionProviderConfig>(StringComparer.Ordinal);
-        SpeechRecognitionProviders[SpeechRecognitionProvider] = new SpeechRecognitionProviderConfig
-        {
-            ApiKey = Limit(SpeechRecognitionApiKey, 512),
-            Model = Limit(SpeechRecognitionModel, 2048),
-            Endpoint = Limit(SpeechRecognitionEndpoint, 1024)
-        };
-    }
-
-    private static SpeechRecognitionProviderConfig CreateSpeechRecognitionProviderDefaults(string provider)
-    {
-        return provider switch
-        {
-            SiliconFlowSpeechRecognitionProvider => new SpeechRecognitionProviderConfig
-            {
-                Model = SiliconFlowSpeechRecognitionModel,
-                Endpoint = SiliconFlowSpeechRecognitionEndpoint
-            },
-            DeepgramSpeechRecognitionProvider => new SpeechRecognitionProviderConfig
-            {
-                Model = DeepgramSpeechRecognitionModel,
-                Endpoint = DeepgramSpeechRecognitionEndpoint
-            },
-            WhisperSpeechRecognitionProvider => new SpeechRecognitionProviderConfig(),
-            _ => new SpeechRecognitionProviderConfig
-            {
-                Model = AlibabaSpeechRecognitionModel,
-                Endpoint = AlibabaSpeechRecognitionEndpoint
-            }
-        };
-    }
-
-    private static bool IsSpeechRecognitionProvider(string? value)
-    {
-        string normalized = value?.Trim().ToLowerInvariant() ?? string.Empty;
-        return normalized is AlibabaSpeechRecognitionProvider
-            or SiliconFlowSpeechRecognitionProvider
-            or DeepgramSpeechRecognitionProvider
-            or WhisperSpeechRecognitionProvider;
-    }
-
-    private static string NormalizeSpeechRecognitionProvider(string? value)
-    {
-        string normalized = value?.Trim().ToLowerInvariant() ?? string.Empty;
-        return normalized switch
-        {
-            SiliconFlowSpeechRecognitionProvider => SiliconFlowSpeechRecognitionProvider,
-            DeepgramSpeechRecognitionProvider => DeepgramSpeechRecognitionProvider,
-            WhisperSpeechRecognitionProvider => WhisperSpeechRecognitionProvider,
-            _ => AlibabaSpeechRecognitionProvider
-        };
-    }
-
     internal bool ActivateServer(string? serverIdentifier)
     {
         string serverId = NormalizeServerId(serverIdentifier);
@@ -347,34 +241,6 @@ public sealed class SimpleVoiceChatClientConfig
     private static bool IsValidServerId(string value)
     {
         return value.Length is > 0 and <= 256;
-    }
-
-    private static string Limit(string? value, int maximumLength)
-    {
-        string normalized = value ?? string.Empty;
-        return normalized.Length <= maximumLength ? normalized : normalized[..maximumLength];
-    }
-}
-
-public sealed class SpeechRecognitionProviderConfig
-{
-    public string ApiKey { get; set; } = string.Empty;
-    public string Model { get; set; } = string.Empty;
-    public string Endpoint { get; set; } = string.Empty;
-
-    internal SpeechRecognitionProviderConfig Normalize()
-    {
-        ApiKey = Limit(ApiKey, 512);
-        Model = Limit(Model, 2048);
-        Endpoint = Limit(Endpoint, 1024);
-        return this;
-    }
-
-    internal void ApplyTo(SimpleVoiceChatClientConfig target)
-    {
-        target.SpeechRecognitionApiKey = ApiKey;
-        target.SpeechRecognitionModel = Model;
-        target.SpeechRecognitionEndpoint = Endpoint;
     }
 
     private static string Limit(string? value, int maximumLength)

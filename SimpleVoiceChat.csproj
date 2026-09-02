@@ -14,8 +14,6 @@
 
   <ItemGroup>
     <PackageReference Include="Concentus" Version="2.2.2" />
-    <PackageReference Include="Whisper.net" Version="1.9.1" />
-    <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -76,6 +74,7 @@
   </ItemGroup>
 
   <Target Name="RemoveWhisperNativeRuntimeFromPackage" AfterTargets="Build">
+    <Delete Files="$(TargetDir)Whisper.net.dll;$(TargetDir)Microsoft.Extensions.AI.Abstractions.dll" />
     <Delete Files="$(TargetDir)ggml-metal.metal" />
     <RemoveDir Directories="$(TargetDir)runtimes" Condition="Exists('$(TargetDir)runtimes')" />
     <RemoveDir Directories="$(TargetDir)native" Condition="Exists('$(TargetDir)native')" />

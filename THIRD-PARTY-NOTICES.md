@@ -14,12 +14,6 @@ Redistribution and use in source and binary forms, with or without modification,
 The settings controls include Lucide icons from https://lucide.dev/ under the ISC License.
 The complete license text is included at `assets/simplevoicechat/licenses/LUCIDE.txt`.
 
-SimpleVoiceChat includes Whisper.net 1.9.1 for optional local speech recognition. Whisper.net is distributed under the MIT License. Its native whisper.cpp runtime is not included in this release and is distributed under its upstream license when installed separately by a player.
-
-- https://github.com/sandrohanea/whisper.net
-- https://github.com/ggerganov/whisper.cpp
-- https://www.nuget.org/packages/Whisper.net/1.9.1
-
 SimpleVoiceChat retains an optional RNNoise integration for local microphone noise suppression, but the current release package does not bundle an RNNoise native library. RNNoise is distributed under the BSD 3-Clause License.
 
 - https://gitlab.xiph.org/xiph/rnnoise

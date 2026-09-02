@@ -1,8 +1,8 @@
 # SimpleVoiceChat / 简单语音对话
 
-SimpleVoiceChat `1.2.7-pre.2` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, server-hosted multi-track recording, moderation, optional speech-to-chat, and optional VS Director capture.
+SimpleVoiceChat `1.2.7-pre.2` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, server-hosted multi-track recording, moderation, and optional VS Director capture. Speech-to-chat is provided by the separate `SimpleVoiceChatASR` client mod.
 
-SimpleVoiceChat `1.2.7-pre.2` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、服务器托管多人分轨录音、管理功能、可选语音转文字聊天以及可选 VS Director 录制集成。
+SimpleVoiceChat `1.2.7-pre.2` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、服务器托管多人分轨录音、管理功能以及可选 VS Director 录制集成。语音转文字由独立的 `SimpleVoiceChatASR` 客户端模组提供。
 
 - [中文说明](#中文说明)
 - [English](#english)
@@ -22,7 +22,7 @@ SimpleVoiceChat `1.2.7-pre.2` 是适用于 Vintage Story `1.22.3` 的客户端/�
 - 接近度语音在客户端按距离平滑衰减到静音；频道/群组语音不受距离衰减影响，服务端转发范围不会扩大。
 - 可选的公共聊天距离可视：开启后，普通公共聊天只会显示给同维度且处于“聊天可视距离”内的玩家，发言者始终能看到自己的消息。
 - 可在本机进行麦克风试听，并主动保存仅输入或输入+输出 WAV；多人分轨由服务器权威托管。
-- 语音识别默认关闭，完全由玩家在客户端配置，不经过 SimpleVoiceChat 服务端。
+- 语音识别由独立的 `SimpleVoiceChatASR` 客户端模组提供，不属于主模组。
 - VS Director 是可选集成，不是前置模组，也不需要单独的集成模组。
 
 ### 安装
@@ -45,9 +45,8 @@ SimpleVoiceChat 不依赖 Simple Voice Chat、VS Director 或 `SimpleVoiceChat_V
 | 拒听/恢复全部语音 | `;` |
 | 打开设置 | `'` |
 | 打开多人分轨设置（管理员） | `Ctrl + F9` |
-| 语音转文字聊天 | 按住 `V` 录音，松开识别并发送 |
 
-快捷键可在 Vintage Story 的游戏按键设置中修改。语音识别页面不另设快捷键输入框。
+快捷键可在 Vintage Story 的游戏按键设置中修改。
 
 ### 主设置窗口扩展（客户端 API）
 
@@ -92,33 +91,9 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");
 
 上述 API 仅在客户端可用；注册 ID 只能包含字母、数字、`.`、`_` 和 `-`。关闭主设置窗口时，已打开的扩展窗口也会被释放。
 
-### 语音识别
+### 语音转文字
 
-进入 SimpleVoiceChat 设置，点击“语音识别”，选择服务商并填写当前服务商需要的配置。该功能默认关闭；开启后，按住 `V` 录音，松开后将识别文字发送到当前聊天频道。切换下拉菜单时，每个服务商的 API Key、模型、接口地址或本地路径都会分别保存。
-
-| 服务商 | 类型 | 默认模型或路径要求 | 默认接口 |
-| --- | --- | --- | --- |
-| 阿里百炼 | 云端 | `qwen3-asr-flash` | `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions` |
-| 硅基流动 | 云端 | `FunAudioLLM/SenseVoiceSmall` | `https://api.siliconflow.cn/v1/audio/transcriptions` |
-| Deepgram | 云端 | `nova-3` | `https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true` |
-| Whisper | 本地 | Whisper.cpp GGML `.bin` 模型文件路径 | 无 |
-
-相关文档与模型下载：
-
-- [阿里百炼语音识别文档](https://bailian.console.aliyun.com/cn-beijing?tab=doc#/doc/?type=model&url=2989727)
-- [SiliconFlow Audio Transcriptions API](https://api-docs.siliconflow.cn/docs/api/audio-transcriptions-post)
-- [Deepgram API 入门](https://developers.deepgram.com/guides/fundamentals/make-your-first-api-request)
-- [Whisper.cpp 模型](https://huggingface.co/ggerganov/whisper.cpp/tree/main)
-- [Whisper.net.Runtime 1.9.1 原生库](https://www.nuget.org/packages/Whisper.net.Runtime/1.9.1)
-- [YellowDogMan.RRNoise.NET 0.1.9 原生库](https://www.nuget.org/packages/YellowDogMan.RRNoise.NET/0.1.9)，第三方构建，非 RNNoise 官方发布
-
-本地 Whisper 由主模组直接提供，但不随包携带原生运行时。填写实际 `.bin` 模型文件路径，而不是文件夹。如果浏览器下载的是压缩包，也要先解压。模型可放在任意玩家有读取权限的位置，Windows、Linux 和 macOS 均使用本平台正常路径格式。请将匹配平台的 Whisper 原生库放入 `%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat\native\`；Windows 可放置 `whisper.dll` 与同目录的 `ggml-*` 依赖，也支持 `native\runtimes\<平台>-<架构>` 结构。
-
-若手动安装 RNNoise，将导出 `rnnoise_create`、`rnnoise_destroy`、`rnnoise_process_frame` 的平台库放入 `%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat\native\`：Windows 为 `rnnoise.dll`，Linux 为 `librnnoise.so`，macOS 为 `librnnoise.dylib`；也支持 `native\runtimes\<平台>-<架构>`。启动客户端后，设置页的 RNNoise 选项会在库可加载时启用。
-
-Windows、Linux 与 macOS 用户可使用仓库或模组包中的 `tools/Install-NativeRuntimes.ps1` 自动安装固定版本的运行时。脚本从 NuGet 下载、校验 SHA-256，并只提取当前平台和架构的文件；默认安装 `Whisper.net.Runtime 1.9.1`，并安装第三方 `YellowDogMan.RRNoise.NET 0.1.9` 的 Windows/Linux RNNoise。该第三方包不提供 macOS RNNoise。详细命令和来源见 [native 运行时安装说明](docs/NATIVE-RUNTIME.md)。
-
-云端服务的 API Key 以明文保存在玩家本机的 `SimpleVoiceChat.Client.json` 中，请勿分享该文件。云端识别会把本次录音直接发送给所选服务商；SimpleVoiceChat 服务端不会代理或保存该请求。Whisper 在本机运行，无需 API Key，也不会将识别音频发送给识别服务商。
+如需语音转文字，请额外安装 `SimpleVoiceChatASR`。它负责本地 Whisper、模型路径和 `V` 快捷键，不会增加主模组的云端服务或配置负担。
 
 ### 频道和录音
 
@@ -232,7 +207,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 
 ### 配置文件
 
-- `SimpleVoiceChat.Client.json`：本机设备、音量、快捷方式、语音识别服务商配置和每服务器偏好。
+- `SimpleVoiceChat.Client.json`：本机设备、音量、快捷方式和每服务器偏好。ASR 使用独立的 `SimpleVoiceChatASR.Client.json`。
 - `SimpleVoiceChat.Server.json`：范围、公共聊天可视距离、频道、容量、路由和 VS Director 捕获策略。
 - 频道名称创建/修改限制由服务端 `MaxChannelNameLength` 控制，默认 24，范围 1-128；调整只作用于之后的创建和重命名，不会改动已有频道名称。也可使用 `/svc channelnamelength <1-128>` 修改并广播配置。
 - `SimpleVoiceChat.Audit.json`：服务器管理操作审计，不记录语音内容。
@@ -250,7 +225,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 - Proximity playback applies a client-side distance fade to silence at the configured boundary; channel/group voice bypasses that fade and server forwarding does not expand.
 - Optional proximity visibility for public chat can limit ordinary chat messages to players in the same dimension and within a server-configured range; the sender always sees their own message.
 - In-memory microphone testing plus input-only, input-and-output, and server-hosted administrator multi-track WAV recording.
-- Optional client-side speech-to-chat, disabled by default and never processed by the SimpleVoiceChat server.
+- Speech-to-chat is provided by the separate `SimpleVoiceChatASR` client mod.
 - Optional runtime VS Director integration without a hard dependency or a separate integration mod.
 
 ### Installation
@@ -273,9 +248,8 @@ SimpleVoiceChat does not require Simple Voice Chat, VS Director, or `SimpleVoice
 | Deafen / restore all received voice | `;` |
 | Open settings | `'` |
 | Open multi-track settings (administrator) | `Ctrl + F9` |
-| Speech-to-chat | Hold `V`, then release to transcribe and send |
 
-Bindings can be changed in Vintage Story's game key settings. The Speech Recognition page does not provide a separate key-binding field.
+Bindings can be changed in Vintage Story's game key settings.
 
 ### Main-window extensions (client API)
 
@@ -309,33 +283,9 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");
 
 These APIs are client-only. Registration IDs may contain letters, digits, `.`, `_`, and `-`. Closing the main settings dialog also releases an open extension window.
 
-### Speech Recognition
+### Speech-to-Chat
 
-Open SimpleVoiceChat settings, select Speech Recognition, choose a provider, and enter that provider's configuration. Recognition is disabled by default. When enabled, hold `V` to record; releasing the key transcribes the recording and sends the text to the active chat channel. API keys, models, endpoints, and paths are retained separately when switching providers.
-
-| Provider | Type | Default model or path | Default endpoint |
-| --- | --- | --- | --- |
-| Alibaba Bailian | Cloud | `qwen3-asr-flash` | `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions` |
-| SiliconFlow | Cloud | `FunAudioLLM/SenseVoiceSmall` | `https://api.siliconflow.cn/v1/audio/transcriptions` |
-| Deepgram | Cloud | `nova-3` | `https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true` |
-| Whisper | Local | Whisper.cpp GGML `.bin` model file | None |
-
-Documentation and model downloads:
-
-- [Alibaba Bailian speech recognition](https://bailian.console.aliyun.com/cn-beijing?tab=doc#/doc/?type=model&url=2989727)
-- [SiliconFlow Audio Transcriptions API](https://api-docs.siliconflow.cn/docs/api/audio-transcriptions-post)
-- [Deepgram API guide](https://developers.deepgram.com/guides/fundamentals/make-your-first-api-request)
-- [Whisper.cpp models](https://huggingface.co/ggerganov/whisper.cpp/tree/main)
-- [Whisper.net.Runtime 1.9.1 native libraries](https://www.nuget.org/packages/Whisper.net.Runtime/1.9.1)
-- [YellowDogMan.RRNoise.NET 0.1.9 native libraries](https://www.nuget.org/packages/YellowDogMan.RRNoise.NET/0.1.9), a third-party build and not an official RNNoise release
-
-Local Whisper is provided directly by the main mod, but native runtime libraries are not bundled. Whisper downloads are normally model files; select the actual `.bin` file, not its parent directory. Extract it first if it was distributed in an archive. Models may be stored in any readable location using normal Windows, Linux, or macOS path syntax. Install matching native libraries under `%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat\native\`; on Windows place `whisper.dll` and its `ggml-*` dependencies there, or use `native\runtimes\<platform>-<architecture>`.
-
-To install RNNoise manually, place a platform library exporting `rnnoise_create`, `rnnoise_destroy`, and `rnnoise_process_frame` under `%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat\native\`: `rnnoise.dll` on Windows, `librnnoise.so` on Linux, or `librnnoise.dylib` on macOS. The `native\runtimes\<platform>-<architecture>` layout is also supported. The RNNoise selector becomes available after the client can load the library.
-
-Windows, Linux, and macOS users can run `tools/Install-NativeRuntimes.ps1` from this repository or the mod package to install fixed runtime versions. It downloads directly from NuGet, verifies SHA-256 before extraction, and installs only the detected platform and architecture. It installs `Whisper.net.Runtime 1.9.1` by default, plus the third-party `YellowDogMan.RRNoise.NET 0.1.9` Windows/Linux RNNoise build. That third-party package has no macOS RNNoise build. See [native runtime installation](docs/NATIVE-RUNTIME.md) for the command and source details.
-
-Cloud API keys are stored as plain text in the local `SimpleVoiceChat.Client.json`; do not share that file. Cloud recognition sends each captured recording directly to the selected provider. The SimpleVoiceChat server neither proxies nor stores those requests. Whisper runs locally, requires no API key, and does not upload recognition audio to a provider.
+For speech-to-chat, install `SimpleVoiceChatASR` separately. It owns local Whisper, model configuration, and the `V` binding; the main mod remains focused on real-time voice chat.
 
 ### Channels and Recording
 
@@ -441,7 +391,7 @@ Server administrators can use `/svc enable`, `/svc disable`, `/svc reload`, `/sv
 
 ### Configuration Files
 
-- `SimpleVoiceChat.Client.json`: local devices, levels, input preferences, speech-recognition provider settings, and per-server preferences.
+- `SimpleVoiceChat.Client.json`: local devices, levels, input preferences, and per-server preferences. ASR uses `SimpleVoiceChatASR.Client.json`.
 - `SimpleVoiceChat.Server.json`: ranges, public-chat visibility, channels, capacity, routing, and VS Director capture policy.
 - `SimpleVoiceChat.Audit.json`: server administration events; it does not contain voice content.
 
@@ -452,4 +402,4 @@ dotnet test Tests\SimpleVoiceChat.Tests.csproj
 dotnet build SimpleVoiceChat.csproj -c Release
 ```
 
-The release is written to `bin\Release\Mods\mod`. Whisper native libraries are intentionally excluded from the ZIP and must be installed under the player's `VintagestoryData\ModData\SimpleVoiceChat\native` directory.
+The release is written to `bin\Release\Mods\mod`. Optional ASR is delivered by the separate `SimpleVoiceChatASR` client mod.
