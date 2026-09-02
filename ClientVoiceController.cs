@@ -3,6 +3,7 @@ using SimpleVoiceChat.Config;
 using SimpleVoiceChat.Gui;
 using SimpleVoiceChat.Integration;
 using SimpleVoiceChat.Networking;
+using SimpleVoiceChat.SpeechRecognition;
 using OpenTK.Audio.OpenAL;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
@@ -168,9 +169,10 @@ public sealed class ClientVoiceController : IDisposable
     private bool voiceActivationTriggered;
     private int voiceActivationHangoverFrames;
     private bool setupMicrophoneMonitoring;
-    private readonly List<Action<short[], long>> inputFrameSubscribers = new();
-    private readonly ClientAudioApi clientAudioApi;
-    private bool inputCaptureRequested;
+    private readonly SpeechRecognitionAudioBuffer speechRecognitionBuffer = new();
+    private ISpeechRecognitionClient? speechRecognitionClient;
+    private CancellationTokenSource? speechRecognitionCancellation;
+    private bool speechRecognitionActive;
 
     public ClientVoiceController(
         ICoreClientAPI capi,
@@ -182,26 +184,6 @@ public sealed class ClientVoiceController : IDisposable
         this.settingsExtensions = settingsExtensions ?? new VoiceSettingsExtensionRegistry();
         selectedChannelRestorePending = !string.IsNullOrEmpty(config.SelectedChannelId);
         sessionId = NextSessionId();
-        clientAudioApi = new ClientAudioApi(this);
-    }
-
-    public ISimpleVoiceChatClientAudioApi ClientAudioApi => clientAudioApi;
-    internal bool HasInputFrameSubscribers => inputFrameSubscribers.Count > 0;
-    internal bool IsCaptureAvailable => capture?.IsAvailable == true;
-
-    internal IDisposable SubscribeInputFrames(Action<short[], long> callback)
-    {
-        inputFrameSubscribers.Add(callback);
-        return new InputFrameSubscription(inputFrameSubscribers, callback);
-    }
-
-    internal void SetInputCaptureEnabled(bool enabled)
-    {
-        inputCaptureRequested = enabled;
-        if (!enabled)
-        {
-            capture?.Stop();
-        }
     }
 
     internal SimpleVoiceChatClientConfig SettingsConfig => config;
@@ -271,6 +253,7 @@ public sealed class ClientVoiceController : IDisposable
 
         recording = new VoiceRecordingService(capi);
         recorderDownloads = new RecorderFileDownloadService(recording.DirectoryPath);
+        speechRecognitionClient = CreateSpeechRecognitionClient(config.SpeechRecognitionProvider);
         microphoneTest = new VoiceTestRecordingBuffer();
         playback = new OpenAlPlaybackService(capi, config);
         VoiceRecordingService recordingService = recording;
@@ -391,6 +374,7 @@ public sealed class ClientVoiceController : IDisposable
         capi.Input.RegisterHotKey(VoiceConstants.GlobalMuteHotKey, SVCLang.Get("hotkey-global-mute"), GlKeys.Semicolon, HotkeyType.CharacterControls);
         capi.Input.RegisterHotKey(VoiceConstants.SettingsHotKey, SVCLang.Get("hotkey-settings"), GlKeys.Quote, HotkeyType.GUIOrOtherControls);
         capi.Input.RegisterHotKey(VoiceConstants.MultiTrackSettingsHotKey, SVCLang.Get("hotkey-multitrack-settings"), GlKeys.F9, HotkeyType.GUIOrOtherControls, ctrlPressed: true);
+        capi.Input.RegisterHotKey(VoiceConstants.SpeechRecognitionHotKey, SVCLang.Get("hotkey-speech-recognition"), GlKeys.V, HotkeyType.CharacterControls);
         capi.Input.RegisterHotKey(VoiceConstants.AcceptChannelInviteHotKey, SVCLang.Get("hotkey-accept-channel-invite"), GlKeys.F8, HotkeyType.GUIOrOtherControls, ctrlPressed: true);
         capi.Input.RegisterHotKey(VoiceConstants.DeclineChannelInviteHotKey, SVCLang.Get("hotkey-decline-channel-invite"), GlKeys.F7, HotkeyType.GUIOrOtherControls);
 
@@ -1863,6 +1847,50 @@ public sealed class ClientVoiceController : IDisposable
         SaveConfig();
     }
 
+    internal void SetSpeechRecognitionEnabledFromSettings(bool enabled)
+    {
+        config.EnableSpeechRecognition = enabled;
+        if (!enabled && speechRecognitionActive)
+        {
+            speechRecognitionActive = false;
+            speechRecognitionBuffer.Cancel();
+            capture?.Stop();
+        }
+        SaveConfig();
+    }
+
+    internal void SetSpeechRecognitionApiKeyFromSettings(string value)
+    {
+        config.SpeechRecognitionApiKey = value.Trim();
+        SaveConfig();
+    }
+
+    internal void SetSpeechRecognitionProviderFromSettings(string value)
+    {
+        if (!config.SelectSpeechRecognitionProvider(value))
+        {
+            return;
+        }
+
+        speechRecognitionCancellation?.Cancel();
+        speechRecognitionClient?.Dispose();
+        speechRecognitionClient = CreateSpeechRecognitionClient(config.SpeechRecognitionProvider);
+        SaveConfig();
+        settingsDialog?.RefreshConfiguration();
+    }
+
+    internal void SetSpeechRecognitionModelFromSettings(string value)
+    {
+        config.SpeechRecognitionModel = value.Trim();
+        SaveConfig();
+    }
+
+    internal void SetSpeechRecognitionEndpointFromSettings(string value)
+    {
+        config.SpeechRecognitionEndpoint = value.Trim();
+        SaveConfig();
+    }
+
     internal void SetLocalMutedFromSettings(bool muted) => SetLocalMuted(muted);
     internal void SetGlobalMutedFromSettings(bool muted) => SetGlobalMuted(muted);
     internal void SetContinuousTalkFromSettings(bool enabled) => SetContinuousTalk(enabled);
@@ -2615,6 +2643,12 @@ public sealed class ClientVoiceController : IDisposable
         bool directorCaptureReady = capture?.IsAvailable == true
             && directorVoice?.CanCaptureLocalFrame(transmitTarget, serverConfig) == true;
         bool captureReady = voiceReady || directorCaptureReady;
+        bool speechCaptureReady = config.EnableSpeechRecognition
+            && !localMuted
+            && !testRecordingActive
+            && !setupMonitoringActive
+            && capi.Input.MouseGrabbed
+            && capture?.IsAvailable == true;
         bool isRecording = recording?.IsRecording == true || testRecordingActive;
         bool canSpeak = false;
         if (pressed && capture?.IsAvailable != true && !captureWarningShown)
@@ -2623,7 +2657,29 @@ public sealed class ClientVoiceController : IDisposable
             ShowChatMessage(SVCLang.Get("chat-mic-unavailable", capture?.FailureReason ?? string.Empty));
         }
 
-        if (testRecordingActive)
+        bool speechPressed = speechCaptureReady && IsSpeechRecognitionPressed();
+        if (speechPressed || speechRecognitionActive)
+        {
+            lastPressed = false;
+            if (speechPressed)
+            {
+                if (!speechRecognitionActive)
+                {
+                    speechRecognitionActive = true;
+                    speechRecognitionBuffer.Start();
+                    ShowChatMessage(SVCLang.Get("chat-speech-recognition-recording"));
+                }
+                capture?.Start();
+                DrainCapturedFrames(sendVoice: false, captureSpeech: true);
+            }
+            else
+            {
+                DrainCapturedFrames(sendVoice: false, captureSpeech: true);
+                capture?.Stop();
+                StopSpeechRecognition();
+            }
+        }
+        else if (testRecordingActive)
         {
             // A microphone test must stay local and must never transmit voice.
             lastPressed = false;
@@ -2632,14 +2688,6 @@ public sealed class ClientVoiceController : IDisposable
         }
         else if (setupMonitoringActive)
         {
-            lastPressed = false;
-            capture?.Start();
-            DrainCapturedFrames(sendVoice: false);
-        }
-        else if (inputCaptureRequested && HasInputFrameSubscribers)
-        {
-            // Companion clients such as ASR own this capture window. Do not
-            // transmit the same microphone frames as regular voice traffic.
             lastPressed = false;
             capture?.Start();
             DrainCapturedFrames(sendVoice: false);
@@ -2684,6 +2732,7 @@ public sealed class ClientVoiceController : IDisposable
             capture?.Start();
             DrainCapturedFrames(sendVoice: false);
         }
+
         if (!canSpeak && !setupMonitoringActive)
         {
             lastMicLevel = 0f;
@@ -2993,6 +3042,25 @@ public sealed class ClientVoiceController : IDisposable
         ShowChatMessage(SVCLang.Get("chat-device-switched", string.IsNullOrWhiteSpace(config.InputDeviceName) ? SVCLang.Get("default-microphone") : config.InputDeviceName));
     }
 
+    private bool IsSpeechRecognitionPressed()
+    {
+        HotKey? hotKey = capi.Input.GetHotKeyByCode(VoiceConstants.SpeechRecognitionHotKey);
+        int keyCode = hotKey?.CurrentMapping?.KeyCode ?? (int)GlKeys.V;
+        if (capi.Input.KeyboardKeyState[(int)GlKeys.LControl]
+            || capi.Input.KeyboardKeyState[(int)GlKeys.RControl]
+            || capi.Input.KeyboardKeyState[(int)GlKeys.AltLeft]
+            || capi.Input.KeyboardKeyState[(int)GlKeys.AltRight]
+            || capi.Input.KeyboardKeyState[(int)GlKeys.LShift]
+            || capi.Input.KeyboardKeyState[(int)GlKeys.RShift])
+        {
+            return false;
+        }
+
+        return keyCode >= 0
+            && keyCode < capi.Input.KeyboardKeyState.Length
+            && capi.Input.KeyboardKeyState[keyCode];
+    }
+
     private void ReinitializePlayback()
     {
         playback?.Dispose();
@@ -3019,7 +3087,8 @@ public sealed class ClientVoiceController : IDisposable
     private bool DrainCapturedFrames(
         bool sendVoice,
         bool captureDirectorAudio = false,
-        bool requireVoiceActivation = false)
+        bool requireVoiceActivation = false,
+        bool captureSpeech = false)
     {
         int processedFrames = 0;
         bool hadFrame = false;
@@ -3064,9 +3133,9 @@ public sealed class ClientVoiceController : IDisposable
             {
                 microphoneTest.AppendInput(captureBuffer);
             }
-            for (int subscriberIndex = 0; subscriberIndex < inputFrameSubscribers.Count; subscriberIndex++)
+            if (captureSpeech)
             {
-                inputFrameSubscribers[subscriberIndex](captureBuffer, captureTimestampMilliseconds);
+                speechRecognitionBuffer.Append(captureBuffer);
             }
             if (!sendVoice && !captureDirectorAudio)
             {
@@ -3238,6 +3307,82 @@ public sealed class ClientVoiceController : IDisposable
             ? recorderClock.ToClientTime(serverTimestampMilliseconds)
             : MonotonicClock.NowMilliseconds;
     }
+
+    private void StopSpeechRecognition()
+    {
+        if (!speechRecognitionActive)
+        {
+            return;
+        }
+
+        speechRecognitionActive = false;
+        if (!speechRecognitionBuffer.Stop(out byte[] wavAudio))
+        {
+            ShowChatMessage(SVCLang.Get("chat-speech-recognition-too-short"));
+            return;
+        }
+
+        if (speechRecognitionClient == null)
+        {
+            return;
+        }
+
+        speechRecognitionCancellation?.Cancel();
+        speechRecognitionCancellation?.Dispose();
+        speechRecognitionCancellation = new CancellationTokenSource();
+        ShowChatMessage(SVCLang.Get("chat-speech-recognition-recognizing"));
+        _ = CompleteSpeechRecognitionAsync(wavAudio, speechRecognitionCancellation.Token);
+    }
+
+    private async Task CompleteSpeechRecognitionAsync(byte[] wavAudio, CancellationToken cancellationToken)
+    {
+        ISpeechRecognitionClient? client = speechRecognitionClient;
+        if (client == null)
+        {
+            return;
+        }
+
+        SpeechRecognitionResult result = await client.TranscribeAsync(wavAudio, config, cancellationToken).ConfigureAwait(false);
+        capi.Event.EnqueueMainThreadTask(() =>
+        {
+            if (!lifecycle.IsStarted || cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (!result.Succeeded)
+            {
+                ShowChatMessage(SVCLang.Get("chat-speech-recognition-failed", result.Error));
+                return;
+            }
+
+            string text = result.Text.Replace('\r', ' ').Replace('\n', ' ').Trim();
+            if (text.StartsWith('/'))
+            {
+                text = text.TrimStart('/').TrimStart();
+            }
+            if (text.Length == 0)
+            {
+                ShowChatMessage(SVCLang.Get("speech-recognition-error-empty"));
+                return;
+            }
+
+            if (text.Length > 512)
+            {
+                text = text[..512];
+            }
+            capi.SendChatMessage(text, string.Empty);
+        }, "simplevoicechat-speech-recognition");
+    }
+
+    private static ISpeechRecognitionClient CreateSpeechRecognitionClient(string provider)
+        => provider switch
+        {
+            SimpleVoiceChatClientConfig.SiliconFlowSpeechRecognitionProvider => new SiliconFlowSpeechRecognitionClient(),
+            SimpleVoiceChatClientConfig.DeepgramSpeechRecognitionProvider => new DeepgramSpeechRecognitionClient(),
+            SimpleVoiceChatClientConfig.WhisperSpeechRecognitionProvider => new WhisperSpeechRecognitionClient(),
+            _ => new AlibabaSpeechRecognitionClient()
+        };
 
     internal static VoiceTransmitTarget ResolveTransmitTarget(VoiceTransmitTarget configuredTarget, string? selectedChannelId)
     {
@@ -3504,6 +3649,12 @@ public sealed class ClientVoiceController : IDisposable
             return;
         }
         capi.Event.KeyUp -= OnKeyUp;
+        speechRecognitionCancellation?.Cancel();
+        speechRecognitionCancellation?.Dispose();
+        speechRecognitionCancellation = null;
+        speechRecognitionBuffer.Cancel();
+        speechRecognitionClient?.Dispose();
+        speechRecognitionClient = null;
         if (fastTickListenerId != 0)
         {
             capi.Event.UnregisterGameTickListener(fastTickListenerId);

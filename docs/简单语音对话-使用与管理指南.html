@@ -34,7 +34,7 @@
 <tr><td style="padding: 6px 8px; vertical-align: top;">拒听/恢复收听</td><td style="padding: 6px 8px; vertical-align: top;"><code>;</code></td><td style="padding: 6px 8px; vertical-align: top;">停止或恢复播放全部远端语音。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">打开语音窗口</td><td style="padding: 6px 8px; vertical-align: top;"><code>'</code></td><td style="padding: 6px 8px; vertical-align: top;">首次使用打开向导，之后打开主设置窗口。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">多人分轨设置</td><td style="padding: 6px 8px; vertical-align: top;"><code>Ctrl + F9</code></td><td style="padding: 6px 8px; vertical-align: top;">打开管理员的多人分轨录制设置。</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">语音转文字聊天</td><td style="padding: 6px 8px; vertical-align: top;"><code>V</code></td><td style="padding: 6px 8px; vertical-align: top;">由独立的 SimpleVoiceChatASR 客户端模组提供。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">语音转文字聊天</td><td style="padding: 6px 8px; vertical-align: top;"><code>V</code></td><td style="padding: 6px 8px; vertical-align: top;">主模组提供配置窗口和识别流程，ASR 包提供 Whisper 运行时依赖。</td></tr>
 </tbody></table>
 <p>默认按住说话键为 <code>N</code>，<code>Alt + N</code> 保留为按键触发/自由麦模式切换。需要修改按键时，请在游戏按键设置中的 Simple Voice Chat 分类修改。</p>
 
@@ -82,12 +82,12 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");</code></pre>
 <p>下面的开关包括麦克风静音、拒听、自适应抖动缓冲、遮挡/传播修正、环境语音效果和性能模式。发行包内置第三方构建的 <code>YellowDogMan.RRNoise.NET 0.1.9</code> RNNoise 原生库，支持 Windows x64/x86 和 Linux x64/arm64，无需手动部署。该包没有 macOS 原生库，macOS 会回退到内置的 AGC/噪声门处理；仍可将兼容库放入 <code>%APPDATA%\VintagestoryData\ModData\SimpleVoiceChat\native</code> 作为外部回退。回声消除目前不可用。遮挡效果在服务器强制开启时不能关闭。</p>
 <p>设置页内容超过窗口高度时会启用统一滚动视口，可使用鼠标滚轮或可见滚动条；滚动时控件、文本输入框和下拉弹窗都会限制在视口内，不会溢出。</p>
 
-<h2>五、语音转文字扩展</h2>
-<p>语音转文字由独立的客户端模组 <code>SimpleVoiceChatASR</code> 提供。安装后在 <code>SimpleVoiceChatASR.Client.json</code> 中设置 Whisper GGML <code>.bin</code> 模型，按住 <code>V</code> 录音，松开后本地识别并发送文字。主模组不包含语音识别或云端服务商。</p>
+<h2>五、语音转文字</h2>
+<p>打开 SimpleVoiceChat 主页的“语音识别”按钮配置语音转文字。启用后按住 <code>V</code> 录音，松开后本地识别并发送文字。客户端需要额外安装 <code>SimpleVoiceChatASR</code> 依赖包，它只提供 Whisper.net 托管和原生运行时；主模组负责配置窗口和识别流程。</p>
 <table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">组件</th><th style="padding: 6px 8px; text-align: left;">位置</th><th style="padding: 6px 8px; text-align: left;">要求</th></tr></thead><tbody>
-<tr><td style="padding: 6px 8px; vertical-align: top;">SimpleVoiceChatASR</td><td style="padding: 6px 8px; vertical-align: top;">客户端模组</td><td style="padding: 6px 8px; vertical-align: top;">在 <code>SimpleVoiceChatASR.Client.json</code> 设置 Whisper GGML <code>.bin</code> 模型</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">SimpleVoiceChatASR</td><td style="padding: 6px 8px; vertical-align: top;">客户端依赖包</td><td style="padding: 6px 8px; vertical-align: top;">提供 Whisper.net 运行时，模型路径在主模组设置窗口中配置</td></tr>
 </tbody></table>
-<p>模型下载：<a href="https://huggingface.co/ggerganov/whisper.cpp/tree/main">Whisper.cpp 模型</a>。Whisper 原生依赖已嵌入 ASR 模组，不属于 SimpleVoiceChat。</p>
+<p>模型下载：<a href="https://huggingface.co/ggerganov/whisper.cpp/tree/main">Whisper.cpp 模型</a>。Whisper 原生依赖已嵌入 ASR 依赖包，不属于主模组 ZIP。</p>
 <div style="border-left: 4px solid #d69e2e; padding: 8px 12px; margin: 12px 0; background-color: #fffaf0;"><p style="margin: 0;"><strong>隐私：</strong>SimpleVoiceChatASR 使用本地 Whisper 处理音频，不会上传识别音频。</p></div>
 
 <h2>六、接近度语音</h2>

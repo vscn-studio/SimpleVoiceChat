@@ -15,6 +15,8 @@
   <ItemGroup>
     <PackageReference Include="Concentus" Version="2.2.2" />
     <PackageReference Include="YellowDogMan.RRNoise.NET" Version="0.1.9" />
+    <PackageReference Include="Whisper.net" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -75,13 +77,24 @@
   </ItemGroup>
 
   <Target Name="RemoveWhisperNativeRuntimeFromPackage" AfterTargets="Build">
-    <Delete Files="$(TargetDir)Whisper.net.dll;$(TargetDir)Microsoft.Extensions.AI.Abstractions.dll" />
     <Delete Files="$(TargetDir)ggml-metal.metal" />
     <ItemGroup>
       <WhisperRuntimeFiles Include="$(TargetDir)runtimes\**\*whisper*" />
       <WhisperRuntimeFiles Include="$(TargetDir)runtimes\**\*ggml*" />
     </ItemGroup>
     <Delete Files="@(WhisperRuntimeFiles)" />
+  </Target>
+
+  <Target Name="StageRnnoiseNativeRuntime" AfterTargets="RemoveWhisperNativeRuntimeFromPackage">
+    <MakeDir Directories="$(TargetDir)native\runtimes\win-x64;$(TargetDir)native\runtimes\win-x86;$(TargetDir)native\runtimes\linux-x64;$(TargetDir)native\runtimes\linux-arm64" />
+    <Copy SourceFiles="$(TargetDir)runtimes\win-x64\native\rnnoise.dll" DestinationFiles="$(TargetDir)native\runtimes\win-x64\rnnoise.dll" Condition="Exists('$(TargetDir)runtimes\win-x64\native\rnnoise.dll')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(TargetDir)runtimes\win-x86\native\rnnoise.dll" DestinationFiles="$(TargetDir)native\runtimes\win-x86\rnnoise.dll" Condition="Exists('$(TargetDir)runtimes\win-x86\native\rnnoise.dll')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(TargetDir)runtimes\linux-x64\native\librnnoise.so" DestinationFiles="$(TargetDir)native\runtimes\linux-x64\librnnoise.so" Condition="Exists('$(TargetDir)runtimes\linux-x64\native\librnnoise.so')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(TargetDir)runtimes\linux-arm64\native\librnnoise.so" DestinationFiles="$(TargetDir)native\runtimes\linux-arm64\librnnoise.so" Condition="Exists('$(TargetDir)runtimes\linux-arm64\native\librnnoise.so')" SkipUnchangedFiles="true" />
+    <Delete Files="$(TargetDir)runtimes\win-x64\native\rnnoise.dll;$(TargetDir)runtimes\win-x86\native\rnnoise.dll;$(TargetDir)runtimes\linux-x64\native\librnnoise.so;$(TargetDir)runtimes\linux-arm64\native\librnnoise.so" />
+    <RemoveDir Directories="$(TargetDir)runtimes\win-x64\native;$(TargetDir)runtimes\win-x86\native;$(TargetDir)runtimes\linux-x64\native;$(TargetDir)runtimes\linux-arm64\native" Condition="Exists('$(TargetDir)runtimes')" />
+    <RemoveDir Directories="$(TargetDir)runtimes\win-x64;$(TargetDir)runtimes\win-x86;$(TargetDir)runtimes\linux-x64;$(TargetDir)runtimes\linux-arm64" Condition="Exists('$(TargetDir)runtimes')" />
+    <RemoveDir Directories="$(TargetDir)runtimes" Condition="Exists('$(TargetDir)runtimes')" />
   </Target>
 
 </Project>

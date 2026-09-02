@@ -1,8 +1,8 @@
 # SimpleVoiceChat / 简单语音对话
 
-SimpleVoiceChat `1.2.7-pre.2` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, server-hosted multi-track recording, moderation, and optional VS Director capture. Speech-to-chat is provided by the separate `SimpleVoiceChatASR` client mod.
+SimpleVoiceChat `1.2.7-pre.2` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, server-hosted multi-track recording, moderation, optional speech-to-chat, and optional VS Director capture. The separate `SimpleVoiceChatASR` client package supplies Whisper runtime dependencies for local speech-to-chat.
 
-SimpleVoiceChat `1.2.7-pre.2` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、服务器托管多人分轨录音、管理功能以及可选 VS Director 录制集成。语音转文字由独立的 `SimpleVoiceChatASR` 客户端模组提供。
+SimpleVoiceChat `1.2.7-pre.2` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、服务器托管多人分轨录音、管理功能、可选语音转文字以及可选 VS Director 录制集成。`SimpleVoiceChatASR` 客户端依赖包只提供本地语音识别所需的 Whisper 运行时文件。
 
 - [中文说明](#中文说明)
 - [English](#english)
@@ -22,7 +22,7 @@ SimpleVoiceChat `1.2.7-pre.2` 是适用于 Vintage Story `1.22.3` 的客户端/�
 - 接近度语音在客户端按距离平滑衰减到静音；频道/群组语音不受距离衰减影响，服务端转发范围不会扩大。
 - 可选的公共聊天距离可视：开启后，普通公共聊天只会显示给同维度且处于“聊天可视距离”内的玩家，发言者始终能看到自己的消息。
 - 可在本机进行麦克风试听，并主动保存仅输入或输入+输出 WAV；多人分轨由服务器权威托管。
-- 语音识别由独立的 `SimpleVoiceChatASR` 客户端模组提供，不属于主模组。
+- 语音识别按钮和配置窗口由主模组提供；本地 Whisper 的托管和原生依赖由 `SimpleVoiceChatASR` 客户端依赖包提供。
 - VS Director 是可选集成，不是前置模组，也不需要单独的集成模组。
 
 ### 安装
@@ -45,6 +45,7 @@ SimpleVoiceChat 不依赖 Simple Voice Chat、VS Director 或 `SimpleVoiceChat_V
 | 拒听/恢复全部语音 | `;` |
 | 打开设置 | `'` |
 | 打开多人分轨设置（管理员） | `Ctrl + F9` |
+| 语音转文字聊天 | 按住 `V` 录音，松开识别并发送 |
 
 快捷键可在 Vintage Story 的游戏按键设置中修改。
 
@@ -93,7 +94,7 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");
 
 ### 语音转文字
 
-如需语音转文字，请额外安装 `SimpleVoiceChatASR`。它负责本地 Whisper、模型路径和 `V` 快捷键，不会增加主模组的云端服务或配置负担。
+打开 SimpleVoiceChat 设置主页，点击“语音识别”进入配置窗口。启用后按住 `V` 录音，松开后将识别文字发送到当前聊天频道。客户端需要额外安装 `SimpleVoiceChatASR`，它只提供 Whisper.net 运行时依赖；模型文件仍需玩家自行下载并在主模组配置窗口中填写路径。
 
 ### 频道和录音
 
@@ -207,7 +208,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 
 ### 配置文件
 
-- `SimpleVoiceChat.Client.json`：本机设备、音量、快捷方式和每服务器偏好。ASR 使用独立的 `SimpleVoiceChatASR.Client.json`。
+- `SimpleVoiceChat.Client.json`：本机设备、音量、快捷方式、语音识别服务商配置和每服务器偏好。
 - `SimpleVoiceChat.Server.json`：范围、公共聊天可视距离、频道、容量、路由和 VS Director 捕获策略。
 - 频道名称创建/修改限制由服务端 `MaxChannelNameLength` 控制，默认 24，范围 1-128；调整只作用于之后的创建和重命名，不会改动已有频道名称。也可使用 `/svc channelnamelength <1-128>` 修改并广播配置。
 - `SimpleVoiceChat.Audit.json`：服务器管理操作审计，不记录语音内容。
@@ -225,7 +226,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 - Proximity playback applies a client-side distance fade to silence at the configured boundary; channel/group voice bypasses that fade and server forwarding does not expand.
 - Optional proximity visibility for public chat can limit ordinary chat messages to players in the same dimension and within a server-configured range; the sender always sees their own message.
 - In-memory microphone testing plus input-only, input-and-output, and server-hosted administrator multi-track WAV recording.
-- Speech-to-chat is provided by the separate `SimpleVoiceChatASR` client mod.
+- Speech-to-chat is configured and processed by the main mod; the separate `SimpleVoiceChatASR` client package supplies the Whisper runtime dependencies.
 - Optional runtime VS Director integration without a hard dependency or a separate integration mod.
 
 ### Installation
@@ -248,6 +249,7 @@ SimpleVoiceChat does not require Simple Voice Chat, VS Director, or `SimpleVoice
 | Deafen / restore all received voice | `;` |
 | Open settings | `'` |
 | Open multi-track settings (administrator) | `Ctrl + F9` |
+| Speech-to-chat | Hold `V`, then release to transcribe and send |
 
 Bindings can be changed in Vintage Story's game key settings.
 
@@ -285,7 +287,7 @@ These APIs are client-only. Registration IDs may contain letters, digits, `.`, `
 
 ### Speech-to-Chat
 
-For speech-to-chat, install `SimpleVoiceChatASR` separately. It owns local Whisper, model configuration, and the `V` binding; the main mod remains focused on real-time voice chat.
+Open the Speech Recognition button on the SimpleVoiceChat home page to configure the provider and model. When enabled, hold `V` to record and release it to transcribe and send text to the active chat channel. Install the separate client-only `SimpleVoiceChatASR` package for Whisper.net managed and native runtime dependencies; the main mod owns the configuration window and recognition workflow.
 
 ### Channels and Recording
 
@@ -391,7 +393,7 @@ Server administrators can use `/svc enable`, `/svc disable`, `/svc reload`, `/sv
 
 ### Configuration Files
 
-- `SimpleVoiceChat.Client.json`: local devices, levels, input preferences, and per-server preferences. ASR uses `SimpleVoiceChatASR.Client.json`.
+- `SimpleVoiceChat.Client.json`: local devices, levels, input preferences, speech-recognition provider settings, and per-server preferences.
 - `SimpleVoiceChat.Server.json`: ranges, public-chat visibility, channels, capacity, routing, and VS Director capture policy.
 - `SimpleVoiceChat.Audit.json`: server administration events; it does not contain voice content.
 
@@ -402,4 +404,4 @@ dotnet test Tests\SimpleVoiceChat.Tests.csproj
 dotnet build SimpleVoiceChat.csproj -c Release
 ```
 
-The release is written to `bin\Release\Mods\mod`. Optional ASR is delivered by the separate `SimpleVoiceChatASR` client mod.
+The release is written to `bin\Release\Mods\mod`. Install `SimpleVoiceChatASR` on clients that use local Whisper; it supplies dependencies only and does not add a second settings button.

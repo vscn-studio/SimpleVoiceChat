@@ -128,6 +128,7 @@ public sealed class RnnoiseNoiseSuppressor : IDisposable
             {
                 Path.Combine(nativeRoot, fileName),
                 Path.Combine(nativeRoot, "runtimes", GetRuntimeIdentifier(), fileName),
+                Path.Combine(nativeRoot, "runtimes", GetRuntimeIdentifier(), "native", fileName),
                 Path.Combine(root, "runtimes", GetRuntimeIdentifier(), "native", fileName)
             };
             foreach (string candidate in candidates)

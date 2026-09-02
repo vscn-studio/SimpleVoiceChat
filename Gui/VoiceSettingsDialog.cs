@@ -29,11 +29,11 @@ internal static class VoiceSettingsActionPolicy
         return action is "leave" or "disband" or "delete-owned-channel";
     }
 }
-
 internal enum VoiceSettingsPage
 {
     Home,
     Audio,
+    SpeechRecognition,
     Channels,
     Admin
 }
@@ -61,6 +61,7 @@ internal static class VoiceSettingsNavigation
         {
             VoiceSettingsPage.Home,
             VoiceSettingsPage.Audio,
+            VoiceSettingsPage.SpeechRecognition,
             VoiceSettingsPage.Channels
         };
         if (hasServerControl)
@@ -82,6 +83,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         "noise-suppression",
         "quick-channel",
         "quick-transmit",
+        "speech-recognition-provider",
         "owner-leave-target",
         "overlay-channel-target-player",
         "overlay-channel-action",
@@ -95,6 +97,9 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private static readonly string[] TextInputElementKeys =
     {
+        "speech-recognition-api-key",
+        "speech-recognition-model",
+        "speech-recognition-endpoint",
         "channel-search",
         "players-search",
         "join-channel-password",
@@ -373,6 +378,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             contentHeight = selectedPage switch
             {
                 VoiceSettingsPage.Home => AddHomePage(composer, homeExtensionRows),
+                VoiceSettingsPage.SpeechRecognition => AddSpeechRecognitionPage(composer),
                 VoiceSettingsPage.Channels => AddChannelsPage(composer),
                 VoiceSettingsPage.Admin => AddAdminPage(composer),
                 _ => AddAudioPage(composer)
@@ -628,7 +634,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         string[] outputValues = controller.GetOutputDeviceValues();
         string[] outputNames = ClientVoiceController.GetOutputDeviceNames(outputValues);
         string selectedOutput = config.OutputDeviceName ?? string.Empty;
-        string[] bitrateValues = { "0", "12", "16", "20", "24", "32", "48" };
+        string[] bitrateValues = { "0", "8", "12", "16", "20", "24", "32" };
         string[] bitrateNames = bitrateValues
             .Select(value => value == "0" ? SVCLang.Get("bitrate-auto") : SVCLang.Get("bitrate-kbps", value))
             .ToArray();
@@ -773,6 +779,12 @@ public sealed class VoiceSettingsDialog : GuiDialog
             ElementBounds.Fixed(ContentLeft, navigationY, buttonWidth, 42),
             "open-settings",
             active: true);
+        AddFlatButton(
+            composer,
+            SVCLang.Get("button-speech-recognition"),
+            () => SelectPage(VoiceSettingsPage.SpeechRecognition),
+            ElementBounds.Fixed(ContentLeft + buttonWidth + navigationGap, navigationY, buttonWidth, 42),
+            "open-speech-recognition");
         double channelsX = activeContentWidth - buttonWidth - ContentLeft;
         AddFlatButton(
             composer,
@@ -1010,6 +1022,122 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private readonly record struct ExtensionControlLayout(
         IVoiceSettingsExtensionControl Control,
         double Width);
+
+    private double AddSpeechRecognitionPage(GuiComposer composer)
+    {
+        const double labelX = 18;
+        const double controlX = 250;
+        const double controlWidth = 585;
+        const double controlHeight = 34;
+        double y = 0;
+        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        CairoFont detail = CairoFont.WhiteDetailText().WithColor(new[] { 0.76, 0.8, 0.87, 1.0 });
+
+        composer.AddStaticText(SVCLang.Get("tab-speech-recognition"),
+            CairoFont.WhiteSmallText().WithFontSize(18).WithColor(new[] { 0.96, 0.97, 1.0, 1.0 }),
+            ElementBounds.Fixed(labelX, y, 500, 30));
+        y += 42;
+        composer.AddStaticText(SVCLang.Get("speech-recognition-description"), detail,
+            ElementBounds.Fixed(labelX, y, 820, 48));
+        y += 58;
+
+        composer.AddStaticText(SVCLang.Get("label-speech-recognition-enabled"), label, ElementBounds.Fixed(labelX, y + 2, 220, 30));
+        AddCheckBox(composer, controller.SetSpeechRecognitionEnabledFromSettings,
+            ElementBounds.Fixed(controlX, y, 28, 28), "speech-recognition-enabled", config.EnableSpeechRecognition);
+        y += 46;
+
+        composer.AddStaticText(SVCLang.Get("label-speech-recognition-provider"), label, ElementBounds.Fixed(labelX, y, 220, 30));
+        string[] providerValues =
+        {
+            SimpleVoiceChatClientConfig.AlibabaSpeechRecognitionProvider,
+            SimpleVoiceChatClientConfig.SiliconFlowSpeechRecognitionProvider,
+            SimpleVoiceChatClientConfig.DeepgramSpeechRecognitionProvider,
+            SimpleVoiceChatClientConfig.WhisperSpeechRecognitionProvider
+        };
+        string[] providerNames =
+        {
+            SVCLang.Get("speech-recognition-provider-alibaba"),
+            SVCLang.Get("speech-recognition-provider-siliconflow"),
+            SVCLang.Get("speech-recognition-provider-deepgram"),
+            SVCLang.Get("speech-recognition-provider-whisper")
+        };
+        composer.AddVoiceDropDown(
+            providerValues,
+            providerNames,
+            Math.Max(0, Array.IndexOf(providerValues, config.SpeechRecognitionProvider)),
+            OnSpeechRecognitionProviderChanged,
+            ElementBounds.Fixed(controlX, y, controlWidth, controlHeight),
+            "speech-recognition-provider");
+        y += 46;
+        bool localProvider = config.SpeechRecognitionProvider ==
+            SimpleVoiceChatClientConfig.WhisperSpeechRecognitionProvider;
+        if (!localProvider)
+        {
+            composer.AddStaticText(SVCLang.Get("label-speech-recognition-api-key"), label, ElementBounds.Fixed(labelX, y, 220, 30))
+                .AddVoiceTextInput(ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), controller.SetSpeechRecognitionApiKeyFromSettings,
+                    CairoFont.TextInput(), "speech-recognition-api-key");
+            y += 46;
+        }
+        composer
+            .AddStaticText(SVCLang.Get(localProvider ? "label-speech-recognition-model-path" : "label-speech-recognition-model"), label, ElementBounds.Fixed(labelX, y, 220, 30))
+            .AddVoiceTextInput(ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), controller.SetSpeechRecognitionModelFromSettings,
+                CairoFont.TextInput(), "speech-recognition-model")
+            ;
+        if (!localProvider)
+        {
+            composer
+                .AddStaticText(SVCLang.Get("label-speech-recognition-endpoint"), label, ElementBounds.Fixed(labelX, y += 46, 220, 30))
+                .AddVoiceTextInput(ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), controller.SetSpeechRecognitionEndpointFromSettings,
+                    CairoFont.TextInput(), "speech-recognition-endpoint");
+        }
+
+        if (!localProvider)
+        {
+            GuiElementTextInput apiKey = composer.GetTextInput("speech-recognition-api-key");
+            apiKey.SetValue(config.SpeechRecognitionApiKey);
+            apiKey.SetMaxLength(512);
+            apiKey.HideCharacters();
+        }
+        GuiElementTextInput model = composer.GetTextInput("speech-recognition-model");
+        model.SetValue(config.SpeechRecognitionModel);
+        model.SetMaxLength(localProvider ? 2048 : 128);
+        if (!localProvider)
+        {
+            GuiElementTextInput endpoint = composer.GetTextInput("speech-recognition-endpoint");
+            endpoint.SetValue(config.SpeechRecognitionEndpoint);
+            endpoint.SetMaxLength(1024);
+        }
+
+        y += 52;
+        composer.AddStaticText(SVCLang.Get("speech-recognition-privacy"), detail,
+            ElementBounds.Fixed(labelX, y, 820, 58));
+        if (localProvider)
+        {
+            y += 66;
+            composer.AddStaticText(SVCLang.Get("speech-recognition-whisper-download"), detail,
+                ElementBounds.Fixed(labelX, y, 820, 34));
+            y += 42;
+            AddFlatButton(composer, SVCLang.Get("button-open-browser"),
+                OpenWhisperModelDownloadLink,
+                ElementBounds.Fixed(labelX, y, 220, 34), "speech-recognition-download");
+            return y + 52;
+        }
+        return y + 76;
+    }
+
+    private bool OpenWhisperModelDownloadLink()
+    {
+        capi.Gui.OpenLink("https://huggingface.co/ggerganov/whisper.cpp/tree/main");
+        return true;
+    }
+
+    private void OnSpeechRecognitionProviderChanged(string value, bool selected)
+    {
+        if (selected)
+        {
+            controller.SetSpeechRecognitionProviderFromSettings(value);
+        }
+    }
 
     private static void AddIconToggle(
         GuiComposer composer,
@@ -2717,6 +2845,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         return page switch
         {
             VoiceSettingsPage.Channels => SVCLang.Get("tab-channels"),
+            VoiceSettingsPage.SpeechRecognition => SVCLang.Get("tab-speech-recognition"),
             VoiceSettingsPage.Admin => SVCLang.Get("tab-admin"),
             _ => SVCLang.Get("tab-audio")
         };
