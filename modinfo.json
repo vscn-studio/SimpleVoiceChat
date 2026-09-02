@@ -7,7 +7,7 @@
   ],
   "description": "A general-purpose voice chat mod for Vintage Story with proximity voice, custom channels, audio processing, permission management, and capacity safeguards.",
   "iconpath": "modicon.png",
-  "version": "1.2.6",
+  "version": "1.2.7-pre.1",
   "dependencies": {
     "game": "1.22.3"
   }

@@ -4,11 +4,11 @@
 <th style="padding: 6px 8px; text-align: left;">当前版本口径</th>
 </tr></thead><tbody>
 <tr><td style="padding: 6px 8px; vertical-align: top;">模组名称</td><td style="padding: 6px 8px; vertical-align: top;">SimpleVoiceChat（简单语音对话）</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">模组版本</td><td style="padding: 6px 8px; vertical-align: top;"><code>1.2.6</code></td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">模组版本</td><td style="padding: 6px 8px; vertical-align: top;"><code>1.2.7-pre.1</code></td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">游戏版本</td><td style="padding: 6px 8px; vertical-align: top;">Vintage Story <code>1.22.3</code></td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">语音协议</td><td style="padding: 6px 8px; vertical-align: top;">协议 V9；Opus 为首选编码，ADPCM 回退默认关闭并由服务器配置决定</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">安装范围</td><td style="padding: 6px 8px; vertical-align: top;">客户端和服务器均需安装同一版本</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">文档核对日期</td><td style="padding: 6px 8px; vertical-align: top;"><code>2026-08-24</code></td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">文档核对日期</td><td style="padding: 6px 8px; vertical-align: top;"><code>2026-09-01</code></td></tr>
 </tbody></table>
 <p>SimpleVoiceChat 提供接近度语音、耳语/正常/大喊模式、自定义频道、玩家本地音量与静音、录音、音频处理、权限管理和容量保护。普通语音由服务器鉴权、路由和转发；多人分轨录音由服务器权威托管并写盘，客户端只负责采集、播放、OBS 标记和下载。</p>
 <div style="border-left: 4px solid #e03e2d; padding: 8px 12px; margin: 12px 0; background-color: #fff5f5;"><p style="color: #e03e2d; margin: 0;"><strong>重要：</strong> 当前发行包使用协议 V9。客户端与服务器必须使用兼容的 SimpleVoiceChat 版本；语音握手不兼容时会被拒绝。请不要同时放置多个 SimpleVoiceChat 压缩包。</p></div>
@@ -17,7 +17,7 @@
 <ol>
 <li>关闭 Vintage Story 客户端和服务器。</li>
 <li>删除 Mods 目录中旧的 SimpleVoiceChat 压缩包，只保留目标版本。</li>
-<li>将 <code>SimpleVoiceChat-v1.2.6.zip</code> 原样放入客户端和服务器的 <code>Mods</code> 目录，不要解压模组包。</li>
+<li>将 <code>SimpleVoiceChat-v1.2.7-pre.1.zip</code> 原样放入客户端和服务器的 <code>Mods</code> 目录，不要解压模组包。</li>
 <li>先启动服务器，再启动客户端并进入世界。</li>
 <li>第一次使用时，聊天框会提示按 <code>'</code> 进入设置。该提示不会直接打开窗口。</li>
 <li>按 <code>'</code> 打开首次设置向导。欢迎页可以选择“跳过初始设置，进入设置窗口”，也可以按“取消”关闭或按“确认”开始配置。</li>
@@ -79,7 +79,8 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");</code></pre>
 <h3>设置（音频）</h3>
 <p>“设置”页使用单行控件，包含输入设备、输出设备、播放音量和麦克风增益。自由麦的噪声门和触发阈值在首次设置向导中配置，也可继续在对应设置项中调整。滑块内部直接显示数值，数值不会被滑块遮挡。</p>
 <p>“麦克风测试”用于本机测试，不会发送到服务器，也不会写入录音文件：点击“开始录音”开始，点击“停止录音”结束，再点击“播放录音”或“停止播放”检查扬声器。测试音频保存在内存中，离开游戏后不会保留。</p>
-<p>下面的开关包括麦克风静音、拒听、自适应抖动缓冲、遮挡/传播修正和性能模式。噪声抑制与回声消除配置目前不在界面中显示；遮挡效果在服务器强制开启时不能关闭。</p>
+<p>下面的开关包括麦克风静音、拒听、自适应抖动缓冲、遮挡/传播修正、环境语音效果和性能模式。本版本不随包提供 RNNoise 原生库，因此“噪声抑制”下拉框会禁用，音频回退到内置的 AGC/噪声门处理。回声消除目前不可用。遮挡效果在服务器强制开启时不能关闭。</p>
+<p>设置页内容超过窗口高度时会启用统一滚动视口，可使用鼠标滚轮或可见滚动条；滚动时控件、文本输入框和下拉弹窗都会限制在视口内，不会溢出。</p>
 
 <h2>五、语音识别与文字聊天</h2>
 <p>语音识别默认关闭，并且完全在玩家客户端配置。进入主页的“语音识别”，打开功能开关，从下拉菜单选择服务商，再填写该服务商所需的 API Key、模型、接口地址或模型路径。切换服务商时，每个服务商的配置会分别保存。启用后按住 <code>V</code> 录音，松开后识别并把文字发送到当前聊天频道。</p>
@@ -103,6 +104,22 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");</code></pre>
 <p>服务器管理员可用 <code>/svc setrange whisper|talk|shout &lt;格数&gt;</code> 修改范围；服务器还会限制最高范围。</p>
 <p>接近度语音在客户端播放阶段应用距离音量渐变：近距离保持正常音量，接近该模式的范围边界时逐步降低，达到边界时静音。服务端仍只向配置范围内的监听者转发（查询使用约 1 格的路由缓冲），因此渐变不会扩大网络转发范围，也不会把频道语音变成距离语音。选择“仅当前频道”时不使用接近度距离渐变；选择“接近度和当前频道”时，服务端会按频道优先级为同时满足两种条件的接收者选择频道路径，其他接近度接收者才使用渐变。</p>
 <p>距离使用客户端收到的说话人位置与本地玩家位置计算。玩家位置同步或快速移动时，最后几个音频帧可能因网络时序短暂延迟；这不改变服务器的转发边界。距离渐变与玩家音量、总音量、静音、拒听和环境效果相乘，单独调高音量不会让范围外重新出现声音。</p>
+
+<h3>水下与装备语音效果</h3>
+<p>说话人是否在水下以及是否佩戴配置的头盔/面具由服务器判定。语音包中的效果标记由服务器生成，客户端不能伪造未装备的物品。客户端只在本机播放时应用效果；多人分轨 WAV 保留未处理语音。玩家可以在本地关闭环境语音效果；服务器也可以对所有人关闭，或单独允许频道语音应用水下效果。</p>
+<p>管理员在 <code>ModConfig/SimpleVoiceChat.Server.json</code> 中修改下列字段，之后执行 <code>/svc reload</code> 或重启服务器：</p>
+<pre><code>{
+  "EnableEnvironmentalVoiceEffects": true,
+  "ApplyUnderwaterEffectsToChannels": false,
+  "EquipmentVoiceEffectRules": [
+    { "Slot": 2, "ItemCodePattern": "armor-head-*", "Effect": 0 },
+    { "Slot": 1, "ItemCodePattern": "clothes-face-*mask*", "Effect": 1 }
+  ]
+}</code></pre>
+<p><code>Slot</code> 的 <code>0/1/2</code> 分别表示 <code>Head/Face/ArmorHead</code>，<code>Effect</code> 的 <code>0/1</code> 分别表示 <code>Helmet/Mask</code>。规则按顺序检查，首个匹配生效，支持 <code>*</code>/<code>?</code> 通配符；不写域名时会匹配任意域名下的物品路径。</p>
+
+<h3>公共聊天距离可视</h3>
+<p>管理员可在管理员页面打开“附近聊天消息”并设置“聊天可视距离”，也可以在服务器配置中修改 <code>EnableProximityChatText</code> 和 <code>ProximityChatRange</code>。启用后，普通公共聊天只发送给同维度且处于配置范围内的玩家，发言者始终能看到自己的消息；频道聊天、命令、系统通知和管理员消息不受影响。</p>
 
 <h2>七、频道页面与分页</h2>
 <p>所有玩家都可以查看自己有权看到的频道列表。管理员可以查看全部频道；普通玩家看不到“隐藏”频道，除非已经加入该频道。开放频道可直接加入，密码频道会弹窗要求输入密码，隐藏频道只能通过频道主持人或所有者邀请加入。</p>
@@ -237,7 +254,10 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");</code></pre>
 <tr><td style="padding: 6px 8px; vertical-align: top;">监听语音流</td><td style="padding: 6px 8px; vertical-align: top;">服务端默认每位监听者最多 8 条流，其中接近度流默认最多 6 条；服务端配置上限为 32 条。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">客户端播放源</td><td style="padding: 6px 8px; vertical-align: top;">客户端最多维护 32 条远端逻辑流和 12 个 OpenAL 播放源；播放源不足时按频道、距离和活跃度优先级分配。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">语音出口预算</td><td style="padding: 6px 8px; vertical-align: top;">普通监听者默认 512 Kbps；VS Director 使用独立的默认 4096 Kbps 预算。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">语音发送队列</td><td style="padding: 6px 8px; vertical-align: top;">客户端最多保留 2 个待发送麦克风帧；网络阻塞时丢弃最旧帧，避免恢复连接后突发发送过时语音。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">范围上限</td><td style="padding: 6px 8px; vertical-align: top;"><code>MaxRange</code> 默认 40 格，配置范围 1-128；耳语/正常/大喊默认分别为 8/18/35 格，并且不能超过该上限。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">公共聊天距离可视</td><td style="padding: 6px 8px; vertical-align: top;">默认关闭；启用后 <code>ProximityChatRange</code> 默认 18 格，并且不能超过 <code>MaxRange</code>。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">环境语音效果</td><td style="padding: 6px 8px; vertical-align: top;">服务端权威判定水下、头盔和面具效果，默认启用；频道是否应用水下效果单独控制且默认关闭。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">频道成员</td><td style="padding: 6px 8px; vertical-align: top;">每个频道最多 100 人。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">频道同时发言</td><td style="padding: 6px 8px; vertical-align: top;">默认最多 3 人，服务端可调整。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">每名玩家频道数</td><td style="padding: 6px 8px; vertical-align: top;">默认最多 8 个显式频道。</td></tr>
@@ -261,7 +281,7 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");</code></pre>
 <tr><td style="padding: 6px 8px; vertical-align: top;">列表看不到第七行</td><td style="padding: 6px 8px; vertical-align: top;">频道和玩家列表每页最多 6 行，使用底部分页器切换。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">频道无法加入</td><td style="padding: 6px 8px; vertical-align: top;">检查频道是否锁定、密码是否正确、是否被封禁、是否达到每人 8 个频道上限。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">频道发言席位已满</td><td style="padding: 6px 8px; vertical-align: top;">频道同时发言人数达到上限，稍后重试；只听角色和禁言玩家不能发言。</td></tr>
-<tr><td style="padding: 6px 8px; vertical-align: top;">提示协议 V9 不兼容</td><td style="padding: 6px 8px; vertical-align: top;">客户端和服务器必须都使用兼容的协议 V9 版本；建议双方均安装 <code>1.2.6</code>，并删除旧压缩包。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;">提示协议 V9 不兼容</td><td style="padding: 6px 8px; vertical-align: top;">客户端和服务器必须都使用兼容的协议 V9 版本；建议双方均安装 <code>1.2.7-pre.1</code>，并删除旧压缩包。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">麦克风测试没有文件</td><td style="padding: 6px 8px; vertical-align: top;">这是设计行为。设置页“麦克风测试”只在内存中录制；需要保存文件时使用主页录音图标。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;"><code>Ctrl + F9</code> 没有可用的开始按钮，或一直显示 <code>0/3</code></td><td style="padding: 6px 8px; vertical-align: top;">确认已进入世界、语音握手完成、录音客户端拥有 <code>controlserver</code>，并且当前服务器的 <code>EnableRecorderCapture</code> 为 <code>true</code>；修改后执行 <code>/svc reload</code> 或重启服务器。单人模式等待一秒后会自动尝试可靠控制通道；仍不增长时检查客户端/服务器版本和游戏日志。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">已经添加 <code>SimpleVoiceChat Player Voice</code>，但没有逐玩家 WAV</td><td style="padding: 6px 8px; vertical-align: top;">OBS 来源只是混合监听总线。必须启动服务器托管多人分轨，等待参与者就绪，让对应玩家实际发送语音，再停止并等待下载。恢复或历史会话可用 <code>/svc recording list</code> 和 <code>/svc recording download &lt;session-id&gt;</code>。</td></tr>

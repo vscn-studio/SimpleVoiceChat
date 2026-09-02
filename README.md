@@ -1,8 +1,8 @@
 # SimpleVoiceChat / 简单语音对话
 
-SimpleVoiceChat `1.2.6` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, server-hosted multi-track recording, moderation, optional speech-to-chat, and optional VS Director capture.
+SimpleVoiceChat `1.2.7-pre.1` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, server-hosted multi-track recording, moderation, optional speech-to-chat, and optional VS Director capture.
 
-SimpleVoiceChat `1.2.6` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、服务器托管多人分轨录音、管理功能、可选语音转文字聊天以及可选 VS Director 录制集成。
+SimpleVoiceChat `1.2.7-pre.1` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、服务器托管多人分轨录音、管理功能、可选语音转文字聊天以及可选 VS Director 录制集成。
 
 - [中文说明](#中文说明)
 - [English](#english)
@@ -17,6 +17,7 @@ SimpleVoiceChat `1.2.6` 是适用于 Vintage Story `1.22.3` 的客户端/服务�
 - 可将声音发送到接近度范围、当前频道或两者。
 - 自定义频道支持开放、密码和隐藏可见性，以及所有者、主持人、成员、只听和封禁角色。
 - 支持按键说话、语音触发通话（自由麦）、输入/输出设备选择、增益、噪声门、玩家单独音量与静音。
+- 本发行包不内置 RNNoise 原生库；噪声抑制选项在无外部后端时自动回退到内置 AGC/噪声门处理。
 - 首选 Opus 编码；ADPCM 回退默认关闭并由服务器配置决定。客户端和服务器必须使用协议 V9 兼容版本。
 - 接近度语音在客户端按距离平滑衰减到静音；频道/群组语音不受距离衰减影响，服务端转发范围不会扩大。
 - 可选的公共聊天距离可视：开启后，普通公共聊天只会显示给同维度且处于“聊天可视距离”内的玩家，发言者始终能看到自己的消息。
@@ -28,7 +29,7 @@ SimpleVoiceChat `1.2.6` 是适用于 Vintage Story `1.22.3` 的客户端/服务�
 
 1. 关闭 Vintage Story 客户端和服务器。
 2. 删除 `Mods` 目录中的旧版 SimpleVoiceChat 压缩包，避免同时加载多个版本。
-3. 将 `SimpleVoiceChat-v1.2.6.zip` 原样放入客户端和服务器的 `Mods` 目录，不要解压模组包。
+3. 将 `SimpleVoiceChat-v1.2.7-pre.1.zip` 原样放入客户端和服务器的 `Mods` 目录，不要解压模组包。
 4. 启动服务器，然后启动客户端。首次按 `'` 会打开设置向导。
 
 SimpleVoiceChat 不依赖 Simple Voice Chat、VS Director 或 `SimpleVoiceChat_VSDirectorIntegration` 等其他模组。单独安装即可使用基本语音功能。
@@ -226,7 +227,6 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 ### 配置文件
 
 - `SimpleVoiceChat.Client.json`：本机设备、音量、快捷方式、语音识别服务商配置和每服务器偏好。
-- `SimpleVoiceChat.Server.json`：范围、频道、容量、路由和 VS Director 捕获策略。
 - `SimpleVoiceChat.Server.json`：范围、公共聊天可视距离、频道、容量、路由和 VS Director 捕获策略。
 - 频道名称创建/修改限制由服务端 `MaxChannelNameLength` 控制，默认 24，范围 1-128；调整只作用于之后的创建和重命名，不会改动已有频道名称。也可使用 `/svc channelnamelength <1-128>` 修改并广播配置。
 - `SimpleVoiceChat.Audit.json`：服务器管理操作审计，不记录语音内容。
@@ -239,6 +239,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 - Transmit to proximity, the selected custom channel, or both.
 - Open, password-protected, and hidden channels with Owner, Moderator, Member, Listen Only, and Banned roles.
 - Push-to-talk, voice activation, input/output device selection, gain, noise gate, per-player volume, and local mute.
+- This release does not bundle an RNNoise native library; noise suppression falls back to the built-in AGC/gate processing when no external backend is available.
 - Opus is preferred; ADPCM fallback is disabled by default and controlled by the server. Compatible V9 builds are required on both sides.
 - Proximity playback applies a client-side distance fade to silence at the configured boundary; channel/group voice bypasses that fade and server forwarding does not expand.
 - Optional proximity visibility for public chat can limit ordinary chat messages to players in the same dimension and within a server-configured range; the sender always sees their own message.
@@ -250,7 +251,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 
 1. Stop the Vintage Story client and server.
 2. Remove older SimpleVoiceChat archives from each `Mods` directory so that only one version can load.
-3. Place `SimpleVoiceChat-v1.2.6.zip` unchanged in the client and server `Mods` directories. Do not extract the mod archive.
+3. Place `SimpleVoiceChat-v1.2.7-pre.1.zip` unchanged in the client and server `Mods` directories. Do not extract the mod archive.
 4. Start the server and client. Press `'` to open the first-run setup wizard.
 
 SimpleVoiceChat does not require Simple Voice Chat, VS Director, or `SimpleVoiceChat_VSDirectorIntegration`. The base voice features work with this package alone.

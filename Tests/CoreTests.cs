@@ -87,17 +87,11 @@ public sealed class CoreTests
     }
 
     [Fact]
-    public void RnnoiseBackendLoadsAndProcessesVoiceFrames()
+    public void NoiseSuppressionFallsBackWhenNativeBackendIsUnavailable()
     {
-        Assert.True(RnnoiseNoiseSuppressor.IsAvailable);
-        using RnnoiseNoiseSuppressor suppressor = Assert.IsType<RnnoiseNoiseSuppressor>(RnnoiseNoiseSuppressor.TryCreate());
-        short[] samples = new short[VoiceConstants.SamplesPerFrame];
-        samples[0] = short.MaxValue;
-
-        suppressor.Process(samples);
-
-        Assert.NotEqual(short.MaxValue, samples[0]);
-        suppressor.Reset();
+        Assert.False(VoiceProcessingCapabilities.NoiseSuppressionAvailable);
+        Assert.Equal("Basic AGC / gate", VoiceProcessingCapabilities.BackendName);
+        Assert.Null(RnnoiseNoiseSuppressor.TryCreate());
     }
 
     [Fact]
@@ -958,7 +952,7 @@ public sealed class CoreTests
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
         JsonElement dependencies = document.RootElement.GetProperty("dependencies");
 
-        Assert.Equal("1.2.6", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("1.2.7-pre.1", document.RootElement.GetProperty("version").GetString());
         Assert.True(dependencies.TryGetProperty("game", out _));
         Assert.False(dependencies.TryGetProperty("vsdirector", out _));
         Assert.DoesNotContain(

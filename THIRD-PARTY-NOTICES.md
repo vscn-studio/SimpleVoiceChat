@@ -21,7 +21,7 @@ SimpleVoiceChat includes Whisper.net 1.9.1 and Whisper.net.Runtime 1.9.1 for opt
 - https://www.nuget.org/packages/Whisper.net/1.9.1
 - https://www.nuget.org/packages/Whisper.net.Runtime/1.9.1
 
-SimpleVoiceChat includes RNNoise for optional local microphone noise suppression. RNNoise is distributed under the BSD 3-Clause License.
+SimpleVoiceChat retains an optional RNNoise integration for local microphone noise suppression, but the current release package does not bundle an RNNoise native library. RNNoise is distributed under the BSD 3-Clause License.
 
 - https://gitlab.xiph.org/xiph/rnnoise
 
