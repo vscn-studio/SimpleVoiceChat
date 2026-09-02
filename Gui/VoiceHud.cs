@@ -7,8 +7,8 @@ namespace SimpleVoiceChat.Gui;
 
 public sealed class VoiceHud : HudElement
 {
-    private const int VolumeFrameCount = 50;
-    private const double VolumeImageWidth = 302;
+    private const int VolumeFrameCount = 40;
+    private const double VolumeImageWidth = 242;
     private const double VolumeImageHeight = 28;
 
     private static readonly AssetLocation MutedIcon = new("simplevoicechat", "gui/svc_mic_muted.png");
