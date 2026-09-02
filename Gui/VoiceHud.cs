@@ -7,8 +7,8 @@ namespace SimpleVoiceChat.Gui;
 
 public sealed class VoiceHud : HudElement
 {
-    private const int VolumeFrameCount = 40;
-    private const double VolumeImageWidth = 242;
+    private const int VolumeFrameCount = 50;
+    private const double VolumeImageWidth = 302;
     private const double VolumeImageHeight = 28;
 
     private static readonly AssetLocation MutedIcon = new("simplevoicechat", "gui/svc_mic_muted.png");
@@ -161,9 +161,8 @@ public sealed class VoiceHud : HudElement
         DrawText(ctx, snapshot.Mode, textX, statusY + GuiElement.scaled(18), 13, new[] { 0.98, 0.94, 0.82, 0.96 }, bold: true);
         DrawText(ctx, snapshot.Detail, textX, statusY + GuiElement.scaled(33), 12, new[] { 0.88, 0.91, 0.94, 0.94 }, bold: true);
 
-        double barX = textX + GuiElement.scaled(32);
+        double barX = textX;
         double barY = GuiElement.scaled(72);
-        DrawText(ctx, SVCLang.Get("hud-volume"), textX, barY + GuiElement.scaled(16), 11, new[] { 0.80, 0.84, 0.88, 0.92 }, bold: true);
         DrawVolumeImage(ctx, barX, barY - GuiElement.scaled(2), snapshot.VoiceLevel);
 
         DrawChannelMembers(ctx, snapshot, textX, GuiElement.scaled(112), width - textX - pad);

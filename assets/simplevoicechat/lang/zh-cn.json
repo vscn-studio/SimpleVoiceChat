@@ -225,7 +225,6 @@
   "simplevoicechat:hud-transmit-both": "发送：接近度 + {0}",
   "simplevoicechat:hud-transmit-channel": "发送：{0}",
   "simplevoicechat:hud-transmit-proximity": "发送：接近度",
-  "simplevoicechat:hud-volume": "音量",
   "simplevoicechat:invite-auto-decline": "{0} 秒后自动拒绝",
   "simplevoicechat:invite-channel": "频道：{0}",
   "simplevoicechat:invite-channel-id": "ID：{0}",

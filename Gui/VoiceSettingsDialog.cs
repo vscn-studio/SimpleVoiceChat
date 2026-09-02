@@ -628,7 +628,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         string[] outputValues = controller.GetOutputDeviceValues();
         string[] outputNames = ClientVoiceController.GetOutputDeviceNames(outputValues);
         string selectedOutput = config.OutputDeviceName ?? string.Empty;
-        string[] bitrateValues = { "0", "8", "12", "16", "20", "24", "32" };
+        string[] bitrateValues = { "0", "12", "16", "20", "24", "32", "48" };
         string[] bitrateNames = bitrateValues
             .Select(value => value == "0" ? SVCLang.Get("bitrate-auto") : SVCLang.Get("bitrate-kbps", value))
             .ToArray();

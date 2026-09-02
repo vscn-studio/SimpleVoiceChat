@@ -225,7 +225,6 @@
   "simplevoicechat:hud-transmit-both": "Send: proximity + {0}",
   "simplevoicechat:hud-transmit-channel": "Send: {0}",
   "simplevoicechat:hud-transmit-proximity": "Send: proximity",
-  "simplevoicechat:hud-volume": "Volume",
   "simplevoicechat:invite-auto-decline": "Declines automatically in {0}s",
   "simplevoicechat:invite-channel": "Channel: {0}",
   "simplevoicechat:invite-channel-id": "ID: {0}",
