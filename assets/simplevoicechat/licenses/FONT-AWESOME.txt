@@ -2,3 +2,7 @@ Font Awesome Free icons
 Copyright (c) 2026 Fonticons, Inc.
 License: CC BY 4.0 (icons), https://creativecommons.org/licenses/by/4.0/
 Source: https://fontawesome.com/
+
+The icons are modified for SimpleVoiceChat by VSCN-Studio: path data,
+color, sizing, and/or rasterization may differ from the upstream artwork.
+These changes do not imply endorsement by Fonticons, Inc.

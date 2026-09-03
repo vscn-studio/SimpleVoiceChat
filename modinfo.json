@@ -5,6 +5,9 @@
   "authors": [
     "VSCN-Studio"
   ],
+  "contributors": [
+    "HansJack (founder of VSCN-Studio)"
+  ],
   "description": "A general-purpose voice chat mod for Vintage Story with proximity voice, custom channels, audio processing, permission management, and capacity safeguards.",
   "iconpath": "modicon.png",
   "version": "1.2.7-pre.2",

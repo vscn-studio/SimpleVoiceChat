@@ -1,5 +1,7 @@
 # SimpleVoiceChat / 简单语音对话
 
+Copyright © 2026 VSCN-Studio. `HansJack` is the founder of the VSCN-Studio team. See [LICENSE](LICENSE) for the project license.
+
 SimpleVoiceChat `1.2.7-pre.2` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, server-hosted multi-track recording, moderation, optional speech-to-chat, and optional VS Director capture. The separate `SimpleVoiceChatASR` client package supplies Whisper runtime dependencies for local speech-to-chat.
 
 SimpleVoiceChat `1.2.7-pre.2` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、服务器托管多人分轨录音、管理功能、可选语音转文字以及可选 VS Director 录制集成。`SimpleVoiceChatASR` 客户端依赖包只提供本地语音识别所需的 Whisper 运行时文件。
