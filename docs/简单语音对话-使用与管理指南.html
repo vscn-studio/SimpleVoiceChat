@@ -245,6 +245,241 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");</code></pre>
 </tbody></table>
 
 <h2>十二、容量、配置与隐私</h2>
+<h3>配置文件位置与推荐修改流程</h3>
+<p>首次启动客户端或服务器后，模组会在对应 Vintage Story 数据目录的 <code>ModConfig</code> 子目录生成配置。客户端文件为 <code>&lt;客户端数据目录&gt;/ModConfig/SimpleVoiceChat.Client.json</code>，服务器文件为 <code>&lt;服务器数据目录&gt;/ModConfig/SimpleVoiceChat.Server.json</code>。如果启动参数指定了自定义数据目录（例如 <code>--dataPath</code>），应在该目录中查找，而不是在游戏安装目录或模组压缩包内查找。单人游戏同时使用同一数据目录中的客户端和服务器文件。</p>
+<ol>
+<li>先启动一次游戏或服务器，让模组生成包含当前版本全部字段的文件；不要从零手写整份配置。</li>
+<li>修改前备份原文件。手改客户端配置时先退出游戏，因为客户端没有配置重载命令，运行中的设置保存也会覆盖磁盘内容。</li>
+<li>使用 UTF-8 文本编辑器编辑 JSON。属性名和字符串必须使用双引号，布尔值只能写 <code>true</code>/<code>false</code>，小数使用英文句点；JSON 不支持注释、尾随逗号或重复属性。</li>
+<li>服务器文件可在服务器运行时修改，然后执行 <code>/svc reload</code>（需要 <code>controlserver</code>）。也可以停服修改后重启。重载成功后模组会校正越界值、补齐迁移字段并将结果写回文件。</li>
+<li>执行 <code>/svc status</code> 并检查服务器日志确认结果。运行时重载遇到无效 JSON 会保留当前内存配置；但在启动时无法读取文件会回退到默认配置并重新写盘，所以备份不可省略。</li>
+</ol>
+<p>有 <code>controlserver</code> 权限的玩家也可在设置窗口的“管理”页调整大多数服务器开关和数值。“应用”会保存并广播设置，“重新加载”会从磁盘读取配置。普通客户端设置优先通过设置窗口修改，修改后会立即保存。</p>
+
+<h3>客户端配置教程</h3>
+<p><code>SimpleVoiceChat.Client.json</code> 只影响当前电脑，不会改变服务器规则。音量字段使用倍率而不是百分数，例如 <code>1.0</code> 是 100%，<code>0.5</code> 是 50%，<code>2.0</code> 是 200%。设备名称和按键枚举容易因系统或游戏版本而不同，建议在界面中选择后再查看生成值。</p>
+<p>全新安装在首次设置向导更新状态前的默认配置如下；完成、跳过或显示向导后，相关状态字段会立即变化：</p>
+<pre><code>{
+  "ConfigVersion": 11,
+  "InputDeviceName": "",
+  "OutputDeviceName": "",
+  "OutputVolume": 1.0,
+  "MicGain": 1.0,
+  "NoiseGate": 0.015,
+  "VoiceActivationThreshold": 0.08,
+  "PushToTalkKey": "N",
+  "ModeCycleKey": "LBracket",
+  "PreferVoiceActivation": false,
+  "PreferContinuousTalk": false,
+  "InitialSetupCompleted": false,
+  "InitialSetupPromptShown": false,
+  "ShowHudIndicator": true,
+  "ShowMicrophoneHud": true,
+  "EnableOcclusionEffects": true,
+  "EnableEnvironmentalVoiceEffects": true,
+  "PerformanceMode": false,
+  "AdaptiveJitterBuffer": true,
+  "PreferredOpusBitrateKbps": 0,
+  "EnableNoiseSuppression": false,
+  "EnableEchoCancellation": false,
+  "EnableSpeechRecognition": false,
+  "SpeechRecognitionProvider": "alibaba",
+  "SpeechRecognitionApiKey": "",
+  "SpeechRecognitionModel": "qwen3-asr-flash",
+  "SpeechRecognitionEndpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+  "SpeechRecognitionProviders": {
+    "alibaba": {
+      "ApiKey": "",
+      "Model": "qwen3-asr-flash",
+      "Endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+    }
+  },
+  "ChannelOutputVolume": 1.0,
+  "SelectedChannelId": "",
+  "TransmitTarget": 2,
+  "PlayerVolumeOverrides": {},
+  "MutedPlayerUids": [],
+  "HideSelfFromPlayerLists": false,
+  "RejectChannelInvites": false,
+  "HideChatMessages": false,
+  "VoiceHudOffsetX": 0,
+  "VoiceHudOffsetY": 0,
+  "VoiceInviteOffsetY": 85,
+  "ServerProfiles": {},
+  "NeedsServerProfileMigration": false
+}</code></pre>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">字段</th><th style="padding: 6px 8px; text-align: left;">默认</th><th style="padding: 6px 8px; text-align: left;">有效范围与含义</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ConfigVersion</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>11</code></td><td style="padding: 6px 8px; vertical-align: top;">配置迁移版本，由模组维护；不要手动降级。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>InputDeviceName</code></td><td style="padding: 6px 8px; vertical-align: top;">空字符串</td><td style="padding: 6px 8px; vertical-align: top;">麦克风完整设备名；空值使用系统默认输入设备，建议通过设置页选择。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>OutputDeviceName</code></td><td style="padding: 6px 8px; vertical-align: top;">空字符串</td><td style="padding: 6px 8px; vertical-align: top;">扬声器或耳机完整设备名；空值使用系统默认输出设备。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>OutputVolume</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>1.0</code></td><td style="padding: 6px 8px; vertical-align: top;">0-2；所有远端语音的总播放倍率。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MicGain</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>1.0</code></td><td style="padding: 6px 8px; vertical-align: top;">0.1-4；发送前的麦克风增益。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>NoiseGate</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>0.015</code></td><td style="padding: 6px 8px; vertical-align: top;">0-0.2；低于该电平的输入按静音处理。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>VoiceActivationThreshold</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>0.08</code></td><td style="padding: 6px 8px; vertical-align: top;">0.005-0.2，且不能低于 <code>NoiseGate</code>；达到该电平时触发语音激活。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>PushToTalkKey</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>N</code></td><td style="padding: 6px 8px; vertical-align: top;">按键说话使用的游戏按键枚举名，最长 64 字符；建议在界面中绑定。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ModeCycleKey</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>LBracket</code></td><td style="padding: 6px 8px; vertical-align: top;">耳语、正常和大喊模式切换键的游戏按键枚举名，最长 64 字符。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>PreferVoiceActivation</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">是否优先使用语音激活；服务器仍可通过 <code>AllowContinuousTalk</code> 禁止。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>PreferContinuousTalk</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">旧版兼容字段；为 <code>true</code> 时会迁移到 <code>PreferVoiceActivation</code> 后自动清除。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>InitialSetupCompleted</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">首次设置向导是否已完成，由向导维护。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>InitialSetupPromptShown</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">是否已显示首次设置提示，由模组维护。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ShowHudIndicator</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">兼容字段，加载时与 <code>ShowMicrophoneHud</code> 同步。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ShowMicrophoneHud</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">是否显示麦克风 HUD；服务器关闭 <code>EnableHudIndicators</code> 时不会显示。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableOcclusionEffects</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">是否在本机播放时计算方块遮挡；服务器开启 <code>ForceImmersive</code> 时会被强制打开。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableEnvironmentalVoiceEffects</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">是否播放服务器允许的水下、头盔和面具效果。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>PerformanceMode</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">启用后减少遮挡采样并把环境更新缓存从 150 ms 增加到 250 ms。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>AdaptiveJitterBuffer</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">根据网络抖动动态调整播放缓冲。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>PreferredOpusBitrateKbps</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>0</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>0</code> 表示采用服务器上限；手动值只能是 12、16、20、24、32 或 48，并仍受服务器限制。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableNoiseSuppression</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">启用可用的本机降噪处理；平台不支持时会自动恢复为 <code>false</code>。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableEchoCancellation</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">启用可用的本机回声消除；平台不支持时不会保持启用。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableSpeechRecognition</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">是否启用按住识别键录音并把结果发送到聊天。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>SpeechRecognitionProvider</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>alibaba</code></td><td style="padding: 6px 8px; vertical-align: top;">可选 <code>alibaba</code>、<code>siliconflow</code>、<code>deepgram</code> 或 <code>whisper</code>；其他值会恢复为 <code>alibaba</code>。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>SpeechRecognitionApiKey</code></td><td style="padding: 6px 8px; vertical-align: top;">空字符串</td><td style="padding: 6px 8px; vertical-align: top;">当前云服务商的 API Key，最长 512 字符；以明文保存在本机，本地 Whisper 不需要。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>SpeechRecognitionModel</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>qwen3-asr-flash</code></td><td style="padding: 6px 8px; vertical-align: top;">当前服务商模型名，最长 2048 字符；本地 Whisper 使用模型文件路径。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>SpeechRecognitionEndpoint</code></td><td style="padding: 6px 8px; vertical-align: top;">阿里云 DashScope 地址</td><td style="padding: 6px 8px; vertical-align: top;">当前服务商请求地址，最长 1024 字符；本地 Whisper 留空。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>SpeechRecognitionProviders</code></td><td style="padding: 6px 8px; vertical-align: top;">仅包含默认 Alibaba 项</td><td style="padding: 6px 8px; vertical-align: top;">按服务商保存各自的 Key、模型和地址；最多保留 4 个受支持服务商，由设置页维护。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ChannelOutputVolume</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>1.0</code></td><td style="padding: 6px 8px; vertical-align: top;">0-2；当前频道语音的额外播放倍率。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>SelectedChannelId</code></td><td style="padding: 6px 8px; vertical-align: top;">空字符串</td><td style="padding: 6px 8px; vertical-align: top;">当前选中频道 ID，最长 128 字符；由频道页按服务器保存。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>TransmitTarget</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>2</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>0</code> 仅接近度、<code>1</code> 仅当前频道、<code>2</code> 同时发送；无效值恢复为 2。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>PlayerVolumeOverrides</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>{}</code></td><td style="padding: 6px 8px; vertical-align: top;">玩家 UID 到 0-2 音量倍率的映射；最多 256 项，由玩家列表维护。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MutedPlayerUids</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>[]</code></td><td style="padding: 6px 8px; vertical-align: top;">本机静音的玩家 UID，最多 256 个，由玩家列表维护。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>HideSelfFromPlayerLists</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">是否在模组玩家列表中隐藏自己。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>RejectChannelInvites</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">是否自动拒绝收到的频道邀请。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>HideChatMessages</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">是否隐藏本模组发送到聊天框的本地提示。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>VoiceHudOffsetX</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>0</code></td><td style="padding: 6px 8px; vertical-align: top;">-2000 至 2000；语音 HUD 水平偏移。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>VoiceHudOffsetY</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>0</code></td><td style="padding: 6px 8px; vertical-align: top;">-2000 至 2000；语音 HUD 垂直偏移。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>VoiceInviteOffsetY</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>85</code></td><td style="padding: 6px 8px; vertical-align: top;">-2000 至 2000；频道邀请提示的垂直偏移。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ServerProfiles</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>{}</code></td><td style="padding: 6px 8px; vertical-align: top;">按服务器实例保存频道、音量、静音及效果偏好；最多 128 个档案，由模组维护。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>NeedsServerProfileMigration</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">旧配置迁移状态，由模组维护。</td></tr>
+</tbody></table>
+<p><code>SpeechRecognitionApiKey</code> 以明文保存在本机配置中，不要分享包含它的文件、截图或日志附件。频道、玩家音量、静音和服务器档案等状态优先通过界面修改。</p>
+
+<h3>服务器配置教程</h3>
+<p><code>SimpleVoiceChat.Server.json</code> 是服务器权威规则。下表逐项列出全部顶层字段；超出范围的值会在加载或重载时自动限制并写回。带宽值单位为 Kbps，距离单位为方块，<code>MaxVoiceBytesPerSecond</code> 和 <code>MaxVoicePayloadBytes</code> 例外，单位为字节。</p>
+<p>首次启动后生成的默认配置如下。<code>ServerInstanceId</code> 每台服务器都不同，示例中的占位文本不是实际值，不要覆盖已生成的实例 ID：</p>
+<pre><code>{
+  "ConfigVersion": 12,
+  "ServerInstanceId": "&lt;由模组生成的 32 位实例 ID&gt;",
+  "Enabled": true,
+  "AllowAdpcmFallback": false,
+  "DefaultOpusBitrateKbps": 24,
+  "MaxOpusBitrateKbps": 48,
+  "EnableAdaptiveBitrate": true,
+  "AllowWhisper": true,
+  "AllowShout": true,
+  "ForceImmersive": false,
+  "MaxRange": 40.0,
+  "WhisperRange": 8.0,
+  "TalkRange": 18.0,
+  "ShoutRange": 35.0,
+  "EnableProximityChatText": false,
+  "ProximityChatRange": 18.0,
+  "EnableOcclusion": true,
+  "EnableWeatherEffects": true,
+  "EnableEnvironmentalVoiceEffects": true,
+  "ApplyUnderwaterEffectsToChannels": false,
+  "EquipmentVoiceEffectRules": [
+    { "Slot": 2, "ItemCodePattern": "armor-head-*", "Effect": 0 },
+    { "Slot": 1, "ItemCodePattern": "clothes-face-*mask*", "Effect": 1 }
+  ],
+  "EnableHudIndicators": true,
+  "MaxVoicePacketsPerSecond": 60,
+  "MaxVoiceBytesPerSecond": 16384,
+  "MaxVoicePayloadBytes": 444,
+  "MaxServerEgressKbps": 50000,
+  "MaxListenerEgressKbps": 512,
+  "MaxDirectorEgressKbps": 4096,
+  "SpatialCellSize": 16,
+  "MaxStreamsPerListener": 8,
+  "MaxProximityStreams": 6,
+  "MaxChannelTalkers": 3,
+  "MaxChannelMembers": 100,
+  "MaxChannelsPerPlayer": 8,
+  "MaxChannels": 256,
+  "MaxChannelNameLength": 24,
+  "ChannelMemberPageSize": 20,
+  "AuditRetention": 500,
+  "AllowContinuousTalk": true,
+  "EnableChannels": true,
+  "AllowPlayerChannelCreation": true,
+  "EnableDirectorProximityCapture": false,
+  "MaxDirectorListeners": 1,
+  "MaxDirectorStreamsPerListener": 32,
+  "EnableRecorderCapture": false,
+  "MaxRecorderListeners": 1,
+  "MaxRecorderEgressKbps": 4096,
+  "RecorderCheckpointSeconds": 5,
+  "MaxRecorderSessionMinutes": 360,
+  "MaxRecorderClockSkewMilliseconds": 2000,
+  "MaxRecorderDownloadKbps": 8192,
+  "NextChannelNumber": 1,
+  "GloballyMutedPlayerUids": [],
+  "ForceBlockedPlayerUids": [],
+  "PersistentChannels": []
+}</code></pre>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">字段</th><th style="padding: 6px 8px; text-align: left;">默认</th><th style="padding: 6px 8px; text-align: left;">有效范围与含义</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ConfigVersion</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>12</code></td><td style="padding: 6px 8px; vertical-align: top;">配置迁移版本，由模组维护；不要手动降级。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ServerInstanceId</code></td><td style="padding: 6px 8px; vertical-align: top;">自动生成</td><td style="padding: 6px 8px; vertical-align: top;">非空 GUID，以 32 位无连字符形式保存。标识这台服务器；无效时重新生成，不要在服务器之间复制。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>Enabled</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">全局语音转发开关。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>AllowAdpcmFallback</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">保留的兼容字段；当前协议只使用 Opus，应保持关闭。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>DefaultOpusBitrateKbps</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>24</code></td><td style="padding: 6px 8px; vertical-align: top;">12 至 <code>MaxOpusBitrateKbps</code>；客户端未指定偏好时使用的发送码率。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxOpusBitrateKbps</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>48</code></td><td style="padding: 6px 8px; vertical-align: top;">12-48；客户端自适应或手动码率的服务器上限。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableAdaptiveBitrate</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">允许客户端根据丢包率在 12 Kbps 至配置上限之间调整 Opus 码率。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>AllowWhisper</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">允许耳语模式；关闭后耳语按正常说话范围处理。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>AllowShout</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">允许大喊模式；关闭后大喊按正常说话范围处理。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ForceImmersive</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">强制客户端开启遮挡效果。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxRange</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>40</code></td><td style="padding: 6px 8px; vertical-align: top;">1-128 格；所有接近度距离的总上限。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>WhisperRange</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>8</code></td><td style="padding: 6px 8px; vertical-align: top;">1 至 <code>MaxRange</code>；耳语转发距离。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>TalkRange</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>18</code></td><td style="padding: 6px 8px; vertical-align: top;">1 至 <code>MaxRange</code>；正常说话转发距离。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ShoutRange</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>35</code></td><td style="padding: 6px 8px; vertical-align: top;">1 至 <code>MaxRange</code>；大喊转发距离。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableProximityChatText</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">只向附近玩家转发普通公共聊天；不影响命令、频道或系统消息。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ProximityChatRange</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>18</code></td><td style="padding: 6px 8px; vertical-align: top;">1 至 <code>MaxRange</code>；附近公共聊天可见距离。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableOcclusion</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">允许客户端计算方块遮挡；客户端仍可自行关闭，除非启用 <code>ForceImmersive</code>。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableWeatherEffects</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">允许天气对接近度语音播放产生影响。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableEnvironmentalVoiceEffects</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">启用服务器权威的水下、头盔和面具效果标记。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ApplyUnderwaterEffectsToChannels</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">是否也把水下效果应用到频道语音；关闭时只影响接近度语音。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EquipmentVoiceEffectRules</code></td><td style="padding: 6px 8px; vertical-align: top;">2 条规则</td><td style="padding: 6px 8px; vertical-align: top;">最多 64 条；按顺序首个匹配生效。<code>Slot</code> 0/1/2 为 Head/Face/ArmorHead，<code>Effect</code> 0/1 为 Helmet/Mask，模式最长 256 字符。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableHudIndicators</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">允许客户端显示麦克风 HUD 指示器。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxVoicePacketsPerSecond</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>60</code></td><td style="padding: 6px 8px; vertical-align: top;">5-100；单个发送者每秒允许的语音包数量。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxVoiceBytesPerSecond</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>16384</code></td><td style="padding: 6px 8px; vertical-align: top;">2048-65536 字节；单个发送者每秒语音负载预算。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxVoicePayloadBytes</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>444</code></td><td style="padding: 6px 8px; vertical-align: top;">1-476 字节；单个语音包允许的最大编码负载。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxServerEgressKbps</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>50000</code></td><td style="padding: 6px 8px; vertical-align: top;">1000-100000 Kbps；全部普通语音转发的服务器总出口预算。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxListenerEgressKbps</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>512</code></td><td style="padding: 6px 8px; vertical-align: top;">64-2048 Kbps；每名普通监听者的出口预算。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxDirectorEgressKbps</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>4096</code></td><td style="padding: 6px 8px; vertical-align: top;">512-8192 Kbps；每名 VS Director 监听者的独立出口预算。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>SpatialCellSize</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>16</code></td><td style="padding: 6px 8px; vertical-align: top;">4-64 格；接近度查询空间索引的单元尺寸，通常保持默认。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxStreamsPerListener</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>8</code></td><td style="padding: 6px 8px; vertical-align: top;">1-32；每名普通监听者可同时接收的语音流总数。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxProximityStreams</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>6</code></td><td style="padding: 6px 8px; vertical-align: top;">1 至 <code>MaxStreamsPerListener</code>；总流数中可用于接近度语音的数量。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxChannelTalkers</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>3</code></td><td style="padding: 6px 8px; vertical-align: top;">1 至 <code>min(MaxStreamsPerListener, 12)</code>；新频道默认允许的同时发言人数。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxChannelMembers</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>100</code></td><td style="padding: 6px 8px; vertical-align: top;">2-100；新频道默认成员上限。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxChannelsPerPlayer</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>8</code></td><td style="padding: 6px 8px; vertical-align: top;">1-8；一名玩家可加入的显式频道数量。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxChannels</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>256</code></td><td style="padding: 6px 8px; vertical-align: top;">16-512；服务器保留的频道总数上限。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxChannelNameLength</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>24</code></td><td style="padding: 6px 8px; vertical-align: top;">1-128 字符；只限制后续创建和重命名，不截断已有名称。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ChannelMemberPageSize</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>20</code></td><td style="padding: 6px 8px; vertical-align: top;">8-50；服务端一次返回的频道成员分页大小。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>AuditRetention</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>500</code></td><td style="padding: 6px 8px; vertical-align: top;">50-2000；<code>SimpleVoiceChat.Audit.json</code> 保留的管理审计条数。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>AllowContinuousTalk</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">允许客户端使用语音激活模式。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableChannels</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">启用自定义语音频道。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>AllowPlayerChannelCreation</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">允许普通玩家创建频道；管理员操作不受此开关限制。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableDirectorProximityCapture</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">允许 VS Director 捕获回放区域或导演监听范围内的语音。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxDirectorListeners</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>1</code></td><td style="padding: 6px 8px; vertical-align: top;">1-8；同时活动的导演监听者上限。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxDirectorStreamsPerListener</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>32</code></td><td style="padding: 6px 8px; vertical-align: top;">1-64；每名导演监听者可接收的语音流数。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableRecorderCapture</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">允许拥有 <code>controlserver</code> 的客户端启动服务器托管多人分轨录音。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxRecorderListeners</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>1</code></td><td style="padding: 6px 8px; vertical-align: top;">1-4；同时活动的录音监听者上限。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxRecorderEgressKbps</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>4096</code></td><td style="padding: 6px 8px; vertical-align: top;">512-8192 Kbps；每名录音监听者的服务器出口预算。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>RecorderCheckpointSeconds</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>5</code></td><td style="padding: 6px 8px; vertical-align: top;">1-60 秒；录音会话清单检查点写入间隔。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxRecorderSessionMinutes</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>360</code></td><td style="padding: 6px 8px; vertical-align: top;">1-1440 分钟；单次服务器托管录音的最长持续时间。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxRecorderClockSkewMilliseconds</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>2000</code></td><td style="padding: 6px 8px; vertical-align: top;">250-10000 ms；服务器接受的录音客户端时钟偏差上限。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxRecorderDownloadKbps</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>8192</code></td><td style="padding: 6px 8px; vertical-align: top;">256-100000 Kbps；录音文件下载带宽上限。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>NextChannelNumber</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>1</code></td><td style="padding: 6px 8px; vertical-align: top;">至少 1；下一自动频道 ID 的序号，由模组维护。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>GloballyMutedPlayerUids</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>[]</code></td><td style="padding: 6px 8px; vertical-align: top;">持久全服禁言 UID，去重后最多 256 个；使用管理命令维护。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ForceBlockedPlayerUids</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>[]</code></td><td style="padding: 6px 8px; vertical-align: top;">全服强制语音屏蔽 UID，去重后最多 256 个；使用管理命令维护。</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>PersistentChannels</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>[]</code></td><td style="padding: 6px 8px; vertical-align: top;">持久频道、所有者、成员、角色、密码及管理状态，最多 <code>MaxChannels</code> 项；使用频道界面或命令维护。</td></tr>
+</tbody></table>
+<p>提高 <code>MaxStreamsPerListener</code>、码率或频道同时发言数会同时增加服务器出口带宽和客户端解码负担；应逐步调整并观察 <code>/svc diag</code>。当 <code>MaxRange</code> 小于某个子范围时，子范围会被自动压到新上限。</p>
+
+<h3>配置编辑注意事项</h3>
+<p><code>EquipmentVoiceEffectRules</code> 按数组顺序匹配，首个命中生效；<code>Slot</code> 的 0/1/2 分别是 Head/Face/ArmorHead，<code>Effect</code> 的 0/1 分别是 Helmet/Mask，<code>ItemCodePattern</code> 支持模组使用的通配模式。规则最多 64 条，具体默认示例见前文“接近度语音”中的装备效果说明。</p>
+<p><code>ConfigVersion</code>、<code>ServerInstanceId</code> 和 <code>NextChannelNumber</code> 由模组维护。不要复制其他服务器的 <code>ServerInstanceId</code>，否则客户端的每服务器偏好会把两台服务器视为同一实例。<code>PersistentChannels</code>、<code>GloballyMutedPlayerUids</code> 和 <code>ForceBlockedPlayerUids</code> 会由频道及管理命令自动保存；手改这些结构容易破坏所有者、成员角色或 UID 关系，优先使用管理界面和 <code>/svc</code> 命令。</p>
+
+<h3>容量摘要与隐私</h3>
 <table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">项目</th><th style="padding: 6px 8px; text-align: left;">默认值或位置</th></tr></thead><tbody>
 <tr><td style="padding: 6px 8px; vertical-align: top;">网络音频</td><td style="padding: 6px 8px; vertical-align: top;">48 kHz 单声道、20 ms 帧、仅 Opus；默认 24 Kbps，自适应范围为 12-48 Kbps。</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">监听语音流</td><td style="padding: 6px 8px; vertical-align: top;">服务端默认每位监听者最多 8 条流，其中接近度流默认最多 6 条；服务端配置上限为 32 条。</td></tr>

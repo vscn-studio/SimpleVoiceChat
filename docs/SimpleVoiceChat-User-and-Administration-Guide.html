@@ -244,6 +244,241 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");</code></pre>
 </tbody></table>
 
 <h2>12. Capacity, Configuration, and Privacy</h2>
+<h3>Configuration File Locations and Recommended Workflow</h3>
+<p>After the client or server has been started once, the mod creates its configuration in the <code>ModConfig</code> directory under the corresponding Vintage Story data directory. The client file is <code>&lt;client data directory&gt;/ModConfig/SimpleVoiceChat.Client.json</code>; the server file is <code>&lt;server data directory&gt;/ModConfig/SimpleVoiceChat.Server.json</code>. When a custom data directory is selected with a launch option such as <code>--dataPath</code>, look there rather than in the game installation directory or inside the mod archive. Single-player uses both files in the same data directory.</p>
+<ol>
+<li>Start the game or server once so the mod generates a file containing every field for the installed version. Do not write the complete configuration from scratch.</li>
+<li>Back up the generated file before editing. Exit the game before manually changing the client file: there is no client reload command, and saving settings in a running client can overwrite disk changes.</li>
+<li>Edit the JSON with a UTF-8 text editor. Property names and strings require double quotes, booleans must be <code>true</code> or <code>false</code>, and decimals use a period. JSON does not allow comments, trailing commas, or duplicate properties.</li>
+<li>The server file can be edited while the server is running and then loaded with <code>/svc reload</code>, which requires <code>controlserver</code>. Alternatively, stop the server, edit the file, and restart. A successful load clamps invalid ranges, performs migrations, and writes the normalized result back to disk.</li>
+<li>Run <code>/svc status</code> and check the server log to verify the result. A failed runtime reload keeps the active in-memory configuration. A startup parse failure, however, falls back to defaults and rewrites the file, so keeping a backup is important.</li>
+</ol>
+<p>Players with <code>controlserver</code> can also change most server switches and numeric values on the Settings window's Administration page. Apply saves and broadcasts the draft; Reload reads the file from disk. Normal client settings should usually be changed in the Settings window and are saved immediately.</p>
+
+<h3>Client Configuration Tutorial</h3>
+<p><code>SimpleVoiceChat.Client.json</code> affects only the current computer and cannot override server policy. Volume fields are multipliers, not percentages: <code>1.0</code> is 100%, <code>0.5</code> is 50%, and <code>2.0</code> is 200%. Device names and key enum names can differ by operating system or game version, so select them in the interface and inspect the generated value when possible.</p>
+<p>The clean-install defaults before the first-run wizard updates its state are shown below. Completing, skipping, or displaying the wizard immediately changes the related state fields:</p>
+<pre><code>{
+  "ConfigVersion": 11,
+  "InputDeviceName": "",
+  "OutputDeviceName": "",
+  "OutputVolume": 1.0,
+  "MicGain": 1.0,
+  "NoiseGate": 0.015,
+  "VoiceActivationThreshold": 0.08,
+  "PushToTalkKey": "N",
+  "ModeCycleKey": "LBracket",
+  "PreferVoiceActivation": false,
+  "PreferContinuousTalk": false,
+  "InitialSetupCompleted": false,
+  "InitialSetupPromptShown": false,
+  "ShowHudIndicator": true,
+  "ShowMicrophoneHud": true,
+  "EnableOcclusionEffects": true,
+  "EnableEnvironmentalVoiceEffects": true,
+  "PerformanceMode": false,
+  "AdaptiveJitterBuffer": true,
+  "PreferredOpusBitrateKbps": 0,
+  "EnableNoiseSuppression": false,
+  "EnableEchoCancellation": false,
+  "EnableSpeechRecognition": false,
+  "SpeechRecognitionProvider": "alibaba",
+  "SpeechRecognitionApiKey": "",
+  "SpeechRecognitionModel": "qwen3-asr-flash",
+  "SpeechRecognitionEndpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+  "SpeechRecognitionProviders": {
+    "alibaba": {
+      "ApiKey": "",
+      "Model": "qwen3-asr-flash",
+      "Endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+    }
+  },
+  "ChannelOutputVolume": 1.0,
+  "SelectedChannelId": "",
+  "TransmitTarget": 2,
+  "PlayerVolumeOverrides": {},
+  "MutedPlayerUids": [],
+  "HideSelfFromPlayerLists": false,
+  "RejectChannelInvites": false,
+  "HideChatMessages": false,
+  "VoiceHudOffsetX": 0,
+  "VoiceHudOffsetY": 0,
+  "VoiceInviteOffsetY": 85,
+  "ServerProfiles": {},
+  "NeedsServerProfileMigration": false
+}</code></pre>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Field</th><th style="padding: 6px 8px; text-align: left;">Default</th><th style="padding: 6px 8px; text-align: left;">Valid range and meaning</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ConfigVersion</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>11</code></td><td style="padding: 6px 8px; vertical-align: top;">Configuration migration version maintained by the mod; do not lower it manually.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>InputDeviceName</code></td><td style="padding: 6px 8px; vertical-align: top;">empty</td><td style="padding: 6px 8px; vertical-align: top;">Complete microphone device name. Empty uses the system default input; select it through Settings when possible.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>OutputDeviceName</code></td><td style="padding: 6px 8px; vertical-align: top;">empty</td><td style="padding: 6px 8px; vertical-align: top;">Complete speaker or headset device name. Empty uses the system default output.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>OutputVolume</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>1.0</code></td><td style="padding: 6px 8px; vertical-align: top;">0-2; master playback multiplier for all remote voice.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MicGain</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>1.0</code></td><td style="padding: 6px 8px; vertical-align: top;">0.1-4; microphone gain applied before transmission.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>NoiseGate</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>0.015</code></td><td style="padding: 6px 8px; vertical-align: top;">0-0.2; input below this level is treated as silence.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>VoiceActivationThreshold</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>0.08</code></td><td style="padding: 6px 8px; vertical-align: top;">0.005-0.2 and never below <code>NoiseGate</code>; reaching this level activates voice transmission.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>PushToTalkKey</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>N</code></td><td style="padding: 6px 8px; vertical-align: top;">Game key enum name for push-to-talk, up to 64 characters. Bind it in the interface when possible.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ModeCycleKey</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>LBracket</code></td><td style="padding: 6px 8px; vertical-align: top;">Game key enum name for cycling Whisper, Talk, and Shout, up to 64 characters.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>PreferVoiceActivation</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">Prefer voice activation. The server can still prohibit it with <code>AllowContinuousTalk</code>.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>PreferContinuousTalk</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">Legacy field. A true value migrates to <code>PreferVoiceActivation</code> and is then cleared.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>InitialSetupCompleted</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">Whether the first-run setup wizard was completed; maintained by the wizard.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>InitialSetupPromptShown</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">Whether the first-run prompt was shown; maintained by the mod.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ShowHudIndicator</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">Compatibility field synchronized from <code>ShowMicrophoneHud</code> during load.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ShowMicrophoneHud</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">Show the microphone HUD. It remains hidden when the server disables <code>EnableHudIndicators</code>.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableOcclusionEffects</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">Calculate block occlusion during local playback. <code>ForceImmersive</code> on the server forces this on.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableEnvironmentalVoiceEffects</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">Play server-authorized underwater, helmet, and mask effects.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>PerformanceMode</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">Reduces occlusion samples and increases the environment-update cache from 150 ms to 250 ms.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>AdaptiveJitterBuffer</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">Dynamically adjusts playback buffering for network jitter.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>PreferredOpusBitrateKbps</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>0</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>0</code> uses the server ceiling. Explicit values are 12, 16, 20, 24, 32, or 48 and remain server-limited.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableNoiseSuppression</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">Enable available local noise suppression. It returns to <code>false</code> when unsupported.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableEchoCancellation</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">Enable available local echo cancellation. It cannot remain enabled when unsupported.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableSpeechRecognition</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">Record while the recognition key is held and send the result to chat.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>SpeechRecognitionProvider</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>alibaba</code></td><td style="padding: 6px 8px; vertical-align: top;">One of <code>alibaba</code>, <code>siliconflow</code>, <code>deepgram</code>, or <code>whisper</code>. Other values reset to <code>alibaba</code>.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>SpeechRecognitionApiKey</code></td><td style="padding: 6px 8px; vertical-align: top;">empty</td><td style="padding: 6px 8px; vertical-align: top;">API key for the active cloud provider, up to 512 characters. It is plain text locally; Whisper does not need one.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>SpeechRecognitionModel</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>qwen3-asr-flash</code></td><td style="padding: 6px 8px; vertical-align: top;">Model name for the active provider, up to 2048 characters. Local Whisper uses a model-file path.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>SpeechRecognitionEndpoint</code></td><td style="padding: 6px 8px; vertical-align: top;">Alibaba DashScope URL</td><td style="padding: 6px 8px; vertical-align: top;">Request URL for the active provider, up to 1024 characters. Leave it empty for local Whisper.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>SpeechRecognitionProviders</code></td><td style="padding: 6px 8px; vertical-align: top;">default Alibaba entry only</td><td style="padding: 6px 8px; vertical-align: top;">Stores each provider's key, model, and URL; up to four supported providers, maintained by Settings.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ChannelOutputVolume</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>1.0</code></td><td style="padding: 6px 8px; vertical-align: top;">0-2; additional playback multiplier for current-channel voice.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>SelectedChannelId</code></td><td style="padding: 6px 8px; vertical-align: top;">empty</td><td style="padding: 6px 8px; vertical-align: top;">Selected channel ID, up to 128 characters; saved per server by the Channels page.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>TransmitTarget</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>2</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>0</code> proximity only, <code>1</code> selected channel only, <code>2</code> both. Invalid values reset to 2.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>PlayerVolumeOverrides</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>{}</code></td><td style="padding: 6px 8px; vertical-align: top;">Player UID to 0-2 volume multiplier map; up to 256 entries, maintained by the player list.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MutedPlayerUids</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>[]</code></td><td style="padding: 6px 8px; vertical-align: top;">Locally muted player UIDs; up to 256, maintained by the player list.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>HideSelfFromPlayerLists</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">Hide yourself from the mod's player lists.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>RejectChannelInvites</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">Automatically reject incoming channel invitations.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>HideChatMessages</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">Hide local notices that this mod sends to the chat box.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>VoiceHudOffsetX</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>0</code></td><td style="padding: 6px 8px; vertical-align: top;">-2000 to 2000; horizontal voice-HUD offset.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>VoiceHudOffsetY</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>0</code></td><td style="padding: 6px 8px; vertical-align: top;">-2000 to 2000; vertical voice-HUD offset.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>VoiceInviteOffsetY</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>85</code></td><td style="padding: 6px 8px; vertical-align: top;">-2000 to 2000; vertical channel-invitation offset.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ServerProfiles</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>{}</code></td><td style="padding: 6px 8px; vertical-align: top;">Per-server channel, volume, mute, and effect preferences; up to 128 profiles, maintained by the mod.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>NeedsServerProfileMigration</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">Legacy-configuration migration state maintained by the mod.</td></tr>
+</tbody></table>
+<p><code>SpeechRecognitionApiKey</code> is stored in plain text on the client. Do not share a configuration file, screenshot, or log attachment containing it. Prefer the interface for channel, player-volume, mute, and server-profile state.</p>
+
+<h3>Server Configuration Tutorial</h3>
+<p><code>SimpleVoiceChat.Server.json</code> is the authoritative server policy. The table lists every top-level field separately. Values outside their ranges are clamped and written back during load or reload. Bandwidth values are Kbps and ranges are blocks; <code>MaxVoiceBytesPerSecond</code> and <code>MaxVoicePayloadBytes</code> are the exceptions and use bytes.</p>
+<p>The default configuration created on first startup is shown below. <code>ServerInstanceId</code> differs for every server; the placeholder is not a real value and must not replace an existing instance ID:</p>
+<pre><code>{
+  "ConfigVersion": 12,
+  "ServerInstanceId": "&lt;mod-generated 32-character instance ID&gt;",
+  "Enabled": true,
+  "AllowAdpcmFallback": false,
+  "DefaultOpusBitrateKbps": 24,
+  "MaxOpusBitrateKbps": 48,
+  "EnableAdaptiveBitrate": true,
+  "AllowWhisper": true,
+  "AllowShout": true,
+  "ForceImmersive": false,
+  "MaxRange": 40.0,
+  "WhisperRange": 8.0,
+  "TalkRange": 18.0,
+  "ShoutRange": 35.0,
+  "EnableProximityChatText": false,
+  "ProximityChatRange": 18.0,
+  "EnableOcclusion": true,
+  "EnableWeatherEffects": true,
+  "EnableEnvironmentalVoiceEffects": true,
+  "ApplyUnderwaterEffectsToChannels": false,
+  "EquipmentVoiceEffectRules": [
+    { "Slot": 2, "ItemCodePattern": "armor-head-*", "Effect": 0 },
+    { "Slot": 1, "ItemCodePattern": "clothes-face-*mask*", "Effect": 1 }
+  ],
+  "EnableHudIndicators": true,
+  "MaxVoicePacketsPerSecond": 60,
+  "MaxVoiceBytesPerSecond": 16384,
+  "MaxVoicePayloadBytes": 444,
+  "MaxServerEgressKbps": 50000,
+  "MaxListenerEgressKbps": 512,
+  "MaxDirectorEgressKbps": 4096,
+  "SpatialCellSize": 16,
+  "MaxStreamsPerListener": 8,
+  "MaxProximityStreams": 6,
+  "MaxChannelTalkers": 3,
+  "MaxChannelMembers": 100,
+  "MaxChannelsPerPlayer": 8,
+  "MaxChannels": 256,
+  "MaxChannelNameLength": 24,
+  "ChannelMemberPageSize": 20,
+  "AuditRetention": 500,
+  "AllowContinuousTalk": true,
+  "EnableChannels": true,
+  "AllowPlayerChannelCreation": true,
+  "EnableDirectorProximityCapture": false,
+  "MaxDirectorListeners": 1,
+  "MaxDirectorStreamsPerListener": 32,
+  "EnableRecorderCapture": false,
+  "MaxRecorderListeners": 1,
+  "MaxRecorderEgressKbps": 4096,
+  "RecorderCheckpointSeconds": 5,
+  "MaxRecorderSessionMinutes": 360,
+  "MaxRecorderClockSkewMilliseconds": 2000,
+  "MaxRecorderDownloadKbps": 8192,
+  "NextChannelNumber": 1,
+  "GloballyMutedPlayerUids": [],
+  "ForceBlockedPlayerUids": [],
+  "PersistentChannels": []
+}</code></pre>
+<table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Field</th><th style="padding: 6px 8px; text-align: left;">Default</th><th style="padding: 6px 8px; text-align: left;">Valid range and meaning</th></tr></thead><tbody>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ConfigVersion</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>12</code></td><td style="padding: 6px 8px; vertical-align: top;">Configuration migration version maintained by the mod; do not lower it manually.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ServerInstanceId</code></td><td style="padding: 6px 8px; vertical-align: top;">generated</td><td style="padding: 6px 8px; vertical-align: top;">Nonempty GUID stored as 32 characters without hyphens. It identifies this server and is regenerated when invalid; never copy it between servers.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>Enabled</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">Global voice-forwarding switch.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>AllowAdpcmFallback</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">Reserved compatibility field. The current protocol uses Opus only; leave this disabled.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>DefaultOpusBitrateKbps</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>24</code></td><td style="padding: 6px 8px; vertical-align: top;">12 through <code>MaxOpusBitrateKbps</code>; transmit bitrate used when a client has no preference.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxOpusBitrateKbps</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>48</code></td><td style="padding: 6px 8px; vertical-align: top;">12-48; server ceiling for adaptive or manually selected client bitrate.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableAdaptiveBitrate</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">Allow clients to adjust Opus between 12 Kbps and the configured maximum using packet loss.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>AllowWhisper</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">Allow Whisper mode. When disabled, Whisper uses the Talk range.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>AllowShout</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">Allow Shout mode. When disabled, Shout uses the Talk range.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ForceImmersive</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">Force block-occlusion effects on clients.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxRange</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>40</code></td><td style="padding: 6px 8px; vertical-align: top;">1-128 blocks; overall ceiling for every proximity range.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>WhisperRange</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>8</code></td><td style="padding: 6px 8px; vertical-align: top;">1 through <code>MaxRange</code>; Whisper forwarding distance.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>TalkRange</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>18</code></td><td style="padding: 6px 8px; vertical-align: top;">1 through <code>MaxRange</code>; normal Talk forwarding distance.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ShoutRange</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>35</code></td><td style="padding: 6px 8px; vertical-align: top;">1 through <code>MaxRange</code>; Shout forwarding distance.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableProximityChatText</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">Forward ordinary public chat only to nearby players; commands, channels, and system messages are unaffected.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ProximityChatRange</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>18</code></td><td style="padding: 6px 8px; vertical-align: top;">1 through <code>MaxRange</code>; nearby public-chat visibility distance.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableOcclusion</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">Allow clients to calculate block occlusion. Clients can disable it unless <code>ForceImmersive</code> is enabled.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableWeatherEffects</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">Allow weather to affect proximity-voice playback.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableEnvironmentalVoiceEffects</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">Enable server-authoritative underwater, helmet, and mask effect flags.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ApplyUnderwaterEffectsToChannels</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">Apply underwater processing to channel voice too. When disabled, it affects proximity voice only.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EquipmentVoiceEffectRules</code></td><td style="padding: 6px 8px; vertical-align: top;">2 rules</td><td style="padding: 6px 8px; vertical-align: top;">Up to 64, first match wins. <code>Slot</code> 0/1/2 means Head/Face/ArmorHead; <code>Effect</code> 0/1 means Helmet/Mask; patterns are limited to 256 characters.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableHudIndicators</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">Allow clients to show microphone HUD indicators.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxVoicePacketsPerSecond</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>60</code></td><td style="padding: 6px 8px; vertical-align: top;">5-100; voice packets allowed per sender per second.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxVoiceBytesPerSecond</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>16384</code></td><td style="padding: 6px 8px; vertical-align: top;">2048-65536 bytes; encoded voice-payload budget per sender per second.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxVoicePayloadBytes</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>444</code></td><td style="padding: 6px 8px; vertical-align: top;">1-476 bytes; maximum encoded payload in one voice packet.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxServerEgressKbps</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>50000</code></td><td style="padding: 6px 8px; vertical-align: top;">1000-100000 Kbps; aggregate server egress budget for normal voice forwarding.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxListenerEgressKbps</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>512</code></td><td style="padding: 6px 8px; vertical-align: top;">64-2048 Kbps; egress budget for each normal listener.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxDirectorEgressKbps</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>4096</code></td><td style="padding: 6px 8px; vertical-align: top;">512-8192 Kbps; separate egress budget for each VS Director listener.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>SpatialCellSize</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>16</code></td><td style="padding: 6px 8px; vertical-align: top;">4-64 blocks; cell size of the proximity-query spatial index. Normally keep the default.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxStreamsPerListener</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>8</code></td><td style="padding: 6px 8px; vertical-align: top;">1-32; total simultaneous voice streams for each normal listener.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxProximityStreams</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>6</code></td><td style="padding: 6px 8px; vertical-align: top;">1 through <code>MaxStreamsPerListener</code>; total-stream slots available to proximity voice.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxChannelTalkers</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>3</code></td><td style="padding: 6px 8px; vertical-align: top;">1 through <code>min(MaxStreamsPerListener, 12)</code>; simultaneous-talker default for new channels.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxChannelMembers</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>100</code></td><td style="padding: 6px 8px; vertical-align: top;">2-100; member limit used for new channels.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxChannelsPerPlayer</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>8</code></td><td style="padding: 6px 8px; vertical-align: top;">1-8; explicit channels that one player may join.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxChannels</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>256</code></td><td style="padding: 6px 8px; vertical-align: top;">16-512; total channels retained by the server.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxChannelNameLength</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>24</code></td><td style="padding: 6px 8px; vertical-align: top;">1-128 characters; affects later creation and renaming without truncating existing names.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ChannelMemberPageSize</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>20</code></td><td style="padding: 6px 8px; vertical-align: top;">8-50; channel-member page size returned by the server.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>AuditRetention</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>500</code></td><td style="padding: 6px 8px; vertical-align: top;">50-2000; administration entries retained in <code>SimpleVoiceChat.Audit.json</code>.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>AllowContinuousTalk</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">Allow clients to use voice activation.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableChannels</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">Enable custom voice channels.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>AllowPlayerChannelCreation</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>true</code></td><td style="padding: 6px 8px; vertical-align: top;">Allow ordinary players to create channels. Administrator actions bypass this switch.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableDirectorProximityCapture</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">Allow VS Director to capture voice in replay regions or director-listener range.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxDirectorListeners</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>1</code></td><td style="padding: 6px 8px; vertical-align: top;">1-8; simultaneous active director listeners.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxDirectorStreamsPerListener</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>32</code></td><td style="padding: 6px 8px; vertical-align: top;">1-64; voice streams available to each director listener.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>EnableRecorderCapture</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>false</code></td><td style="padding: 6px 8px; vertical-align: top;">Allow a client with <code>controlserver</code> to start server-hosted multi-track recording.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxRecorderListeners</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>1</code></td><td style="padding: 6px 8px; vertical-align: top;">1-4; simultaneous active recorder listeners.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxRecorderEgressKbps</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>4096</code></td><td style="padding: 6px 8px; vertical-align: top;">512-8192 Kbps; server egress budget for each recorder listener.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>RecorderCheckpointSeconds</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>5</code></td><td style="padding: 6px 8px; vertical-align: top;">1-60 seconds; recording-session manifest checkpoint interval.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxRecorderSessionMinutes</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>360</code></td><td style="padding: 6px 8px; vertical-align: top;">1-1440 minutes; maximum duration of one server-hosted session.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxRecorderClockSkewMilliseconds</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>2000</code></td><td style="padding: 6px 8px; vertical-align: top;">250-10000 ms; maximum recorder-client clock difference accepted by the server.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>MaxRecorderDownloadKbps</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>8192</code></td><td style="padding: 6px 8px; vertical-align: top;">256-100000 Kbps; recording-file download bandwidth limit.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>NextChannelNumber</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>1</code></td><td style="padding: 6px 8px; vertical-align: top;">At least 1; sequence number for the next generated channel ID, maintained by the mod.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>GloballyMutedPlayerUids</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>[]</code></td><td style="padding: 6px 8px; vertical-align: top;">Persistently globally muted UIDs; up to 256 after deduplication. Maintain with administration commands.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>ForceBlockedPlayerUids</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>[]</code></td><td style="padding: 6px 8px; vertical-align: top;">Server-wide voice-blocked UIDs; up to 256 after deduplication. Maintain with administration commands.</td></tr>
+<tr><td style="padding: 6px 8px; vertical-align: top;"><code>PersistentChannels</code></td><td style="padding: 6px 8px; vertical-align: top;"><code>[]</code></td><td style="padding: 6px 8px; vertical-align: top;">Persistent channels, owners, members, roles, passwords, and moderation state; up to <code>MaxChannels</code>. Maintain through the channel interface or commands.</td></tr>
+</tbody></table>
+<p>Raising <code>MaxStreamsPerListener</code>, bitrates, or simultaneous channel talkers increases both server egress and client decoding load. Change them gradually and observe <code>/svc diag</code>. If <code>MaxRange</code> is reduced below one of its child ranges, that range is automatically clamped to the new ceiling.</p>
+
+<h3>Configuration Editing Notes</h3>
+<p><code>EquipmentVoiceEffectRules</code> is matched in array order and the first match wins. <code>Slot</code> values 0/1/2 represent Head/Face/ArmorHead; <code>Effect</code> values 0/1 represent Helmet/Mask; <code>ItemCodePattern</code> accepts the mod's wildcard pattern. At most 64 rules are retained. See the equipment-effects explanation under Proximity Voice Chat for the generated example.</p>
+<p><code>ConfigVersion</code>, <code>ServerInstanceId</code>, and <code>NextChannelNumber</code> are maintained by the mod. Do not copy <code>ServerInstanceId</code> from another server, because clients would treat both servers as the same per-server preference profile. <code>PersistentChannels</code>, <code>GloballyMutedPlayerUids</code>, and <code>ForceBlockedPlayerUids</code> are saved by channel and administration operations. Editing these structures manually can break ownership, role, or UID relationships; use the Administration page and <code>/svc</code> commands instead.</p>
+
+<h3>Capacity Summary and Privacy</h3>
 <table style="border-collapse: collapse; width: 100%;" border="1"><thead><tr><th style="padding: 6px 8px; text-align: left;">Item</th><th style="padding: 6px 8px; text-align: left;">Default or location</th></tr></thead><tbody>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Network audio</td><td style="padding: 6px 8px; vertical-align: top;">48 kHz mono, 20 ms frames, and Opus only; 24 Kbps default with an adaptive 12-48 Kbps range.</td></tr>
 <tr><td style="padding: 6px 8px; vertical-align: top;">Listener voice streams</td><td style="padding: 6px 8px; vertical-align: top;">Eight streams per listener by default, including up to six proximity streams; the server configuration ceiling is 32 streams.</td></tr>
