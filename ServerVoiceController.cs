@@ -2650,7 +2650,8 @@ public sealed class ServerVoiceController : IDisposable
 
         if (session.LastSourceEffectMilliseconds < 0 || now - session.LastSourceEffectMilliseconds >= 150)
         {
-            session.CachedEquipmentEffects = ResolveEquipmentEffects(speaker, session.EquippedSlots);
+            session.CachedEquipmentEffects = ResolveEquipmentEffects(
+                speaker.InventoryManager, config.EquipmentVoiceEffectRules, session.EquippedSlots);
             session.CachedEyeInLiquid = IsEyeInLiquid(speaker.Entity);
             session.LastSourceEffectMilliseconds = now;
         }
@@ -2664,26 +2665,33 @@ public sealed class ServerVoiceController : IDisposable
         return effects;
     }
 
-    private VoiceSourceEffectFlags ResolveEquipmentEffects(IServerPlayer player, List<ItemSlotCharacter> equippedSlots)
+    internal static VoiceSourceEffectFlags ResolveEquipmentEffects(
+        IPlayerInventoryManager inventoryManager,
+        IReadOnlyList<VoiceEquipmentEffectRule> rules,
+        List<ItemSlotCharacter> equippedSlots)
     {
-        if (config.EquipmentVoiceEffectRules.Count == 0)
+        equippedSlots.Clear();
+        if (rules.Count == 0)
         {
             return VoiceSourceEffectFlags.None;
         }
 
-        equippedSlots.Clear();
-        foreach (InventoryBase inventory in player.InventoryManager.InventoriesOrdered)
+        // Other inventories include the lazily initialized creative catalog, whose
+        // Count can throw before any slot filtering runs. Only worn equipment matters.
+        IInventory? inventory = inventoryManager.GetOwnInventory("character");
+        if (inventory == null)
         {
-            foreach (ItemSlot slot in inventory)
+            return VoiceSourceEffectFlags.None;
+        }
+        foreach (ItemSlot slot in inventory)
+        {
+            if (slot is ItemSlotCharacter characterSlot && !slot.Empty && slot.Itemstack?.Collectible?.Code != null)
             {
-                if (slot is ItemSlotCharacter characterSlot && !slot.Empty && slot.Itemstack?.Collectible?.Code != null)
-                {
-                    equippedSlots.Add(characterSlot);
-                }
+                equippedSlots.Add(characterSlot);
             }
         }
 
-        foreach (VoiceEquipmentEffectRule rule in config.EquipmentVoiceEffectRules)
+        foreach (VoiceEquipmentEffectRule rule in rules)
         {
             foreach (ItemSlotCharacter slot in equippedSlots)
             {

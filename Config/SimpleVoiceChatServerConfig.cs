@@ -1,3 +1,5 @@
+using Newtonsoft.Json;
+
 namespace SimpleVoiceChat.Config;
 
 public sealed class SimpleVoiceChatServerConfig
@@ -27,6 +29,7 @@ public sealed class SimpleVoiceChatServerConfig
     /// <summary>When false, only proximity voice is affected by water.</summary>
     public bool ApplyUnderwaterEffectsToChannels { get; set; }
     /// <summary>First matching rule determines the speaker's equipment voice effect.</summary>
+    [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
     public List<VoiceEquipmentEffectRule> EquipmentVoiceEffectRules { get; set; } = CreateDefaultEquipmentVoiceEffectRules();
     public bool EnableHudIndicators { get; set; } = true;
     public int MaxVoicePacketsPerSecond { get; set; } = 60;
