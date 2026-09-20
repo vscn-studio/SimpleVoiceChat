@@ -4,12 +4,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
-    <Version>1.2.7-pre.3</Version>
+    <Version>1.2.7</Version>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <OutputPath>bin\$(Configuration)\Mods\mod</OutputPath>
     <VintageStoryPath Condition="'$(VintageStoryPath)' == '' and '$(VINTAGE_STORY)' != ''">$(VINTAGE_STORY)</VintageStoryPath>
     <VintageStoryPath Condition="'$(VintageStoryPath)' == ''">E:\vintagestory\Vintagestory</VintageStoryPath>
+    <RmlUiSdkPath Condition="'$(RmlUiSdkPath)' == ''">$(MSBuildThisFileDirectory)..\VintageStory_RmlUi\artifacts\sdk\VSRmlUi.dll</RmlUiSdkPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -25,6 +26,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Reference Include="VSRmlUi" HintPath="$(RmlUiSdkPath)" Private="false" />
     <Reference Include="VintagestoryAPI">
       <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
       <Private>false</Private>
@@ -43,10 +45,6 @@
     </Reference>
     <Reference Include="Newtonsoft.Json">
       <HintPath>$(VintageStoryPath)\Lib\Newtonsoft.Json.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="cairo-sharp">
-      <HintPath>$(VintageStoryPath)\Lib\cairo-sharp.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="protobuf-net">
@@ -69,7 +67,7 @@
     <Content Include="THIRD-PARTY-NOTICES.md">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="docs\**\*">
+    <Content Include="docs\**\*" Exclude="docs\UI-DESIGN.md;docs\CAPACITY-REPORT.md">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="assets\**\*">

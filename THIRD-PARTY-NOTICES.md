@@ -38,3 +38,9 @@ The optional local speech-recognition provider uses Whisper.net 1.9.1 under the 
 Whisper.net depends on Microsoft.Extensions.AI.Abstractions 10.2.0, distributed under the MIT License. The complete license text is included in `assets/simplevoicechat/licenses/MICROSOFT-EXTENSIONS-AI-LICENSE.txt`.
 
 Whisper.net.Runtime native binaries include whisper.cpp/ggml code under the MIT License. The complete upstream text is included in `assets/simplevoicechat/licenses/WHISPER-CPP-LICENSE.txt`.
+
+RmlUi controls use the Tabler Icons webfont 3.34.1, distributed under the MIT License.
+The font, upstream license, and source information are bundled in `assets/simplevoicechat/fonts/tabler/`.
+Source: https://github.com/tabler/tabler-icons/tree/v3.34.1
+The existing PNG button and HUD images are unchanged. VSRmlUi is a separately installed dependency;
+its native libraries and managed assembly are not redistributed inside this mod.

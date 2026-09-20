@@ -1,4 +1,3 @@
-using Cairo;
 using SimpleVoiceChat.Audio;
 using SimpleVoiceChat.Config;
 using SimpleVoiceChat.Integration;
@@ -53,65 +52,8 @@ internal enum VoiceSettingsOverlay
     CurrentStatus
 }
 
-internal static class VoiceSettingsNavigation
+public sealed class VoiceSettingsDialog : VoiceRmlDialog
 {
-    public static VoiceSettingsPage[] BuildPages(bool hasServerControl)
-    {
-        List<VoiceSettingsPage> pages = new()
-        {
-            VoiceSettingsPage.Home,
-            VoiceSettingsPage.Audio,
-            VoiceSettingsPage.SpeechRecognition,
-            VoiceSettingsPage.Channels
-        };
-        if (hasServerControl)
-        {
-            pages.Add(VoiceSettingsPage.Admin);
-        }
-        return pages.ToArray();
-    }
-}
-
-public sealed class VoiceSettingsDialog : GuiDialog
-{
-    // Recompose creates new control instances, so retain the open dropdown by key.
-    private static readonly string[] DropdownElementKeys =
-    {
-        "inputDevice",
-        "outputDevice",
-        "opusBitrate",
-        "noise-suppression",
-        "quick-channel",
-        "quick-transmit",
-        "speech-recognition-provider",
-        "owner-leave-target",
-        "overlay-channel-target-player",
-        "overlay-channel-action",
-        "overlay-player-channel",
-        "overlay-player-action",
-        "overlay-create-visibility",
-        "adminPlayer",
-        "adminChannel",
-        "adminAction"
-    };
-
-    private static readonly string[] TextInputElementKeys =
-    {
-        "speech-recognition-api-key",
-        "speech-recognition-model",
-        "speech-recognition-endpoint",
-        "channel-search",
-        "players-search",
-        "join-channel-password",
-        "overlay-create-name",
-        "overlay-create-password",
-        "adminRenameInput"
-    };
-
-    private readonly record struct DropdownSnapshot(string Key, string? HoveredValue, string SearchText);
-
-    private readonly record struct FocusSnapshot(string Key, int CaretLine, int CaretPosition);
-
     private readonly record struct OverlaySnapshot(
         VoiceSettingsOverlay Overlay,
         string ChannelId,
@@ -120,31 +62,19 @@ public sealed class VoiceSettingsDialog : GuiDialog
         string Action);
 
     private const double WindowWidth = 940;
-    // The home page is sized to its quick-control row rather than the wider
-    // settings pages: five icon buttons, two selectors, six gaps, and margins.
-    private const double HomeWindowWidth = 640;
     private const double WindowHeight = 650;
     private const double ContentLeft = 14;
-    private const double ContentTop = 58;
     private const double ContentWidth = 900;
     private const double ViewportHeight = 580;
-    private const double HomeBaseWindowHeight = 190;
-    private const double HomeMaxWindowHeight = WindowHeight;
-    private const double HomeExtensionStartY = 156;
+    private const double HomeExtensionStartY = 102;
     private const double HomeExtensionDefaultRowHeight = 40;
     private const double HomeExtensionGap = 6;
     private const double HomeExtensionMinControlWidth = 28;
     private const double HomeExtensionMinControlHeight = 28;
     private const double HomeExtensionMaxControlHeight = 96;
-    private const string FontAwesomeCheckIcon = "svc-fa-check";
     private const string FontAwesomeCloseIcon = "svc-fa-xmark";
     private const string FontAwesomeGearIcon = "svc-fa-gear";
-    private const string FontAwesomeUsersIcon = "svc-fa-users";
 
-    private static readonly AssetLocation FontAwesomeCheckAsset = new("simplevoicechat", "icons/fontawesome/check.svg");
-    private static readonly AssetLocation FontAwesomeCloseAsset = new("simplevoicechat", "icons/fontawesome/xmark.svg");
-    private static readonly AssetLocation FontAwesomeGearAsset = new("simplevoicechat", "icons/fontawesome/gear.svg");
-    private static readonly AssetLocation FontAwesomeUsersAsset = new("simplevoicechat", "icons/fontawesome/users.svg");
     private static readonly AssetLocation MicMutedAsset = new("simplevoicechat", "gui/svc_mic_muted.png");
     private static readonly AssetLocation MicTalkingAsset = new("simplevoicechat", "gui/svc_talking.png");
     private static readonly AssetLocation SpeakerAsset = new("simplevoicechat", "gui/svc_speaker.png");
@@ -162,14 +92,16 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private VoiceSettingsExtensionDialog? extensionDialog;
 
     private VoiceSettingsPage selectedPage = VoiceSettingsPage.Home;
-    private ElementBounds? contentBounds;
+    private VoiceSettingsPage presentedPage = VoiceSettingsPage.Home;
+    private double activeContentWidth;
+    private double activeViewportHeight = WindowHeight;
+    private double activeContentHeaderHeight = 52;
+    private VoiceSettingsOverlay presentedOverlay;
+    private float mainScrollY;
     private double contentHeight = ViewportHeight;
-    private double activeViewportHeight = ViewportHeight;
-    private double activeContentWidth = ContentWidth;
-    private double activeContentHeaderHeight;
     private bool composeQueued;
     private bool composePending;
-    private bool pointerPressed;
+
     private ServerVoiceConfigPacket adminConfigDraft = new();
     private bool adminConfigDirty;
 
@@ -212,59 +144,19 @@ public sealed class VoiceSettingsDialog : GuiDialog
         this.settingsExtensions.Attach(QueueCompose, ShowExtensionWindow);
     }
 
-    public override string? ToggleKeyCombinationCode => null;
-    public override bool PrefersUngrabbedMouse => true;
-    public override bool DisableMouseGrab => true;
-    // During HUD positioning, let the transparent position dialog receive
-    // clicks on the HUD. The settings window still receives clicks inside its
-    // own bounds through the normal dialog dispatch path, including confirm.
-    public override bool CaptureAllInputs() => !hudPositionEditing;
-    public override bool CaptureRawMouse() => true;
-    public override EnumDialogType DialogType => EnumDialogType.Dialog;
-    public override double DrawOrder => 0.48;
-    public override double InputOrder => 0.3;
-
     internal bool IsCurrentStatusOpen => IsOpened() && overlay == VoiceSettingsOverlay.CurrentStatus;
-
-    public override void OnMouseDown(MouseEvent args)
-    {
-        // Several settings controls publish their value from mouse-down. Mark
-        // the gesture before dispatching so those callbacks cannot trigger a
-        // composer rebuild while the pressed control is still being tracked.
-        if (args.Button is EnumMouseButton.Left or EnumMouseButton.Right)
-        {
-            pointerPressed = true;
-        }
-        if (!args.Handled)
-        {
-            CloseDropdownsOutside(args.X, args.Y);
-        }
-
-        base.OnMouseDown(args);
-    }
-
-    public override void OnMouseUp(MouseEvent args)
-    {
-        // Native controls invoke their callbacks during mouse-up.  Keep the
-        // composer alive for that whole gesture, then apply the latest queued
-        // state change once no control still owns the pressed state.
-        base.OnMouseUp(args);
-        if (args.Button is EnumMouseButton.Left or EnumMouseButton.Right)
-        {
-            pointerPressed = false;
-            FlushQueuedCompose();
-        }
-    }
 
     public override bool TryOpen()
     {
         controller.RequestSettingsRefresh();
         selectedPage = VoiceSettingsPage.Home;
+        mainScrollY = 0;
+        presentedOverlay = VoiceSettingsOverlay.None;
         composePending = false;
-        pointerPressed = false;
         overlay = VoiceSettingsOverlay.None;
         overlayStack.Clear();
         Compose();
+        Document!.GetElementById("content")!.SetScrollOffset(0, 0);
         return base.TryOpen();
     }
 
@@ -279,10 +171,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     public void RefreshData()
     {
-        if (selectedPage == VoiceSettingsPage.Admin && !controller.HasServerControl)
-        {
-            selectedPage = VoiceSettingsPage.Home;
-        }
         if (IsOpened())
         {
             QueueCompose();
@@ -299,222 +187,54 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private void Compose()
     {
-        RegisterFontAwesomeIcons();
         if (selectedPage == VoiceSettingsPage.Admin && !controller.HasServerControl)
-        {
             selectedPage = VoiceSettingsPage.Home;
-        }
-
-        DropdownSnapshot? expandedDropdown = CaptureExpandedDropdown();
-        FocusSnapshot? focusedElement = CaptureFocusedElement();
-        SingleComposer?.Dispose();
+        if (presentedOverlay == VoiceSettingsOverlay.None && overlay != VoiceSettingsOverlay.None)
+            mainScrollY = Document?.GetElementById("content")?.Bounds.ScrollY ?? 0;
         bool home = selectedPage == VoiceSettingsPage.Home && overlay == VoiceSettingsOverlay.None;
-        double windowWidth = home ? HomeWindowWidth : WindowWidth;
-        IReadOnlyList<IVoiceSettingsExtensionControl> homeExtensions = home
-            ? GetVisibleExtensionControls()
-            : Array.Empty<IVoiceSettingsExtensionControl>();
-        List<ExtensionRowLayout> homeExtensionRows = home
-            ? BuildExtensionRows(homeExtensions, windowWidth - ContentLeft * 2)
-            : new();
-        double extensionHeight = homeExtensionRows.Count == 0
-            ? 0
-            : homeExtensionRows.Sum(row => row.Height) + (homeExtensionRows.Count - 1) * HomeExtensionGap;
-        double requestedHomeHeight = home
-            ? Math.Max(
-                HomeBaseWindowHeight,
-                HomeExtensionStartY + extensionHeight + 2)
-            : WindowHeight;
-        double windowHeight = home
-            ? Math.Min(HomeMaxWindowHeight, requestedHomeHeight)
-            : WindowHeight;
-        activeViewportHeight = windowHeight;
-        activeContentHeaderHeight = home ? 0 : 52;
-        activeContentWidth = home ? windowWidth - ContentLeft * 2 : ContentWidth;
-        ElementBounds root = ElementBounds.Fixed(EnumDialogArea.CenterMiddle, 0, 0, windowWidth, windowHeight);
-        ElementBounds background = ElementBounds.Fixed(0, 0, windowWidth, windowHeight);
-        contentBounds = ElementBounds.Fixed(0, 0, activeContentWidth, activeViewportHeight);
-        bool overlayActive = overlay != VoiceSettingsOverlay.None;
-
-        GuiComposer composer = capi.Gui.CreateCompo("simplevoicechat-settings", root);
-        if (!overlayActive)
-        {
-            composer.AddStaticCustomDraw(background, DrawWindowBackground);
-        }
-        composer = composer.BeginChildElements(background);
-
-        if (!overlayActive)
-        {
-            if (home)
-            {
-                composer.AddStaticText(
-                        SVCLang.Get("settings-brand-title"),
-                        CairoFont.WhiteSmallishText().WithFontSize(20).WithOrientation(EnumTextOrientation.Center)
-                            .WithColor(new[] { 1.0, 1.0, 1.0, 1.0 }),
-                        ElementBounds.Fixed(ContentLeft, 10, activeContentWidth, 30),
-                        "brand-title");
-            }
-
-            composer.AddInteractiveElement(
-                new VoiceSettingsIconButton(
-                    capi,
-                    ElementBounds.Fixed(windowWidth - 42, 10, 28, 28),
-                    FontAwesomeCloseIcon,
-                    _ => OnClose()),
-                "close");
-
-            composer.BeginChildElements(contentBounds);
-
-            if (!home)
-            {
-                composer.AddStaticText(
-                    SVCLang.Get("settings-brand-title"),
-                    CairoFont.WhiteSmallishText().WithFontSize(20).WithOrientation(EnumTextOrientation.Center)
-                        .WithColor(new[] { 1.0, 1.0, 1.0, 1.0 }),
-                    ElementBounds.Fixed(ContentLeft, 10, activeContentWidth, 30),
-                    "brand-title");
-                composer.BeginChildElements(ElementBounds.Fixed(0, 52, activeContentWidth, activeViewportHeight));
-            }
-
-            contentHeight = selectedPage switch
-            {
-                VoiceSettingsPage.Home => AddHomePage(composer, homeExtensionRows),
-                VoiceSettingsPage.SpeechRecognition => AddSpeechRecognitionPage(composer),
-                VoiceSettingsPage.Channels => AddChannelsPage(composer),
-                VoiceSettingsPage.Admin => AddAdminPage(composer),
-                _ => AddAudioPage(composer)
-            };
-            if (!home)
-            {
-                composer.EndChildElements();
-                contentHeight += activeContentHeaderHeight;
-            }
-            contentHeight = Math.Max(activeViewportHeight, contentHeight);
-
-            composer = composer.EndChildElements();
-        }
+        activeContentWidth = home ? 612 : ContentWidth;
+        VoiceRmlForm composer = new(capi);
         if (overlay != VoiceSettingsOverlay.None)
         {
             AddOverlay(composer);
+            if (overlay == VoiceSettingsOverlay.None) { Compose(); return; }
+            contentHeight = WindowHeight;
         }
-        composer = composer.EndChildElements();
-        RestoreExpandedDropdown(composer, expandedDropdown);
-        SingleComposer = composer.Compose(focusFirstElement: false);
-        if (!RestoreFocusedElement(SingleComposer, focusedElement))
+        else
         {
-            SingleComposer.FocusElement(0);
+            contentHeight = selectedPage switch
+            {
+                VoiceSettingsPage.Home => AddHomePage(composer, BuildExtensionRows(GetVisibleExtensionControls(), activeContentWidth - ContentLeft * 2)),
+                VoiceSettingsPage.Audio => AddAudioPage(composer),
+                VoiceSettingsPage.SpeechRecognition => AddSpeechRecognitionPage(composer),
+                VoiceSettingsPage.Channels => AddChannelsPage(composer),
+                _ => AddAdminPage(composer)
+            };
         }
+        Present(composer, SVCLang.Get("settings-brand-title"), home ? 680 : WindowWidth + 56,
+            home ? Math.Max(120, contentHeight) : Math.Max(ViewportHeight, contentHeight), overlay != VoiceSettingsOverlay.None);
+        if (presentedOverlay != overlay || presentedPage != selectedPage)
+            Document!.GetElementById("content")!.SetScrollOffset(0,
+                overlay == VoiceSettingsOverlay.None && presentedOverlay != VoiceSettingsOverlay.None ? mainScrollY : 0);
+        presentedOverlay = overlay;
+        presentedPage = selectedPage;
     }
+
+    protected override void OnTick(float dt)
+    {
+        base.OnTick(dt);
+        FlushQueuedCompose();
+    }
+
+    protected override bool OnEscape() { OnClose(); return true; }
+    protected override void OnWindowClose() => OnClose();
+    protected override void OnClosed() { extensionDialog?.TryClose(); }
 
     internal void OnServerConfigRefreshed()
     {
         if (!adminConfigDirty)
         {
             adminConfigDraft = CloneServerConfig(controller.ServerSettings);
-        }
-    }
-
-    private DropdownSnapshot? CaptureExpandedDropdown()
-    {
-        if (SingleComposer == null)
-        {
-            return null;
-        }
-
-        foreach (string key in DropdownElementKeys)
-        {
-            if (SingleComposer.GetElement(key) is VoiceSettingsDropDown dropdown && dropdown.IsExpanded)
-            {
-                return new DropdownSnapshot(key, dropdown.HoveredValue, dropdown.SearchText);
-            }
-        }
-
-        return null;
-    }
-
-    private static void RestoreExpandedDropdown(GuiComposer composer, DropdownSnapshot? snapshot)
-    {
-        if (snapshot is not { } state)
-        {
-            return;
-        }
-
-        if (composer.GetElement(state.Key) is VoiceSettingsDropDown dropdown)
-        {
-            dropdown.RestoreExpanded(state.HoveredValue, state.SearchText);
-        }
-    }
-
-    private FocusSnapshot? CaptureFocusedElement()
-    {
-        if (SingleComposer == null)
-        {
-            return null;
-        }
-
-        foreach (string key in DropdownElementKeys.Concat(TextInputElementKeys))
-        {
-            if (SingleComposer.GetElement(key) is not { Focusable: true, HasFocus: true } element)
-            {
-                continue;
-            }
-
-            if (element is GuiElementTextInput textInput)
-            {
-                return new FocusSnapshot(key, textInput.CaretPosLine, textInput.CaretPosInLine);
-            }
-
-            return new FocusSnapshot(key, 0, 0);
-        }
-
-        return null;
-    }
-
-    private static bool RestoreFocusedElement(GuiComposer composer, FocusSnapshot? snapshot)
-    {
-        if (snapshot is not { } state
-            || composer.GetElement(state.Key) is not { Focusable: true } element)
-        {
-            return false;
-        }
-
-        if (!composer.FocusElement(element.TabIndex))
-        {
-            return false;
-        }
-
-        if (element is GuiElementTextInput textInput)
-        {
-            textInput.SetCaretPos(state.CaretPosition, state.CaretLine);
-        }
-
-        return true;
-    }
-
-    private void CloseDropdownsOutside(int posX, int posY)
-    {
-        VoiceSettingsDropDown? keepOpen = null;
-        if (SingleComposer != null)
-        {
-            foreach (string key in DropdownElementKeys)
-            {
-                if (SingleComposer.GetElement(key) is VoiceSettingsDropDown dropdown
-                    && dropdown.IsExpanded
-                    && dropdown.IsPositionInside(posX, posY))
-                {
-                    keepOpen = dropdown;
-                    break;
-                }
-            }
-
-            foreach (string key in DropdownElementKeys)
-            {
-                if (SingleComposer.GetElement(key) is VoiceSettingsDropDown dropdown
-                    && dropdown.IsExpanded
-                    && !ReferenceEquals(dropdown, keepOpen))
-                {
-                    dropdown.Close();
-                }
-            }
         }
     }
 
@@ -542,26 +262,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         QueueCompose();
     }
 
-    private void RegisterFontAwesomeIcons()
-    {
-        capi.Gui.Icons.CustomIcons[FontAwesomeCheckIcon] = capi.Gui.Icons.SvgIconSource(FontAwesomeCheckAsset);
-        capi.Gui.Icons.CustomIcons[FontAwesomeCloseIcon] = capi.Gui.Icons.SvgIconSource(FontAwesomeCloseAsset);
-        capi.Gui.Icons.CustomIcons[FontAwesomeGearIcon] = capi.Gui.Icons.SvgIconSource(FontAwesomeGearAsset);
-        capi.Gui.Icons.CustomIcons[FontAwesomeUsersIcon] = capi.Gui.Icons.SvgIconSource(FontAwesomeUsersAsset);
-    }
-
-    private static void DrawWindowBackground(Context ctx, ImageSurface surface, ElementBounds bounds)
-    {
-        bounds.CalcWorldBounds();
-        GuiElement.RoundRectangle(ctx, bounds.bgDrawX, bounds.bgDrawY, bounds.OuterWidth, bounds.OuterHeight, GuiElement.scaled(4));
-        ctx.SetSourceRGBA(0.015, 0.02, 0.028, 0.68);
-        ctx.FillPreserve();
-        ctx.SetSourceRGBA(0.78, 0.82, 0.9, 0.22);
-        ctx.LineWidth = GuiElement.scaled(1);
-        ctx.Stroke();
-    }
-
-    private static void AddFlatButton(GuiComposer composer, string text, ActionConsumable action, ElementBounds bounds, string key, bool active = false)
+    private static void AddFlatButton(VoiceRmlForm composer, string text, ActionConsumable action, ElementBounds bounds, string key, bool active = false)
     {
         composer.AddInteractiveElement(
             new VoiceSettingsTextButton(
@@ -569,13 +270,13 @@ public sealed class VoiceSettingsDialog : GuiDialog
                 text,
                 action,
                 bounds,
-                CairoFont.WhiteSmallText().WithFontSize(14).WithOrientation(EnumTextOrientation.Center).WithColor(new[] { 0.96, 0.97, 1.0, 1.0 }),
+                VoiceRmlFont.WhiteSmallText().WithFontSize(14).WithOrientation(EnumTextOrientation.Center).WithColor(new[] { 0.96, 0.97, 1.0, 1.0 }),
                 active),
             key);
     }
 
     private static void AddPagination(
-        GuiComposer composer,
+        VoiceRmlForm composer,
         double x,
         double y,
         double width,
@@ -597,7 +298,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             ElementBounds.Fixed(startX, y, buttonWidth, 34), previousKey);
         composer.AddStaticText(
             SVCLang.Get("pagination-page", pageIndex + 1, pageCount),
-            CairoFont.WhiteSmallText().WithFontSize(14).WithOrientation(EnumTextOrientation.Center)
+            VoiceRmlFont.WhiteSmallText().WithFontSize(14).WithOrientation(EnumTextOrientation.Center)
                 .WithColor(new[] { 0.96, 0.97, 1.0, 1.0 }),
             ElementBounds.Fixed(startX + buttonWidth + gap, y + 3, indicatorWidth, 28));
         AddFlatButton(composer, SVCLang.Get("pagination-next"), next,
@@ -606,7 +307,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         composer.GetButton(nextKey).Enabled = pageIndex + 1 < pageCount;
     }
 
-    private static VoiceSettingsCheckBox AddCheckBox(GuiComposer composer, Action<bool> changed, ElementBounds bounds, string key, bool value)
+    private static VoiceSettingsCheckBox AddCheckBox(VoiceRmlForm composer, Action<bool> changed, ElementBounds bounds, string key, bool value)
     {
         VoiceSettingsCheckBox checkBox = new(composer.Api, bounds, changed);
         composer.AddInteractiveElement(checkBox, key);
@@ -614,19 +315,19 @@ public sealed class VoiceSettingsDialog : GuiDialog
         return checkBox;
     }
 
-    private static VoiceSettingsCheckBox GetCheckBox(GuiComposer composer, string key)
+    private static VoiceSettingsCheckBox GetCheckBox(VoiceRmlForm composer, string key)
     {
         return (VoiceSettingsCheckBox)composer.GetElement(key);
     }
 
-    private double AddAudioPage(GuiComposer composer)
+    private double AddAudioPage(VoiceRmlForm composer)
     {
         const double labelX = 18;
         const double controlX = 235;
         const double controlWidth = 600;
         const double controlHeight = 34;
         double y = 0;
-        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        VoiceRmlFont label = VoiceRmlFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
 
         string[] inputValues = controller.GetInputDeviceValues();
         string[] inputNames = ClientVoiceController.GetInputDeviceNames(inputValues);
@@ -700,7 +401,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
                     : controller.HasMicrophoneTestRecording
                         ? SVCLang.Get("recording-status-ready")
                         : SVCLang.Get("recording-status-none"),
-            CairoFont.WhiteDetailText().WithColor(new[] { 0.78, 0.82, 0.88, 1.0 }),
+            VoiceRmlFont.WhiteDetailText().WithColor(new[] { 0.78, 0.82, 0.88, 1.0 }),
             ElementBounds.Fixed(controlX + 404, recordingY + 3, 190, 30));
 
         // Keep the first behavior row clear of the recording and playback controls.
@@ -749,12 +450,12 @@ public sealed class VoiceSettingsDialog : GuiDialog
     }
 
     private double AddHomePage(
-        GuiComposer composer,
+        VoiceRmlForm composer,
         IReadOnlyList<ExtensionRowLayout> extensionRows)
     {
         const double buttonWidth = 138;
-        const double navigationY = 54;
-        const double quickY = 104;
+        const double navigationY = 0;
+        const double quickY = 50;
         const double quickIconSize = 42;
         const double quickGap = 6;
         const int quickIconCount = 5;
@@ -925,7 +626,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
                 double preferredWidth = control.PreferredWidth;
                 if (control is VoiceSettingsExtensionButton button)
                 {
-                    preferredWidth = Math.Max(preferredWidth, MeasureExtensionButtonWidth(button.Text));
+                    preferredWidth = Math.Max(preferredWidth, Math.Clamp(button.Text.Length * 15 + 24, 96, 600));
                 }
                 preferredWidth = ClampExtensionDimension(preferredWidth, 140, minimumWidth, availableWidth);
                 double height = ClampExtensionDimension(
@@ -977,15 +678,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
         }
     }
 
-    private static double MeasureExtensionButtonWidth(string text)
-    {
-        using ImageSurface surface = new(Format.Argb32, 1, 1);
-        using Context context = new(surface);
-        CairoFont font = CairoFont.WhiteSmallText().WithFontSize(14);
-        font.SetupContext(context);
-        return Math.Ceiling(context.TextExtents(text).XAdvance + GuiElement.scaled(24));
-    }
-
     private bool ShowExtensionWindow(string id)
     {
         if (!settingsExtensions.TryGetWindow(id, out VoiceSettingsExtensionWindow window))
@@ -1023,18 +715,18 @@ public sealed class VoiceSettingsDialog : GuiDialog
         IVoiceSettingsExtensionControl Control,
         double Width);
 
-    private double AddSpeechRecognitionPage(GuiComposer composer)
+    private double AddSpeechRecognitionPage(VoiceRmlForm composer)
     {
         const double labelX = 18;
         const double controlX = 250;
         const double controlWidth = 585;
         const double controlHeight = 34;
         double y = 0;
-        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
-        CairoFont detail = CairoFont.WhiteDetailText().WithColor(new[] { 0.76, 0.8, 0.87, 1.0 });
+        VoiceRmlFont label = VoiceRmlFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        VoiceRmlFont detail = VoiceRmlFont.WhiteDetailText().WithColor(new[] { 0.76, 0.8, 0.87, 1.0 });
 
         composer.AddStaticText(SVCLang.Get("tab-speech-recognition"),
-            CairoFont.WhiteSmallText().WithFontSize(18).WithColor(new[] { 0.96, 0.97, 1.0, 1.0 }),
+            VoiceRmlFont.WhiteSmallText().WithFontSize(18).WithColor(new[] { 0.96, 0.97, 1.0, 1.0 }),
             ElementBounds.Fixed(labelX, y, 500, 30));
         y += 42;
         composer.AddStaticText(SVCLang.Get("speech-recognition-description"), detail,
@@ -1075,35 +767,35 @@ public sealed class VoiceSettingsDialog : GuiDialog
         {
             composer.AddStaticText(SVCLang.Get("label-speech-recognition-api-key"), label, ElementBounds.Fixed(labelX, y, 220, 30))
                 .AddVoiceTextInput(ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), controller.SetSpeechRecognitionApiKeyFromSettings,
-                    CairoFont.TextInput(), "speech-recognition-api-key");
+                    VoiceRmlFont.TextInput(), "speech-recognition-api-key");
             y += 46;
         }
         composer
             .AddStaticText(SVCLang.Get(localProvider ? "label-speech-recognition-model-path" : "label-speech-recognition-model"), label, ElementBounds.Fixed(labelX, y, 220, 30))
             .AddVoiceTextInput(ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), controller.SetSpeechRecognitionModelFromSettings,
-                CairoFont.TextInput(), "speech-recognition-model")
+                VoiceRmlFont.TextInput(), "speech-recognition-model")
             ;
         if (!localProvider)
         {
             composer
                 .AddStaticText(SVCLang.Get("label-speech-recognition-endpoint"), label, ElementBounds.Fixed(labelX, y += 46, 220, 30))
                 .AddVoiceTextInput(ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), controller.SetSpeechRecognitionEndpointFromSettings,
-                    CairoFont.TextInput(), "speech-recognition-endpoint");
+                    VoiceRmlFont.TextInput(), "speech-recognition-endpoint");
         }
 
         if (!localProvider)
         {
-            GuiElementTextInput apiKey = composer.GetTextInput("speech-recognition-api-key");
+            VoiceSettingsTextInput apiKey = composer.GetTextInput("speech-recognition-api-key");
             apiKey.SetValue(config.SpeechRecognitionApiKey);
             apiKey.SetMaxLength(512);
             apiKey.HideCharacters();
         }
-        GuiElementTextInput model = composer.GetTextInput("speech-recognition-model");
+        VoiceSettingsTextInput model = composer.GetTextInput("speech-recognition-model");
         model.SetValue(config.SpeechRecognitionModel);
         model.SetMaxLength(localProvider ? 2048 : 128);
         if (!localProvider)
         {
-            GuiElementTextInput endpoint = composer.GetTextInput("speech-recognition-endpoint");
+            VoiceSettingsTextInput endpoint = composer.GetTextInput("speech-recognition-endpoint");
             endpoint.SetValue(config.SpeechRecognitionEndpoint);
             endpoint.SetMaxLength(1024);
         }
@@ -1140,7 +832,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     }
 
     private static void AddIconToggle(
-        GuiComposer composer,
+        VoiceRmlForm composer,
         AssetLocation onIcon,
         AssetLocation offIcon,
         bool value,
@@ -1153,7 +845,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             key);
     }
 
-    private double AddChannelsPage(GuiComposer composer)
+    private double AddChannelsPage(VoiceRmlForm composer)
     {
         const double x = 18;
         const double width = 868;
@@ -1161,9 +853,9 @@ public sealed class VoiceSettingsDialog : GuiDialog
         const double cardGap = 8;
         const double listTop = 46;
         const int pageSize = 6;
-        CairoFont section = CairoFont.WhiteSmallishText().WithColor(new[] { 0.96, 0.97, 1.0, 1.0 });
-        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
-        CairoFont detail = CairoFont.WhiteDetailText().WithColor(new[] { 0.78, 0.82, 0.88, 1.0 });
+        VoiceRmlFont section = VoiceRmlFont.WhiteSmallishText().WithColor(new[] { 0.96, 0.97, 1.0, 1.0 });
+        VoiceRmlFont label = VoiceRmlFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        VoiceRmlFont detail = VoiceRmlFont.WhiteDetailText().WithColor(new[] { 0.78, 0.82, 0.88, 1.0 });
 
         VoiceSettingsChannelOption[] channels = controller.BuildChannelOptions();
         double y = 0;
@@ -1171,8 +863,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
         composer.AddVoiceTextInput(ElementBounds.Fixed(x + 300, y - 2, 330, 34), value =>
         {
             channelSearchDraft = value;
-        }, CairoFont.TextInput(), "channel-search");
-        GuiElementTextInput channelSearchInput = composer.GetTextInput("channel-search");
+        }, VoiceRmlFont.TextInput(), "channel-search");
+        VoiceSettingsTextInput channelSearchInput = composer.GetTextInput("channel-search");
         if (string.Join(string.Empty, channelSearchInput.GetLines()) != channelSearchDraft)
         {
             channelSearchInput.SetValue(channelSearchDraft);
@@ -1217,7 +909,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
                     meta += " | " + SVCLang.Get("channel-locked");
                 }
                 meta += " | " + SVCLang.Get("channel-visibility-" + channel.Visibility.ToString().ToLowerInvariant());
-                composer.AddStaticCustomDraw(ElementBounds.Fixed(0, cardY, width, cardHeight), DrawChannelCardBackground)
+                composer.AddPanel(ElementBounds.Fixed(0, cardY, width, cardHeight), "card")
                     .AddStaticText(Truncate(channel.Name, 42), label, ElementBounds.Fixed(14, cardY + 7, 470, 24), "channel-name-" + index)
                     .AddStaticText(meta, detail, ElementBounds.Fixed(14, cardY + 32, 470, 18), "channel-meta-" + index);
                 string channelActionLabel = channel.LocalRole == VoiceChannelRole.Banned
@@ -1276,7 +968,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         return activeViewportHeight - activeContentHeaderHeight;
     }
 
-    private void AddOverlay(GuiComposer composer)
+    private void AddOverlay(VoiceRmlForm composer)
     {
         switch (overlay)
         {
@@ -1313,7 +1005,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         }
     }
 
-    private void AddCurrentStatusOverlay(GuiComposer composer)
+    private void AddCurrentStatusOverlay(VoiceRmlForm composer)
     {
         const double x = 40;
         const double y = 25;
@@ -1398,16 +1090,16 @@ public sealed class VoiceSettingsDialog : GuiDialog
             $"{Ready(!status.TransmitBlocked)} / {RecordingName(status)}");
     }
 
-    private static void AddStatusSection(GuiComposer composer, double x, double y, string title)
+    private static void AddStatusSection(VoiceRmlForm composer, double x, double y, string title)
     {
         composer.AddStaticText(
             title,
-            CairoFont.WhiteSmallishText().WithFontSize(15).WithColor(new[] { 1.0, 1.0, 1.0, 1.0 }),
+            VoiceRmlFont.WhiteSmallishText().WithFontSize(15).WithColor(new[] { 1.0, 1.0, 1.0, 1.0 }),
             ElementBounds.Fixed(x, y, 380, 24));
     }
 
     private static void AddStatusRow(
-        GuiComposer composer,
+        VoiceRmlForm composer,
         double x,
         double y,
         double labelWidth,
@@ -1418,11 +1110,11 @@ public sealed class VoiceSettingsDialog : GuiDialog
     {
         composer.AddStaticText(
                 SVCLang.Get(labelKey),
-                CairoFont.WhiteDetailText().WithFontSize(12).WithColor(new[] { 0.68, 0.72, 0.79, 1.0 }),
+                VoiceRmlFont.WhiteDetailText().WithFontSize(12).WithColor(new[] { 0.68, 0.72, 0.79, 1.0 }),
                 ElementBounds.Fixed(x, y, labelWidth, height))
             .AddStaticText(
                 value,
-                CairoFont.WhiteSmallText().WithFontSize(13).WithColor(new[] { 0.96, 0.97, 1.0, 1.0 }),
+                VoiceRmlFont.WhiteSmallText().WithFontSize(13).WithColor(new[] { 0.96, 0.97, 1.0, 1.0 }),
                 ElementBounds.Fixed(x + labelWidth, y, valueWidth, height));
     }
 
@@ -1474,7 +1166,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         });
     }
 
-    private void AddRecordingModeOverlay(GuiComposer composer)
+    private void AddRecordingModeOverlay(VoiceRmlForm composer)
     {
         const double width = 720;
         const double height = 220;
@@ -1482,7 +1174,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         double y = (WindowHeight - height) / 2d;
         AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("recording-mode-title"));
         AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "recording-mode-close");
-        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        VoiceRmlFont label = VoiceRmlFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
         composer.AddStaticText(SVCLang.Get("recording-mode-description"), label,
             ElementBounds.Fixed(x + 24, y + 60, width - 48, 28));
         double buttonWidth = (width - 72) / 3d;
@@ -1501,7 +1193,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         composer.GetButton("recording-mode-multitrack").Enabled = controller.HasServerControl;
     }
 
-    private void AddMultiTrackRecordingOverlay(GuiComposer composer)
+    private void AddMultiTrackRecordingOverlay(VoiceRmlForm composer)
     {
         const double width = 640;
         const double height = 245;
@@ -1509,7 +1201,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         double y = (WindowHeight - height) / 2d;
         AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("multitrack-settings-title"));
         AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "multitrack-settings-close");
-        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        VoiceRmlFont label = VoiceRmlFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
         string status = controller.IsRecording && controller.RecordingMode == VoiceRecordingMode.MultiTrack
             ? SVCLang.Get("multitrack-status-recording")
             : controller.IsMultiTrackStartPending
@@ -1535,7 +1227,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         composer.GetButton("multitrack-toggle").Enabled = active || controller.HasServerControl;
     }
 
-    private void AddOwnerLeaveOverlay(GuiComposer composer)
+    private void AddOwnerLeaveOverlay(VoiceRmlForm composer)
     {
         const double x = 150;
         const double y = 96;
@@ -1543,7 +1235,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         const double height = 420;
         AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("channel-owner-leave-title"));
         AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "owner-leave-close");
-        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        VoiceRmlFont label = VoiceRmlFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
         composer.AddStaticText(SVCLang.Get("channel-owner-leave-description"), label,
             ElementBounds.Fixed(x + 24, y + 54, width - 48, 34));
         VoiceSettingsMemberOption[] members = controller.BuildChannelMembersForSettings(ownerLeaveChannelId);
@@ -1583,7 +1275,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         if (selected) ownerLeaveTargetUid = value;
     }
 
-    private void AddJoinChannelOverlay(GuiComposer composer)
+    private void AddJoinChannelOverlay(VoiceRmlForm composer)
     {
         const double x = 180;
         const double y = 180;
@@ -1592,9 +1284,9 @@ public sealed class VoiceSettingsDialog : GuiDialog
         VoiceSettingsChannelOption channel = controller.BuildChannelOptions().FirstOrDefault(option => option.Id == joinChannelId);
         AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("channel-join-title"));
         AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "join-channel-close");
-        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        VoiceRmlFont label = VoiceRmlFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
         composer.AddStaticText(Truncate(channel.Name, 46), label, ElementBounds.Fixed(x + 24, y + 54, 240, 28));
-        composer.AddVoiceTextInput(ElementBounds.Fixed(x + 270, y + 50, 260, 34), value => { joinPassword = value; }, CairoFont.TextInput(), "join-channel-password");
+        composer.AddVoiceTextInput(ElementBounds.Fixed(x + 270, y + 50, 260, 34), value => { joinPassword = value; }, VoiceRmlFont.TextInput(), "join-channel-password");
         composer.GetTextInput("join-channel-password").SetValue(joinPassword);
         composer.GetTextInput("join-channel-password").SetMaxLength(VoiceProtocol.MaxControlStringLength);
         AddFlatButton(composer, SVCLang.Get("button-join-channel"), () =>
@@ -1605,7 +1297,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         }, ElementBounds.Fixed(x + 270, y + 108, 150, 36), "join-channel-submit");
     }
 
-    private void AddConfirmChannelActionOverlay(GuiComposer composer)
+    private void AddConfirmChannelActionOverlay(VoiceRmlForm composer)
     {
         const double x = 210;
         const double y = 200;
@@ -1621,7 +1313,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         AddOverlayPanel(composer, x, y, width, height, SVCLang.Get(titleKey));
         composer.AddStaticText(
             SVCLang.Get(descriptionKey, Truncate(channelName, 34)),
-            CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 }),
+            VoiceRmlFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 }),
             ElementBounds.Fixed(x + 24, y + 64, width - 48, 36));
         AddFlatButton(
             composer,
@@ -1660,7 +1352,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         return started;
     }
 
-    private void AddChannelOverlay(GuiComposer composer)
+    private void AddChannelOverlay(VoiceRmlForm composer)
     {
         const double x = 140;
         const double y = 100;
@@ -1676,7 +1368,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
         AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("channel-settings-title"));
         AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "channel-overlay-close");
-        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        VoiceRmlFont label = VoiceRmlFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
         composer.AddStaticText(Truncate(channel.Name, 44), label, ElementBounds.Fixed(x + 24, y + 54, 380, 24));
         composer.AddStaticText(SVCLang.Get("label-channel-volume"), label, ElementBounds.Fixed(x + 24, y + 88, 180, 28));
         composer.AddVoiceSlider(value => { controller.SetChannelVolumeFromSettings(value); return true; },
@@ -1717,7 +1409,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         composer.GetButton("overlay-channel-apply").Enabled = overlayAction != "none";
     }
 
-    private void AddPlayersOverlay(GuiComposer composer)
+    private void AddPlayersOverlay(VoiceRmlForm composer)
     {
         const double x = 0;
         const double y = 0;
@@ -1729,8 +1421,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
         composer.AddVoiceTextInput(ElementBounds.Fixed(x + 300, y + 12, 360, 32), value =>
         {
             playerSearchDraft = value;
-        }, CairoFont.TextInput(), "players-search");
-        GuiElementTextInput playerSearchInput = composer.GetTextInput("players-search");
+        }, VoiceRmlFont.TextInput(), "players-search");
+        VoiceSettingsTextInput playerSearchInput = composer.GetTextInput("players-search");
         if (string.Join(string.Empty, playerSearchInput.GetLines()) != playerSearchDraft)
         {
             playerSearchInput.SetValue(playerSearchDraft);
@@ -1746,7 +1438,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             players = players.Where(player => player.Name.Contains(playerSearch, StringComparison.OrdinalIgnoreCase)
                 || player.Id.Contains(playerSearch, StringComparison.OrdinalIgnoreCase)).ToArray();
         }
-        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        VoiceRmlFont label = VoiceRmlFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
         const int pageSize = 6;
         const double playerRowHeight = 52;
         int pageCount = Math.Max(1, (players.Length + pageSize - 1) / pageSize);
@@ -1774,9 +1466,9 @@ public sealed class VoiceSettingsDialog : GuiDialog
             string sliderKey = "overlay-player-volume-" + index;
             string muteKey = "overlay-player-mute-" + index;
             string settingsKey = "overlay-player-settings-" + index;
-            composer.AddStaticCustomDraw(ElementBounds.Fixed(0, cardY, viewport.fixedWidth, 44), DrawPlayerCardBackground)
+            composer.AddPanel(ElementBounds.Fixed(0, cardY, viewport.fixedWidth, 44), "card")
                 .AddStaticText(Truncate(player.Name, 28), label, ElementBounds.Fixed(12, cardY + 8, playerInfoWidth, 28), "overlay-player-name-" + index)
-                .AddStaticText(Truncate(player.ChannelSummary, 28), CairoFont.WhiteDetailText().WithColor(new[] { 0.72, 0.76, 0.82, 1.0 }), ElementBounds.Fixed(12, cardY + 27, playerInfoWidth, 14), "overlay-player-channels-" + index)
+                .AddStaticText(Truncate(player.ChannelSummary, 28), VoiceRmlFont.WhiteDetailText().WithColor(new[] { 0.72, 0.76, 0.82, 1.0 }), ElementBounds.Fixed(12, cardY + 27, playerInfoWidth, 14), "overlay-player-channels-" + index)
                 .AddVoiceSlider(value => SetPlayerVolume(player.Id, value), ElementBounds.Fixed(sliderX, cardY + 5, sliderWidth, 34), sliderKey);
             VoiceSettingsMuteButton muteButton = new(
                 composer.Api,
@@ -1806,7 +1498,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
             "player-pagination");
     }
 
-    private void AddPlayerOverlay(GuiComposer composer)
+    private void AddPlayerOverlay(VoiceRmlForm composer)
     {
         const double x = 170;
         const double y = 142;
@@ -1821,7 +1513,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         }
         AddOverlayPanel(composer, x, y, width, defaultHeight, SVCLang.Get("player-settings-title"));
         AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "player-overlay-close");
-        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        VoiceRmlFont label = VoiceRmlFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
         composer.AddStaticText(Truncate(player.Name, 36), label, ElementBounds.Fixed(x + 24, y + 54, width - 48, 24));
 
         VoiceSettingsChannelOption[] channels = controller.BuildChannelOptions();
@@ -1843,7 +1535,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         composer.GetButton("overlay-player-apply").Enabled = overlayAction != "none";
     }
 
-    private void AddCreateChannelOverlay(GuiComposer composer)
+    private void AddCreateChannelOverlay(VoiceRmlForm composer)
     {
         const double x = 170;
         const double y = 142;
@@ -1851,8 +1543,8 @@ public sealed class VoiceSettingsDialog : GuiDialog
         const double height = 350;
         AddOverlayPanel(composer, x, y, width, height, SVCLang.Get("create-channel-title"));
         AddOverlayCloseButton(composer, x, y, width, CloseOverlay, "create-overlay-close");
-        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
-        CairoFont input = CairoFont.TextInput();
+        VoiceRmlFont label = VoiceRmlFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        VoiceRmlFont input = VoiceRmlFont.TextInput();
         composer.AddStaticText(SVCLang.Get("label-channel-name"), label, ElementBounds.Fixed(x + 24, y + 68, 180, 28))
             .AddVoiceTextInput(ElementBounds.Fixed(x + 214, y + 64, 340, 34), OnCreateNameChanged, input, "overlay-create-name")
             .AddStaticText(SVCLang.Get("label-channel-password"), label, ElementBounds.Fixed(x + 24, y + 124, 180, 28))
@@ -1871,31 +1563,20 @@ public sealed class VoiceSettingsDialog : GuiDialog
         composer.GetButton("overlay-create-submit").Enabled = !string.IsNullOrWhiteSpace(createName);
     }
 
-    private static void AddOverlayPanel(GuiComposer composer, double x, double y, double width, double height, string title)
+    private static void AddOverlayPanel(VoiceRmlForm composer, double x, double y, double width, double height, string title)
     {
-        composer.AddStaticCustomDraw(ElementBounds.Fixed(x, y, width, height), DrawOverlayPanel)
-            .AddStaticText(title, CairoFont.WhiteSmallishText().WithFontSize(17).WithColor(new[] { 1.0, 1.0, 1.0, 1.0 }),
+        composer.AddPanel(ElementBounds.Fixed(x, y, width, height), "overlay-panel")
+            .AddStaticText(title, VoiceRmlFont.WhiteSmallishText().WithFontSize(17).WithColor(new[] { 1.0, 1.0, 1.0, 1.0 }),
                 ElementBounds.Fixed(x + 24, y + 16, width - 72, 28));
     }
 
-    private void AddOverlayCloseButton(GuiComposer composer, double x, double y, double width, Action close, string key)
+    private void AddOverlayCloseButton(VoiceRmlForm composer, double x, double y, double width, Action close, string key)
     {
         composer.AddInteractiveElement(
             new VoiceSettingsIconButton(capi, ElementBounds.Fixed(x + width - 44, y + 12, 30, 30), FontAwesomeCloseIcon, _ => close()), key);
     }
 
-    private static void DrawOverlayPanel(Context ctx, ImageSurface surface, ElementBounds bounds)
-    {
-        bounds.CalcWorldBounds();
-        GuiElement.RoundRectangle(ctx, bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight, GuiElement.scaled(4));
-        ctx.SetSourceRGBA(0.025, 0.03, 0.04, 0.98);
-        ctx.FillPreserve();
-        ctx.SetSourceRGBA(0.88, 0.92, 0.98, 0.72);
-        ctx.LineWidth = GuiElement.scaled(1);
-        ctx.Stroke();
-    }
-
-    private double AddAdminPage(GuiComposer composer)
+    private double AddAdminPage(VoiceRmlForm composer)
     {
         const double leftX = 18;
         const double rightX = 466;
@@ -1904,10 +1585,10 @@ public sealed class VoiceSettingsDialog : GuiDialog
         const double controlWidth = 190;
         double leftY = 0;
         double rightY = 0;
-        CairoFont section = CairoFont.WhiteSmallishText().WithColor(new[] { 0.96, 0.97, 1.0, 1.0 });
-        CairoFont label = CairoFont.WhiteSmallishText().WithColor(new[] { 0.92, 0.94, 0.98, 1.0 });
-        CairoFont detail = CairoFont.WhiteSmallText().WithColor(new[] { 0.82, 0.86, 0.92, 1.0 });
-        CairoFont input = CairoFont.TextInput();
+        VoiceRmlFont section = VoiceRmlFont.WhiteSmallishText().WithColor(new[] { 0.96, 0.97, 1.0, 1.0 });
+        VoiceRmlFont label = VoiceRmlFont.WhiteSmallishText().WithColor(new[] { 0.92, 0.94, 0.98, 1.0 });
+        VoiceRmlFont detail = VoiceRmlFont.WhiteSmallText().WithColor(new[] { 0.82, 0.86, 0.92, 1.0 });
+        VoiceRmlFont input = VoiceRmlFont.TextInput();
 
         VoiceSettingsChannelOption[] channels = controller.BuildChannelOptions();
         VoiceSettingsPlayerOption[] players = controller.BuildPlayerOptions();
@@ -1965,13 +1646,13 @@ public sealed class VoiceSettingsDialog : GuiDialog
         return Math.Max(leftY, rightY) + 24;
     }
 
-    private double AddAdminConfigSection(GuiComposer composer, double startY)
+    private double AddAdminConfigSection(VoiceRmlForm composer, double startY)
     {
         const double leftX = 18;
         const double rightX = 466;
         const double columnWidth = 420;
-        CairoFont section = CairoFont.WhiteSmallishText();
-        CairoFont label = CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
+        VoiceRmlFont section = VoiceRmlFont.WhiteSmallishText();
+        VoiceRmlFont label = VoiceRmlFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 });
 
         composer.AddStaticText(SVCLang.Get("ui-section-server-config"), section, ElementBounds.Fixed(leftX, startY, columnWidth, 28));
         AddFlatButton(composer, SVCLang.Get("button-apply-config"), ApplyAdminConfig, ElementBounds.Fixed(rightX + 188, startY - 2, 104, 32), "adminConfigApply", adminConfigDirty);
@@ -2031,14 +1712,14 @@ public sealed class VoiceSettingsDialog : GuiDialog
         return Math.Max(leftY, rightY) + 24;
     }
 
-    private void AddAdminConfigSwitch(GuiComposer composer, double x, ref double y, CairoFont label, string key, string text, Action<bool> set)
+    private void AddAdminConfigSwitch(VoiceRmlForm composer, double x, ref double y, VoiceRmlFont label, string key, string text, Action<bool> set)
     {
         composer.AddStaticText(text, label, ElementBounds.Fixed(x, y + 2, 210, 30));
         AddCheckBox(composer, value => { set(value); MarkAdminConfigDirty(); }, ElementBounds.Fixed(x + 217, y, 28, 28), "admin-config-" + key, GetAdminConfigBool(key));
         y += 40;
     }
 
-    private void AddAdminConfigSlider(GuiComposer composer, double x, ref double y, CairoFont label, string key, string text, float value, int minimum, int maximum, Action<int> set, bool range = false)
+    private void AddAdminConfigSlider(VoiceRmlForm composer, double x, ref double y, VoiceRmlFont label, string key, string text, float value, int minimum, int maximum, Action<int> set, bool range = false)
     {
         composer.AddStaticText(text, label, ElementBounds.Fixed(x, y + 2, 210, 30));
         composer.AddVoiceSlider(number => { set(number); MarkAdminConfigDirty(); return true; }, ElementBounds.Fixed(x + 217, y, 190, 32), "admin-config-" + key);
@@ -2124,53 +1805,22 @@ public sealed class VoiceSettingsDialog : GuiDialog
         };
     }
 
-    private static void AddSwitchRow(GuiComposer composer, double x, ref double y, string text, string key, bool value, Action<bool> changed)
+    private static void AddSwitchRow(VoiceRmlForm composer, double x, ref double y, string text, string key, bool value, Action<bool> changed)
     {
-        composer.AddStaticText(text, CairoFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 }), ElementBounds.Fixed(x, y + 2, 210, 30));
+        composer.AddStaticText(text, VoiceRmlFont.WhiteSmallText().WithColor(new[] { 0.9, 0.92, 0.96, 1.0 }), ElementBounds.Fixed(x, y + 2, 210, 30));
         AddCheckBox(composer, changed, ElementBounds.Fixed(x + 217, y, 28, 28), key, value);
         y += 40;
     }
 
-    private static void DrawPlayerCardBackground(Context ctx, ImageSurface surface, ElementBounds bounds)
-    {
-        bounds.CalcWorldBounds();
-        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
-        ctx.SetSourceRGBA(0.08, 0.1, 0.13, 0.94);
-        ctx.FillPreserve();
-        ctx.SetSourceRGBA(0.86, 0.9, 0.96, 0.5);
-        ctx.LineWidth = GuiElement.scaled(1);
-        ctx.Stroke();
-    }
-
-    private static void DrawChannelCardBackground(Context ctx, ImageSurface surface, ElementBounds bounds)
-    {
-        bounds.CalcWorldBounds();
-        ctx.Rectangle(bounds.drawX, bounds.drawY, bounds.InnerWidth, bounds.InnerHeight);
-        ctx.SetSourceRGBA(0.10, 0.12, 0.15, 0.96);
-        ctx.FillPreserve();
-        ctx.SetSourceRGBA(0.86, 0.90, 0.96, 0.58);
-        ctx.LineWidth = GuiElement.scaled(1);
-        ctx.Stroke();
-    }
-
     private static void ConfigureSlider(
-        GuiComposer composer,
+        VoiceRmlForm composer,
         string key,
         int value,
         int minimum,
         int maximum,
         string suffix = "")
     {
-        GuiElementSlider slider = composer.GetSlider(key)
-            ?? throw new InvalidOperationException($"Settings slider '{key}' was not found.");
-        if (slider is VoiceSettingsSlider styledSlider)
-        {
-            styledSlider.Configure(value, minimum, maximum, 1, suffix);
-        }
-        else
-        {
-            slider.SetValues(value, minimum, maximum, 1, suffix);
-        }
+        composer.GetSlider(key).Configure(value, minimum, maximum, 1, suffix);
     }
 
     private List<string> BuildChannelActions(
@@ -2747,7 +2397,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
         if (!controller.HasServerControl || string.IsNullOrWhiteSpace(createName)) return false;
         controller.ManageSelectedChannel("create-channel", string.Empty, name: createName);
         createName = string.Empty;
-        SingleComposer?.GetTextInput("createName")?.SetValue(string.Empty);
+        Form?.GetTextInput("createName")?.SetValue(string.Empty);
         SetButtonEnabled("createChannel", false);
         return true;
     }
@@ -2785,7 +2435,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private void SetButtonEnabled(string key, bool enabled)
     {
-        if (SingleComposer?.GetButton(key) is { } button)
+        if (Form?.GetButton(key) is { } button)
         {
             button.Enabled = enabled;
         }
@@ -2794,7 +2444,7 @@ public sealed class VoiceSettingsDialog : GuiDialog
     private void QueueCompose()
     {
         composePending = true;
-        if (pointerPressed || composeQueued) return;
+        if (PointerPressed || composeQueued) return;
         composeQueued = true;
         capi.Event.EnqueueMainThreadTask(() =>
         {
@@ -2805,23 +2455,12 @@ public sealed class VoiceSettingsDialog : GuiDialog
 
     private void FlushQueuedCompose()
     {
-        if (pointerPressed || !composePending || !IsOpened() || IsTextInputFocused())
+        if (PointerPressed || !composePending || !IsOpened() || Form?.IsEditing == true)
         {
             return;
         }
         composePending = false;
         Compose();
-    }
-
-    private bool IsTextInputFocused()
-    {
-        if (SingleComposer == null)
-        {
-            return false;
-        }
-
-        return TextInputElementKeys.Any(key =>
-            SingleComposer.GetElement(key) is GuiElementTextInput { HasFocus: true });
     }
 
     private void OnClose()
@@ -2838,17 +2477,6 @@ public sealed class VoiceSettingsDialog : GuiDialog
             return;
         }
         TryClose();
-    }
-
-    private static string GetPageName(VoiceSettingsPage page)
-    {
-        return page switch
-        {
-            VoiceSettingsPage.Channels => SVCLang.Get("tab-channels"),
-            VoiceSettingsPage.SpeechRecognition => SVCLang.Get("tab-speech-recognition"),
-            VoiceSettingsPage.Admin => SVCLang.Get("tab-admin"),
-            _ => SVCLang.Get("tab-audio")
-        };
     }
 
     private static string TransmitCode(VoiceTransmitTarget target)

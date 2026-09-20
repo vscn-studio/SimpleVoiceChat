@@ -17,7 +17,7 @@ public interface IVoiceSettingsExtensionControl
     double MinimumWidth { get; }
     double Height { get; }
 
-    void Compose(ICoreClientAPI api, GuiComposer composer, ElementBounds bounds);
+    void Compose(ICoreClientAPI api, VoiceRmlForm composer, ElementBounds bounds);
 }
 
 /// <summary>Convenience implementation for a settings extension button.</summary>
@@ -54,26 +54,16 @@ public sealed class VoiceSettingsExtensionButton : IVoiceSettingsExtensionContro
     public double MinimumWidth { get; }
     public double Height { get; }
 
-    public void Compose(ICoreClientAPI api, GuiComposer composer, ElementBounds bounds)
+    public void Compose(ICoreClientAPI api, VoiceRmlForm composer, ElementBounds bounds)
     {
-        composer.AddInteractiveElement(
-            new VoiceSettingsExtensionButtonElement(api, Text, () =>
-            {
-                try
-                {
-                    Clicked();
-                }
-                catch (Exception ex)
-                {
-                    api.Logger.Warning(
-                        "SimpleVoiceChat: settings extension button '{0}' failed: {1}",
-                        Id,
-                        ex.Message);
-                }
-                return true;
-            }, bounds),
-            Id);
+        composer.AddInteractiveElement(new VoiceSettingsTextButton(api, Text, () =>
+        {
+            try { Clicked(); }
+            catch (Exception ex) { api.Logger.Warning("SimpleVoiceChat: extension '{0}' failed: {1}", Id, ex.Message); }
+            return true;
+        }, bounds, VoiceRmlFont.WhiteSmallText()), Id);
     }
+
 }
 
 /// <summary>Convenience implementation for a square image extension button.</summary>
@@ -107,30 +97,20 @@ public sealed class VoiceSettingsExtensionImageButton : IVoiceSettingsExtensionC
     public double MinimumWidth => Size;
     public double Height => Size;
 
-    public void Compose(ICoreClientAPI api, GuiComposer composer, ElementBounds bounds)
+    public void Compose(ICoreClientAPI api, VoiceRmlForm composer, ElementBounds bounds)
     {
-        composer.AddInteractiveElement(
-            new VoiceSettingsExtensionImageButtonElement(api, Image, () =>
-            {
-                try
-                {
-                    Clicked();
-                }
-                catch (Exception ex)
-                {
-                    api.Logger.Warning(
-                        "SimpleVoiceChat: settings extension image button '{0}' failed: {1}",
-                        Id,
-                        ex.Message);
-                }
-            }, bounds),
-            Id);
+        composer.AddInteractiveElement(new VoiceSettingsImageButton(api, bounds, Image, _ =>
+        {
+            try { Clicked(); }
+            catch (Exception ex) { api.Logger.Warning("SimpleVoiceChat: extension '{0}' failed: {1}", Id, ex.Message); }
+        }), Id);
     }
+
 }
 
 /// <summary>
 /// A window contributed by another mod. SimpleVoiceChat supplies the centered
-/// panel, title, close button, clipping bounds, and the common 4px style.
+/// RmlUi panel, title, close button, scroll area, and shared theme.
 /// </summary>
 public sealed class VoiceSettingsExtensionWindow
 {
@@ -160,7 +140,7 @@ public sealed class VoiceSettingsExtensionWindowContext
 {
     internal VoiceSettingsExtensionWindowContext(
         ICoreClientAPI api,
-        GuiComposer composer,
+        VoiceRmlForm composer,
         ElementBounds contentBounds,
         Action close)
     {
@@ -171,7 +151,7 @@ public sealed class VoiceSettingsExtensionWindowContext
     }
 
     public ICoreClientAPI Api { get; }
-    public GuiComposer Composer { get; }
+    public VoiceRmlForm Composer { get; }
     public ElementBounds ContentBounds { get; }
     public Action Close { get; }
     public double ContentWidth => ContentBounds.fixedWidth;

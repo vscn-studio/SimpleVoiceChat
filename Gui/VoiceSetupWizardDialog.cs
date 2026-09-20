@@ -1,4 +1,3 @@
-using Cairo;
 using SimpleVoiceChat.Config;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
@@ -18,13 +17,10 @@ internal enum VoiceSetupStep
 /// First-run audio setup. It is intentionally separate from the settings
 /// workspace so a new player only has to deal with one decision at a time.
 /// </summary>
-public sealed class VoiceSetupWizardDialog : GuiDialog
+public sealed class VoiceSetupWizardDialog : VoiceRmlDialog
 {
     private const double PanelWidth = 560;
     private const double PanelHeight = 430;
-    private const string ComposerKey = "simplevoicechat-setup-wizard";
-    private const string FontAwesomeCloseIcon = "svc-fa-xmark";
-    private static readonly AssetLocation FontAwesomeCloseAsset = new("simplevoicechat", "icons/fontawesome/xmark.svg");
 
     private readonly ClientVoiceController controller;
     private readonly SimpleVoiceChatClientConfig config;
@@ -40,14 +36,6 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
         config = controller.SettingsConfig;
     }
 
-    public override string? ToggleKeyCombinationCode => null;
-    public override EnumDialogType DialogType => EnumDialogType.Dialog;
-    public override double DrawOrder => 0.72;
-    public override double InputOrder => 0.72;
-    public override bool PrefersUngrabbedMouse => true;
-    public override bool DisableMouseGrab => true;
-    public override bool CaptureAllInputs() => true;
-
     public override bool TryOpen()
     {
         step = VoiceSetupStep.Welcome;
@@ -56,36 +44,37 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
         return base.TryOpen();
     }
 
-    public override void OnRenderGUI(float deltaTime)
+    protected override void OnTick(float deltaTime)
     {
+        if (!IsOpened()) return;
         if (frameWidth != capi.Render.FrameWidth || frameHeight != capi.Render.FrameHeight)
         {
             Compose();
         }
-        if (step == VoiceSetupStep.Activation && SingleComposer != null)
+        if (step == VoiceSetupStep.Activation && Form != null)
         {
-            SingleComposer.GetDynamicText("mic-level")?.SetNewText(
+            Form.GetDynamicText("mic-level")?.SetNewText(
                 SVCLang.Get("setup-mic-level", Math.Round(controller.MicrophoneRms * 100f)));
         }
-        base.OnRenderGUI(deltaTime);
+        base.OnTick(deltaTime);
     }
 
-    public override bool OnEscapePressed()
+    protected override bool OnEscape()
     {
         if (step == VoiceSetupStep.Welcome)
         {
-            return base.OnEscapePressed();
+            return base.OnEscape();
         }
 
         MoveBack();
         return true;
     }
 
-    public override void OnGuiClosed()
+    protected override void OnClosed()
     {
         controller.SetSetupMicrophoneMonitoring(false);
         monitoringMicrophone = false;
-        base.OnGuiClosed();
+        base.OnClosed();
     }
 
     private void Compose()
@@ -93,33 +82,17 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
         frameWidth = capi.Render.FrameWidth;
         frameHeight = capi.Render.FrameHeight;
         double panelHeight = step == VoiceSetupStep.Activation ? 460 : step == VoiceSetupStep.Levels ? PanelHeight : 350;
-        ElementBounds root = ElementBounds.Fixed(EnumDialogArea.CenterMiddle, 0, 0, PanelWidth, panelHeight);
-        ElementBounds panelBounds = ElementBounds.Fixed(0, 0, PanelWidth, panelHeight);
-
-        SingleComposer?.Dispose();
-        capi.Gui.Icons.CustomIcons[FontAwesomeCloseIcon] = capi.Gui.Icons.SvgIconSource(FontAwesomeCloseAsset);
-        GuiComposer composer = capi.Gui.CreateCompo(ComposerKey, root)
-            .AddStaticCustomDraw(panelBounds, DrawPanelBackground)
-            .AddInteractiveElement(new VoiceSettingsIconButton(
-                capi,
-                ElementBounds.Fixed(PanelWidth - 42, 10, 28, 28),
-                FontAwesomeCloseIcon,
-                _ => Cancel()), "close");
+        VoiceRmlForm composer = new(capi);
 
         double x = 36;
         double width = PanelWidth - 72;
-        CairoFont titleFont = CairoFont.WhiteSmallishText()
-            .WithFontSize(20)
-            .WithColor(new[] { 0.98, 0.99, 1.0, 1.0 })
-            .WithOrientation(EnumTextOrientation.Center);
-        CairoFont bodyFont = CairoFont.WhiteSmallText()
+        VoiceRmlFont bodyFont = VoiceRmlFont.WhiteSmallText()
             .WithFontSize(14)
             .WithColor(new[] { 0.87, 0.91, 0.96, 1.0 });
-        CairoFont labelFont = CairoFont.WhiteSmallishText()
+        VoiceRmlFont labelFont = VoiceRmlFont.WhiteSmallishText()
             .WithFontSize(15)
             .WithColor(new[] { 0.96, 0.97, 1.0, 1.0 });
 
-        composer.AddStaticText(SVCLang.Get("setup-title"), titleFont, ElementBounds.Fixed(x, 10, width, 30));
         bool shouldMonitor = step == VoiceSetupStep.Activation;
         if (monitoringMicrophone != shouldMonitor)
         {
@@ -147,10 +120,10 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
                 break;
         }
 
-        SingleComposer = composer.Compose();
+        Present(composer, SVCLang.Get("setup-title"), PanelWidth + 40, panelHeight);
     }
 
-    private void ComposeWelcomeStep(GuiComposer composer, double x, double panelY, double width, double panelHeight, CairoFont bodyFont, CairoFont labelFont)
+    private void ComposeWelcomeStep(VoiceRmlForm composer, double x, double panelY, double width, double panelHeight, VoiceRmlFont bodyFont, VoiceRmlFont labelFont)
     {
         composer
             .AddStaticText(SVCLang.Get("setup-welcome-description"), bodyFont, ElementBounds.Fixed(x, panelY + 78, width, 44))
@@ -163,7 +136,7 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
             ElementBounds.Fixed(x + (width + 10) / 2, panelY + panelHeight - 58, (width - 10) / 2, 38), "confirm", primary: true);
     }
 
-    private void ComposeInputStep(GuiComposer composer, double x, double panelY, double width, double panelHeight, CairoFont bodyFont, CairoFont labelFont)
+    private void ComposeInputStep(VoiceRmlForm composer, double x, double panelY, double width, double panelHeight, VoiceRmlFont bodyFont, VoiceRmlFont labelFont)
     {
         string[] values = controller.GetInputDeviceValues();
         string[] names = ClientVoiceController.GetInputDeviceNames(values);
@@ -175,7 +148,7 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
         AddNavigation(composer, x, panelY, width, panelHeight);
     }
 
-    private void ComposeOutputStep(GuiComposer composer, double x, double panelY, double width, double panelHeight, CairoFont bodyFont, CairoFont labelFont)
+    private void ComposeOutputStep(VoiceRmlForm composer, double x, double panelY, double width, double panelHeight, VoiceRmlFont bodyFont, VoiceRmlFont labelFont)
     {
         string[] values = controller.GetOutputDeviceValues();
         string[] names = ClientVoiceController.GetOutputDeviceNames(values);
@@ -187,7 +160,7 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
         AddNavigation(composer, x, panelY, width, panelHeight);
     }
 
-    private void ComposeActivationStep(GuiComposer composer, double x, double panelY, double width, double panelHeight, CairoFont bodyFont, CairoFont labelFont)
+    private void ComposeActivationStep(VoiceRmlForm composer, double x, double panelY, double width, double panelHeight, VoiceRmlFont bodyFont, VoiceRmlFont labelFont)
     {
         bool voiceActivation = config.PreferVoiceActivation;
 
@@ -218,7 +191,7 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
         AddNavigation(composer, x, panelY, width, panelHeight);
     }
 
-    private void ComposeLevelsStep(GuiComposer composer, double x, double panelY, double width, double panelHeight, CairoFont bodyFont, CairoFont labelFont)
+    private void ComposeLevelsStep(VoiceRmlForm composer, double x, double panelY, double width, double panelHeight, VoiceRmlFont bodyFont, VoiceRmlFont labelFont)
     {
         const double sliderX = 170;
         const double sliderWidth = 250;
@@ -235,7 +208,7 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
         AddNavigation(composer, x, panelY, width, panelHeight, SVCLang.Get("button-finish"));
     }
 
-    private void AddNavigation(GuiComposer composer, double x, double panelY, double width, double panelHeight, string? nextText = null)
+    private void AddNavigation(VoiceRmlForm composer, double x, double panelY, double width, double panelHeight, string? nextText = null)
     {
         AddWizardButton(composer, SVCLang.Get("button-back"), MoveBack,
             ElementBounds.Fixed(x, panelY + panelHeight - 58, (width - 10) / 2, 38), "back", primary: false);
@@ -243,7 +216,7 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
             ElementBounds.Fixed(x + (width + 10) / 2, panelY + panelHeight - 58, (width - 10) / 2, 38), "next", primary: true);
     }
 
-    private void AddStepIndicator(GuiComposer composer, double panelX, double panelY, double panelHeight)
+    private void AddStepIndicator(VoiceRmlForm composer, double panelX, double panelY, double panelHeight)
     {
         if (step == VoiceSetupStep.Welcome)
         {
@@ -252,14 +225,14 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
 
         int number = (int)step;
         string text = SVCLang.Get("setup-step", number, 4);
-        CairoFont detail = CairoFont.WhiteSmallText()
+        VoiceRmlFont detail = VoiceRmlFont.WhiteSmallText()
             .WithFontSize(13)
             .WithColor(new[] { 0.72, 0.78, 0.86, 1.0 })
             .WithOrientation(EnumTextOrientation.Right);
         composer.AddStaticText(text, detail, ElementBounds.Fixed(panelX + PanelWidth - 150, panelY + 48, 114, 22));
     }
 
-    private static void AddWizardButton(GuiComposer composer, string text, ActionConsumable action, ElementBounds bounds, string key, bool primary)
+    private static void AddWizardButton(VoiceRmlForm composer, string text, ActionConsumable action, ElementBounds bounds, string key, bool primary)
     {
         composer.AddInteractiveElement(
             new VoiceSettingsTextButton(
@@ -267,12 +240,12 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
                 text,
                 action,
                 bounds,
-                CairoFont.WhiteSmallText().WithFontSize(15).WithColor(new[] { 1.0, 1.0, 1.0, 1.0 }).WithOrientation(EnumTextOrientation.Center),
+                VoiceRmlFont.WhiteSmallText().WithFontSize(15).WithColor(new[] { 1.0, 1.0, 1.0, 1.0 }).WithOrientation(EnumTextOrientation.Center),
                 primary),
             key);
     }
 
-    private static void ConfigureSlider(GuiComposer composer, string key, int value, int minimum, int maximum, string suffix = "")
+    private static void ConfigureSlider(VoiceRmlForm composer, string key, int value, int minimum, int maximum, string suffix = "")
     {
         VoiceSettingsSlider slider = (VoiceSettingsSlider)composer.GetElement(key);
         slider.Configure(value, minimum, maximum, 1, suffix);
@@ -346,15 +319,6 @@ public sealed class VoiceSetupWizardDialog : GuiDialog
         }
     }
 
-    private static void DrawPanelBackground(Context ctx, ImageSurface surface, ElementBounds bounds)
-    {
-        bounds.CalcWorldBounds();
-        GuiElement.RoundRectangle(ctx, bounds.bgDrawX, bounds.bgDrawY, bounds.OuterWidth, bounds.OuterHeight, GuiElement.scaled(4));
-        ctx.SetSourceRGBA(0.015, 0.02, 0.028, 0.84);
-        ctx.FillPreserve();
-        ctx.SetSourceRGBA(0.78, 0.82, 0.9, 0.22);
-        ctx.LineWidth = GuiElement.scaled(1);
-        ctx.Stroke();
-    }
+
 
 }

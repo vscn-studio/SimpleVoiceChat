@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SimpleVoiceChat.csproj" />
+    <Reference Include="VSRmlUi" HintPath="..\..\VintageStory_RmlUi\artifacts\sdk\VSRmlUi.dll" />
     <Reference Include="VintagestoryAPI">
       <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
     </Reference>

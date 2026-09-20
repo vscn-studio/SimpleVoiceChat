@@ -1,0 +1,69 @@
+body { width: 100%; height: 100%; margin: 0; font-family: vsrmlui-default; font-size: 14dp; line-height: 20dp; color: #eeeeee; pointer-events: none; }
+div { display: block; box-sizing: border-box; }
+.window { position: absolute; left: 0; right: 0; top: 0; bottom: 0; margin: auto; max-width: 98%; max-height: 96%; background-color: #242424; border: 1dp #555555; border-radius: 8dp; pointer-events: auto; }
+#window-header { height: 44dp; cursor: move; }
+#window-title { display: block; padding: 10dp 48dp 0dp; text-align: center; font-size: 20dp; font-weight: bold; }
+button, input, select { box-sizing: border-box; font-family: vsrmlui-default; font-size: 14dp; line-height: 20dp; color: #eeeeee; background-color: #303030; border: 1dp #52545a; border-radius: 4dp; padding: 5dp 8dp; }
+button { display: flex; align-items: center; justify-content: center; cursor: pointer; text-align: center; border-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+button > span { pointer-events: none; }
+.button-label { display: block; width: 100%; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+button:hover, button:focus, input:focus, select:hover, select:focus { background-color: #414141; }
+button:active { background-color: #585858; }
+button.primary { background-color: #365f9b; }
+button.primary:hover, button.primary:focus { background-color: #4575b9; }
+button:disabled, input:disabled, select:disabled { color: #777777; background-color: #303030; cursor: default; }
+.close { position: absolute; right: 10dp; top: 8dp; width: 28dp; height: 28dp; font-size: 22dp; background-color: transparent; padding: 0; }
+#content { position: absolute; left: 20dp; right: 20dp; top: 54dp; bottom: 14dp; overflow: auto; }
+#form { position: relative; width: 100%; }
+.text { overflow: hidden; pointer-events: none; word-break: break-all; }
+.card { background-color: #303034; border: 1dp #414141; border-radius: 4dp; pointer-events: none; }
+.overlay-panel { background-color: #292929; border: 1dp #555555; border-radius: 8dp; pointer-events: none; }
+.icon { font-family: svc-tabler; font-size: 20dp; line-height: 20dp; pointer-events: none; }
+.icon-button { padding: 6dp; }
+.image-button { padding: 5dp; }
+.image-button img { width: auto; max-width: 100%; height: 100%; pointer-events: none; }
+.check { padding: 0; }
+.check:checked { background-color: #365f9b; }
+.check-glyph { position: absolute; visibility: hidden; width: 20dp; height: 20dp; }
+.check:checked + .check-glyph { visibility: visible; }
+.select-chevron { position: absolute; width: 20dp; height: 20dp; }
+select { padding-right: 30dp; }
+.slider-field { display: flex; align-items: center; }
+.slider-field .range { flex: 1; min-width: 0; height: 24dp; }
+.slider-value { width: 60dp; text-align: right; flex-shrink: 0; }
+.thresholds .meter { height: 6dp; background-color: #151515; }
+.meter-fill { height: 100%; background-color: #71bd98; }
+.threshold-row { display: flex; align-items: center; height: 26dp; }
+.threshold-row > span { width: 140dp; font-size: 12dp; }
+.threshold-row .range { flex: 1; min-width: 0; height: 20dp; }
+.threshold-row .threshold-value { width: 48dp; text-align: right; }
+selectvalue { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+selectarrow { display: none; }
+selectbox { background-color: #303030; border: 1dp #777777; border-radius: 4dp; max-height: 240dp; overflow-y: auto; }
+option { padding: 6dp 8dp; line-height: 20dp; }
+option:hover { background-color: #505050; }
+option:checked { background-color: #b9d7ff38; color: #e4efff; }
+scrollbarvertical { width: 12dp; }
+scrollbarhorizontal { height: 12dp; }
+scrollbarvertical slidertrack, scrollbarhorizontal slidertrack { background-color: #292929; }
+scrollbarvertical sliderbar, scrollbarhorizontal sliderbar { background-color: #666666; border-radius: 4dp; }
+scrollbarvertical sliderbar { min-height: 24dp; }
+scrollbarhorizontal sliderbar { min-width: 24dp; }
+.hud { position: absolute; width: 386dp; height: 92dp; padding: 10dp 12dp; border-radius: 8dp; background-color: #05050557; border-width: 0; }
+.hud-icon { position: absolute; left: 12dp; top: 19dp; width: auto; max-width: 54dp; height: 54dp; }
+.hud-info { margin-left: 68dp; }
+.hud-status { color: #b8ffca; font-weight: bold; }
+.hud-mode { font-size: 12dp; }
+.hud-volume { display: block; width: 242dp; height: 28dp; margin-top: 4dp; }
+.invite { position: absolute; width: 380dp; padding: 14dp; background-color: #242424ee; border-width: 0; border-radius: 8dp; pointer-events: auto; }
+.invite-title { font-size: 16dp; font-weight: bold; margin-bottom: 6dp; }
+.invite-detail { font-size: 12dp; line-height: 20dp; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.invite-actions { display: flex; margin-top: 12dp; }
+.invite-actions button { flex: 1; height: 34dp; padding: 5dp; font-size: 12dp; }
+.invite-actions button:first-child { margin-right: 8dp; }
+.drag-handle { position: absolute; border: 2dp #80baff; background-color: #80baff18; pointer-events: auto; cursor: move; }
+.position-help { position: absolute; left: 0; right: 0; bottom: 18dp; margin: auto; width: 260dp; height: 40dp; pointer-events: auto; }
+.overlay-host { background-color: transparent; border-width: 0; pointer-events: none; }
+.overlay-host #window-header, .overlay-host #window-close { display: none; }
+.overlay-host #content { top: 0; bottom: 0; }
+.overlay-host button, .overlay-host input, .overlay-host select, .overlay-host .overlay-panel { pointer-events: auto; }

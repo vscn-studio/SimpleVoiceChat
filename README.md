@@ -2,9 +2,9 @@
 
 Copyright © 2026 VSCN-Studio. `HansJack` is the founder of the VSCN-Studio team. See [LICENSE](LICENSE) for the project license.
 
-SimpleVoiceChat `1.2.7-pre.3` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, server-hosted multi-track recording, moderation, optional speech-to-chat, and optional VS Director capture. The separate `SimpleVoiceChatASR` client package supplies Whisper runtime dependencies for local speech-to-chat.
+SimpleVoiceChat `1.2.7` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, server-hosted multi-track recording, moderation, optional speech-to-chat, and optional VS Director capture. The separate `SimpleVoiceChatASR` client package supplies Whisper runtime dependencies for local speech-to-chat.
 
-SimpleVoiceChat `1.2.7-pre.3` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、服务器托管多人分轨录音、管理功能、可选语音转文字以及可选 VS Director 录制集成。`SimpleVoiceChatASR` 客户端依赖包只提供本地语音识别所需的 Whisper 运行时文件。
+SimpleVoiceChat `1.2.7` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、服务器托管多人分轨录音、管理功能、可选语音转文字以及可选 VS Director 录制集成。`SimpleVoiceChatASR` 客户端依赖包只提供本地语音识别所需的 Whisper 运行时文件。
 
 - [中文说明](#中文说明)
 - [English](#english)
@@ -31,10 +31,13 @@ SimpleVoiceChat `1.2.7-pre.3` 是适用于 Vintage Story `1.22.3` 的客户端/�
 
 1. 关闭 Vintage Story 客户端和服务器。
 2. 删除 `Mods` 目录中的旧版 SimpleVoiceChat 压缩包，避免同时加载多个版本。
-3. 将 `SimpleVoiceChat-v1.2.7-pre.3.zip` 原样放入客户端和服务器的 `Mods` 目录，不要解压模组包。
-4. 启动服务器，然后启动客户端。首次按 `'` 会打开设置向导。
+3. 将 `SimpleVoiceChat-v1.2.7.zip` 原样放入客户端和服务器的 `Mods` 目录，不要解压模组包。
+4. 在客户端和服务器的 `Mods` 目录同时安装 `VSRmlUi (vsrmlui) 1.0.1` 或更新兼容版本。
+5. 启动服务器，然后启动客户端。首次按 `'` 会打开设置向导。
 
-SimpleVoiceChat 不依赖 Simple Voice Chat、VS Director 或 `SimpleVoiceChat_VSDirectorIntegration` 等其他模组。单独安装即可使用基本语音功能。
+SimpleVoiceChat 的设置、向导、邀请和 HUD 使用 RmlUi，需安装 `vsrmlui` 前置。VS Director 仅为可选集成与界面样式参考，无需安装。
+
+主页保留原有快捷操作和窗口入口；设置、语音识别、频道、管理及详情按原有层级切换。只显示当前窗口的内容，关闭详情返回上一层，关闭设置页返回主页。
 
 ### 默认快捷键
 
@@ -77,7 +80,7 @@ voiceChat.ClientSettingsExtensions.RegisterControl(
         order: 100));
 ```
 
-也可以注册与主窗口风格一致的独立扩展窗口。窗口由 SimpleVoiceChat 居中显示，提供标题、关闭按钮、内容裁剪和 4px 圆角背景；扩展按钮和其他控件保持直角。第三方模组只负责在 `Compose` 回调中添加内容：
+也可以注册与主窗口风格一致的独立扩展窗口。窗口由 SimpleVoiceChat 居中显示，提供标题、关闭按钮、可滚动内容区及与 VS Director 一致的深色圆角样式。第三方模组只负责在 `Compose` 回调中添加内容：
 
 ```csharp
 voiceChat.ClientSettingsExtensions.RegisterWindow(
@@ -86,17 +89,19 @@ voiceChat.ClientSettingsExtensions.RegisterWindow(
         "Example",
         context => context.Composer.AddStaticText(
             "Content",
-            CairoFont.WhiteSmallText(),
+            VoiceRmlFont.WhiteSmallText(),
             ElementBounds.Fixed(0, 0, context.ContentWidth, 30))));
 
 voiceChat.ClientSettingsExtensions.ShowWindow("example.window");
 ```
 
+自定义控件的 `Compose` 参数及窗口上下文的 `Composer` 现为 `SimpleVoiceChat.Gui.VoiceRmlForm`，不再使用 `GuiComposer`；已有自定义扩展需重新编译并迁移到 RML。可调用 `AddMarkup` 添加 RML，并用 `BindElement` 返回事件订阅；订阅会随表单刷新释放。文字按钮和图片按钮的注册方式保持一致。
+
 上述 API 仅在客户端可用；注册 ID 只能包含字母、数字、`.`、`_` 和 `-`。关闭主设置窗口时，已打开的扩展窗口也会被释放。
 
 ### 语音转文字
 
-打开 SimpleVoiceChat 设置主页，点击“语音识别”进入配置窗口。启用后按住 `V` 录音，松开后将识别文字发送到当前聊天频道。客户端需要额外安装 `SimpleVoiceChatASR`，它只提供 Whisper.net 运行时依赖；模型文件仍需玩家自行下载并在主模组配置窗口中填写路径。
+打开 SimpleVoiceChat 主页，点击“语音识别”进入配置窗口。启用后按住 `V` 录音，松开后将识别文字发送到当前聊天频道。客户端需要额外安装 `SimpleVoiceChatASR`，它只提供 Whisper.net 运行时依赖；模型文件仍需玩家自行下载并在主模组配置窗口中填写路径。
 
 ### 频道和录音
 
@@ -235,10 +240,11 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 
 1. Stop the Vintage Story client and server.
 2. Remove older SimpleVoiceChat archives from each `Mods` directory so that only one version can load.
-3. Place `SimpleVoiceChat-v1.2.7-pre.3.zip` unchanged in the client and server `Mods` directories. Do not extract the mod archive.
-4. Start the server and client. Press `'` to open the first-run setup wizard.
+3. Place `SimpleVoiceChat-v1.2.7.zip` unchanged in the client and server `Mods` directories. Do not extract the mod archive.
+4. Install `VSRmlUi (vsrmlui) 1.0.1` or a newer compatible version in both client and server `Mods` directories.
+5. Start the server and client. Press `'` to open the first-run setup wizard.
 
-SimpleVoiceChat does not require Simple Voice Chat, VS Director, or `SimpleVoiceChat_VSDirectorIntegration`. The base voice features work with this package alone.
+Settings, setup, invitations, and the HUD require the `vsrmlui` mod. VS Director remains an optional integration and visual reference, not a dependency.
 
 ### Default Keys
 
@@ -257,7 +263,7 @@ Bindings can be changed in Vintage Story's game key settings.
 
 ### Main-window extensions (client API)
 
-Client-side mods can register buttons or custom controls through `SimpleVoiceChatModSystem.ClientSettingsExtensions`. They appear below the home-page quick-control row that contains the HUD visibility button. Controls are sorted by `Order`, sized from `PreferredWidth` and the measured button text, and wrapped to new rows when the available width is full. The home page is capped at 650px; additional rows are scrollable with the mouse wheel so controls cannot overlap or extend outside the window. `IsVisible` can be changed at runtime.
+Client-side mods can register buttons or custom controls through `SimpleVoiceChatModSystem.ClientSettingsExtensions`. They appear below the home-page quick-control row that contains the HUD visibility button. Controls are sorted by `Order`, sized from `PreferredWidth` and the measured button text, and wrapped to new rows when the available width is full. The settings window fits the viewport; additional rows are scrollable with the mouse wheel. `IsVisible` can be changed at runtime.
 
 ```csharp
 var voiceChat = api.ModLoader.GetModSystem<SimpleVoiceChatModSystem>();
@@ -270,7 +276,7 @@ voiceChat.ClientSettingsExtensions.RegisterButton(
         preferredWidth: 160));
 ```
 
-Mods may also register an independently opened window. SimpleVoiceChat supplies the centered panel, title, close button, clipping, and the same 4px rounded background; extension buttons and other controls remain square, and the mod only composes the content:
+Mods may also register an independently opened window. SimpleVoiceChat supplies a centered RmlUi panel, title, close button, scrolling content, and dark rounded controls styled after VS Director. The extension supplies the content:
 
 ```csharp
 voiceChat.ClientSettingsExtensions.RegisterWindow(
@@ -279,7 +285,7 @@ voiceChat.ClientSettingsExtensions.RegisterWindow(
         "Example",
         context => context.Composer.AddStaticText(
             "Content",
-            CairoFont.WhiteSmallText(),
+            VoiceRmlFont.WhiteSmallText(),
             ElementBounds.Fixed(0, 0, context.ContentWidth, 30))));
 
 voiceChat.ClientSettingsExtensions.ShowWindow("example.window");
@@ -289,7 +295,7 @@ These APIs are client-only. Registration IDs may contain letters, digits, `.`, `
 
 ### Speech-to-Chat
 
-Open the Speech Recognition button on the SimpleVoiceChat home page to configure the provider and model. When enabled, hold `V` to record and release it to transcribe and send text to the active chat channel. Install the separate client-only `SimpleVoiceChatASR` package for Whisper.net managed and native runtime dependencies; the main mod owns the configuration window and recognition workflow.
+Open Speech Recognition from the SimpleVoiceChat home page to configure the provider and model. When enabled, hold `V` to record and release it to transcribe and send text to the active chat channel. Install the separate client-only `SimpleVoiceChatASR` package for Whisper.net managed and native runtime dependencies; the main mod owns the configuration window and recognition workflow.
 
 ### Channels and Recording
 
@@ -407,3 +413,22 @@ dotnet build SimpleVoiceChat.csproj -c Release
 ```
 
 The release is written to `bin\Release\Mods\mod`. Install `SimpleVoiceChatASR` on clients that use local Whisper; it supplies dependencies only and does not add a second settings button.
+
+### RmlUi development and validation
+
+Build against `../VintageStory_RmlUi/artifacts/sdk/VSRmlUi.dll`, or set `-p:RmlUiSdkPath=<path>`.
+The reference is not copied into the mod: install the RmlUi mod separately on both sides.
+All UI runs on the client thread; the server continues to use the existing voice services.
+
+Custom extensions now compose with `SimpleVoiceChat.Gui.VoiceRmlForm` instead of `GuiComposer` and must be rebuilt.
+Use `AddMarkup` for RML and `BindElement` to return an event subscription, which is released on form refresh.
+Existing text/image button registration signatures are unchanged. PNG assets are preserved; former SVG controls use bundled Tabler icons.
+
+```powershell
+dotnet build SimpleVoiceChat.csproj
+dotnet test Tests/SimpleVoiceChat.Tests.csproj
+dotnet run --project Tools/RmlHarness/RmlHarness.csproj
+```
+
+The native harness requires the adjacent game and RmlUi SDK/native build. It opens a hidden OpenGL window,
+checks real RML controls, layout, input, and disposal, and saves previews under `artifacts/rml-*.png`, including channel and player windows and full-screen/cropped HUD images.

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- The RmlUi SDK exposes its native test host to this friend assembly. -->
+    <AssemblyName>VSRmlUi.Tests</AssemblyName>
+    <GameDirectory>$(MSBuildThisFileDirectory)..\..\..\Vintagestory</GameDirectory>
+    <RmlUiDirectory>$(MSBuildThisFileDirectory)..\..\..\VintageStory_RmlUi</RmlUiDirectory>
+    <NativeRid>$(NETCoreSdkRuntimeIdentifier)</NativeRid>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\SimpleVoiceChat.csproj" />
+    <Reference Include="VSRmlUi" HintPath="$(RmlUiDirectory)\artifacts\sdk\VSRmlUi.dll" />
+    <Reference Include="VintagestoryAPI" HintPath="$(GameDirectory)\VintagestoryAPI.dll" />
+    <Reference Include="VintagestoryLib" HintPath="$(GameDirectory)\VintagestoryLib.dll" />
+    <Reference Include="SkiaSharp" HintPath="$(GameDirectory)\Lib\SkiaSharp.dll" />
+    <Reference Include="$(GameDirectory)\Lib\OpenTK*.dll" />
+    <None Include="$(GameDirectory)/Lib/glfw3.dll;$(GameDirectory)/Lib/libglfw*.so*;$(GameDirectory)/Lib/libglfw*.dylib;$(GameDirectory)/Lib/libSkiaSharp*" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+    <None Include="$(RmlUiDirectory)/artifacts/native/$(NativeRid)/*vsrmlui_native*" CopyToOutputDirectory="PreserveNewest" Link="native/$(NativeRid)/%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

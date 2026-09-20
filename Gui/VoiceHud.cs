@@ -1,377 +1,59 @@
-using Cairo;
 using Vintagestory.API.Client;
-using Vintagestory.API.Common;
-using Vintagestory.API.Config;
+using VSRmlUi;
 
 namespace SimpleVoiceChat.Gui;
 
-public sealed class VoiceHud : HudElement
+public sealed class VoiceHud : VoiceRmlDialog
 {
-    private const int VolumeFrameCount = 40;
-    private const double VolumeImageWidth = 242;
-    private const double VolumeImageHeight = 28;
-
-    private static readonly AssetLocation MutedIcon = new("simplevoicechat", "gui/svc_mic_muted.png");
-    private static readonly AssetLocation WhisperingIcon = new("simplevoicechat", "gui/svc_whispering.png");
-    private static readonly AssetLocation TalkingIcon = new("simplevoicechat", "gui/svc_talking.png");
-    private static readonly AssetLocation VoiceDisabledIcon = new("simplevoicechat", "gui/svc_voice_disabled.png");
-    private static readonly AssetLocation ChannelSpeakingIcon = new("simplevoicechat", "gui/phone-volume-solid.png");
-
     private readonly Func<VoiceHudSnapshot> snapshotProvider;
     private readonly Func<bool> shouldShowProvider;
     private readonly Func<(int X, int Y)> positionProvider;
     private bool positionEditing;
-    private VoiceHudSnapshot lastSnapshot;
-    private ImageSurface? mutedSurface;
-    private ImageSurface? whisperingSurface;
-    private ImageSurface? talkingSurface;
-    private ImageSurface? voiceDisabledSurface;
-    private ImageSurface? channelSpeakingSurface;
-    private readonly ImageSurface?[] volumeSurfaces = new ImageSurface?[VolumeFrameCount + 1];
-    private long lastUpdateMs;
-    public override double DrawOrder => 0.09;
-    public double ReservedHeight => shouldShowProvider() ? CalculateHudHeight(lastSnapshot) + 18 : 0;
-
-    public VoiceHud(ICoreClientAPI capi, Func<VoiceHudSnapshot> snapshotProvider, Func<bool> shouldShowProvider, Func<(int X, int Y)>? positionProvider = null)
-        : base(capi)
+    public double ReservedHeight => IsOpened() ? (Document!.GetElementById("voice-hud")!.Bounds.Height / Document.Viewport.Scale) + 18 : 0;
+    protected override RmlDocumentOptions Options => new()
     {
-        this.snapshotProvider = snapshotProvider;
-        this.shouldShowProvider = shouldShowProvider;
+        Mode = RmlWindowMode.Hud, DrawOrder = .09, CloseOnEscape = false, FocusOnOpen = false,
+        Input = new() { ReceiveMouse = false, ReceiveKeyboard = false, UnlockMouse = false }
+    };
+    public VoiceHud(ICoreClientAPI api, Func<VoiceHudSnapshot> snapshotProvider, Func<bool> shouldShowProvider, Func<(int X, int Y)>? positionProvider = null) : base(api)
+    {
+        this.snapshotProvider = snapshotProvider; this.shouldShowProvider = shouldShowProvider;
         this.positionProvider = positionProvider ?? (() => (0, 0));
-        Compose();
     }
-
-    public override void OnOwnPlayerDataReceived()
-    {
-        Compose();
-        if (shouldShowProvider())
-        {
-            TryOpen();
-        }
-    }
-
-    public override void OnRenderGUI(float deltaTime)
-    {
-        if (capi.World.Player?.Entity != null && capi.ElapsedMilliseconds - lastUpdateMs > 80)
-        {
-            lastUpdateMs = capi.ElapsedMilliseconds;
-            Refresh();
-        }
-
-        base.OnRenderGUI(deltaTime);
-    }
-
+    protected override void OnTick(float dt) => Refresh();
     public void Refresh()
     {
-        if (!shouldShowProvider() && !positionEditing)
+        if (!shouldShowProvider() && !positionEditing) { TryClose(); return; }
+        if (Document is null)
+            Load("<div id='voice-hud' class='hud'><img id='hud-icon' class='hud-icon'/><div class='hud-info'><div id='hud-status' class='hud-status'></div><div id='hud-mode' class='hud-mode'></div><img id='hud-volume' class='hud-volume'/></div></div>", "hud");
+        if (Document!.IsDisposed) return;
+        var snapshot = snapshotProvider();
+        string icon = snapshot.IconState switch
         {
-            TryClose();
-            return;
-        }
-
-        if (!IsOpened())
-        {
-            TryOpen();
-        }
-
-        VoiceHudSnapshot next = snapshotProvider();
-        if (SnapshotEquals(next, lastSnapshot))
-        {
-            return;
-        }
-
-        bool relayout = GetChannelLineCount(next) != GetChannelLineCount(lastSnapshot);
-        lastSnapshot = next;
-        if (relayout)
-        {
-            Compose();
-            TryOpen();
-            return;
-        }
-
-        SingleComposer?.GetCustomDraw("hud")?.Redraw();
+            VoiceHudIconState.Muted => "svc_mic_muted", VoiceHudIconState.Whispering => "svc_whispering",
+            VoiceHudIconState.Talking => "svc_talking", _ => "svc_voice_disabled"
+        };
+        Document.GetElementById("hud-icon")!.SetAttribute("src", "simplevoicechat:textures/gui/" + icon + ".png");
+        Document.GetElementById("hud-status")!.Text = snapshot.Status;
+        Document.GetElementById("hud-mode")!.Text = snapshot.Mode;
+        Document.GetElementById("hud-volume")!.SetAttribute("src", $"simplevoicechat:textures/gui/volume/volume-{(int)Math.Round(Math.Clamp(snapshot.VoiceLevel, 0, 1) * 40):00}.png");
+        RefreshLayout();
+        if (!IsOpened()) TryOpen();
     }
-
     public void RefreshLayout()
     {
-        Compose();
-        if (shouldShowProvider() || positionEditing) TryOpen();
+        if (Document is not { IsDisposed: false }) return;
+        var (x, y) = positionProvider();
+        var hud = Document.GetElementById("voice-hud")!;
+        hud.SetProperty("right", N(18 - x) + "dp"); hud.SetProperty("bottom", N(34 - y) + "dp");
     }
-
-    public void BeginPositionEditing()
-    {
-        positionEditing = true;
-        Compose();
-        TryOpen();
-    }
-
-    public void EndPositionEditing()
-    {
-        positionEditing = false;
-        Refresh();
-    }
-
+    public void BeginPositionEditing() { positionEditing = true; Refresh(); }
+    public void EndPositionEditing() { positionEditing = false; Refresh(); }
     public bool TryGetInteractionBounds(out double x, out double y, out double width, out double height)
     {
-        if (!IsOpened() || SingleComposer == null)
-        {
-            x = y = width = height = 0;
-            return false;
-        }
-
-        ElementBounds bounds = SingleComposer.Bounds;
-        x = bounds.renderX;
-        y = bounds.renderY;
-        width = bounds.OuterWidth;
-        height = bounds.OuterHeight;
-        return width > 0 && height > 0;
-    }
-
-    private void Compose()
-    {
-        lastSnapshot = snapshotProvider();
-        double width = 386;
-        double height = CalculateHudHeight(lastSnapshot);
-        (int offsetX, int offsetY) = positionProvider();
-        ElementBounds bounds = ElementBounds.Fixed(EnumDialogArea.RightBottom, -18 + offsetX, -34 - height + offsetY, width, height);
-        ElementBounds drawBounds = ElementBounds.Fixed(0, 0, width, height);
-        SingleComposer = capi.Gui.CreateCompo("simplevoicechat-hud", bounds)
-            .AddDynamicCustomDraw(drawBounds, DrawHud, "hud")
-            .Compose();
-    }
-
-    private void DrawHud(Context ctx, ImageSurface surface, ElementBounds bounds)
-    {
-        VoiceHudSnapshot snapshot = lastSnapshot;
-        double width = bounds.OuterWidth;
-        double height = bounds.OuterHeight;
-        double pad = GuiElement.scaled(8);
-        double iconHeight = GuiElement.scaled(54);
-        double iconSlotWidth = GuiElement.scaled(64);
-
-        ctx.SetSourceRGBA(0.02, 0.02, 0.02, 0.34);
-        GuiElement.RoundRectangle(ctx, 0, 0, width, height, GuiElement.scaled(8));
-        ctx.Fill();
-
-        DrawIcon(ctx, snapshot.IconState, pad, GuiElement.scaled(20), iconHeight, iconSlotWidth);
-
-        double textX = pad + iconSlotWidth + GuiElement.scaled(10);
-        double statusY = GuiElement.scaled(22);
-        DrawText(ctx, snapshot.Status, textX, statusY, 16, snapshot.MicrophoneEnabled ? new[] { 0.72, 1.0, 0.78, 1.0 } : new[] { 1.0, 0.62, 0.58, 1.0 }, bold: true);
-        DrawText(ctx, snapshot.Mode, textX, statusY + GuiElement.scaled(18), 13, new[] { 0.98, 0.94, 0.82, 0.96 }, bold: true);
-        DrawText(ctx, snapshot.Detail, textX, statusY + GuiElement.scaled(33), 12, new[] { 0.88, 0.91, 0.94, 0.94 }, bold: true);
-
-        double barX = textX;
-        double barY = GuiElement.scaled(72);
-        DrawVolumeImage(ctx, barX, barY - GuiElement.scaled(2), snapshot.VoiceLevel);
-
-        DrawChannelMembers(ctx, snapshot, textX, GuiElement.scaled(112), width - textX - pad);
-    }
-
-    private void DrawIcon(Context ctx, VoiceHudIconState iconState, double x, double y, double height, double slotWidth)
-    {
-        ImageSurface iconSurface = GetIconSurface(iconState);
-        double scale = height / iconSurface.Height;
-        double width = iconSurface.Width * scale;
-        ctx.Save();
-        ctx.Translate(x + Math.Max(0, (slotWidth - width) * 0.5), y);
-        ctx.Scale(scale, scale);
-        ctx.SetSourceSurface(iconSurface, 0, 0);
-        ctx.Rectangle(0, 0, iconSurface.Width, iconSurface.Height);
-        ctx.Fill();
-        ctx.Restore();
-    }
-
-    private ImageSurface GetIconSurface(VoiceHudIconState iconState)
-    {
-        return iconState switch
-        {
-            VoiceHudIconState.Whispering => whisperingSurface ??= GuiElement.getImageSurfaceFromAsset(capi, WhisperingIcon),
-            VoiceHudIconState.Talking => talkingSurface ??= GuiElement.getImageSurfaceFromAsset(capi, TalkingIcon),
-            VoiceHudIconState.VoiceDisabled => voiceDisabledSurface ??= GuiElement.getImageSurfaceFromAsset(capi, VoiceDisabledIcon),
-            _ => mutedSurface ??= GuiElement.getImageSurfaceFromAsset(capi, MutedIcon)
-        };
-    }
-
-    private ImageSurface GetChannelSpeakingSurface()
-    {
-        return channelSpeakingSurface ??= GuiElement.getImageSurfaceFromAsset(capi, ChannelSpeakingIcon);
-    }
-
-    private ImageSurface GetVolumeSurface(int frame)
-    {
-        frame = Math.Clamp(frame, 0, VolumeFrameCount);
-        return volumeSurfaces[frame] ??= GuiElement.getImageSurfaceFromAsset(capi, new AssetLocation("simplevoicechat", $"gui/volume/volume-{frame:00}.png"));
-    }
-
-    private static void DrawText(Context ctx, string text, double x, double y, double fontSize, double[] color, bool bold)
-    {
-        CairoFont font = (bold ? CairoFont.WhiteSmallText().WithWeight(FontWeight.Bold) : CairoFont.WhiteSmallText())
-            .WithFontSize((float)fontSize);
-        ctx.Save();
-        font.WithColor(new[] { 0.0, 0.0, 0.0, 0.72 }).SetupContext(ctx);
-        ctx.SetSourceRGBA(0, 0, 0, 0.72);
-        ctx.MoveTo(x + GuiElement.scaled(1), y + GuiElement.scaled(1));
-        ctx.ShowText(text);
-        font.WithColor(color).SetupContext(ctx);
-        ctx.SetSourceRGBA(color[0], color[1], color[2], color[3]);
-        ctx.MoveTo(x, y);
-        ctx.ShowText(text);
-        ctx.Restore();
-    }
-
-    private void DrawVolumeImage(Context ctx, double x, double y, float level)
-    {
-        int frame = Math.Clamp((int)Math.Ceiling(Math.Clamp(level, 0f, 1f) * VolumeFrameCount), 0, VolumeFrameCount);
-        DrawImage(ctx, GetVolumeSurface(frame), Math.Round(x), Math.Round(y), GuiElement.scaled(VolumeImageWidth), GuiElement.scaled(VolumeImageHeight));
-    }
-
-    private void DrawChannelMembers(Context ctx, VoiceHudSnapshot snapshot, double x, double y, double maxWidth)
-    {
-        if (snapshot.ChannelMembers.Length == 0)
-        {
-            return;
-        }
-
-        double cursorX = x;
-        double cursorY = y;
-        double rowHeight = GuiElement.scaled(17);
-        double gap = GuiElement.scaled(10);
-        double iconSize = GuiElement.scaled(11);
-        ImageSurface icon = GetChannelSpeakingSurface();
-
-        foreach (VoiceHudChannelMember member in snapshot.ChannelMembers)
-        {
-            string name = member.Name;
-            double textWidth = MeasureText(ctx, name, 11, bold: true);
-            double itemWidth = iconSize + GuiElement.scaled(4) + textWidth + gap;
-            if (cursorX > x && cursorX + itemWidth > x + maxWidth)
-            {
-                cursorX = x;
-                cursorY += rowHeight;
-            }
-
-            if (member.Speaking)
-            {
-                DrawImage(ctx, icon, cursorX, cursorY - GuiElement.scaled(10), iconSize, iconSize);
-            }
-            else
-            {
-                DrawSmallStatusDot(ctx, cursorX + iconSize * 0.5, cursorY - GuiElement.scaled(5), GuiElement.scaled(3), 0.38, 0.42, 0.45, 0.72);
-            }
-
-            DrawText(ctx, name, cursorX + iconSize + GuiElement.scaled(4), cursorY, 11, member.Speaking ? new[] { 0.62, 1.0, 0.68, 0.96 } : new[] { 0.68, 0.72, 0.76, 0.78 }, bold: true);
-            cursorX += itemWidth;
-        }
-    }
-
-    private static void DrawImage(Context ctx, ImageSurface icon, double x, double y, double width, double height)
-    {
-        ctx.Save();
-        ctx.Translate(x, y);
-        ctx.Scale(width / icon.Width, height / icon.Height);
-        ctx.SetSourceSurface(icon, 0, 0);
-        ctx.Rectangle(0, 0, icon.Width, icon.Height);
-        ctx.Fill();
-        ctx.Restore();
-    }
-
-    private static void DrawSmallStatusDot(Context ctx, double x, double y, double radius, double r, double g, double b, double a)
-    {
-        ctx.Save();
-        ctx.SetSourceRGBA(r, g, b, a);
-        ctx.Arc(x, y, radius, 0, Math.PI * 2);
-        ctx.Fill();
-        ctx.Restore();
-    }
-
-    private static double MeasureText(Context ctx, string text, double fontSize, bool bold)
-    {
-        CairoFont font = (bold ? CairoFont.WhiteSmallText().WithWeight(FontWeight.Bold) : CairoFont.WhiteSmallText())
-            .WithFontSize((float)fontSize);
-        ctx.Save();
-        font.SetupContext(ctx);
-        TextExtents extents = font.GetTextExtents(text);
-        ctx.Restore();
-        return extents.Width;
-    }
-
-    private static double CalculateHudHeight(VoiceHudSnapshot snapshot)
-    {
-        return 110 + GetChannelLineCount(snapshot) * 17;
-    }
-
-    private static int GetChannelLineCount(VoiceHudSnapshot snapshot)
-    {
-        if (snapshot.ChannelMembers.Length == 0)
-        {
-            return 0;
-        }
-
-        int lines = 1;
-        int cursor = 0;
-        foreach (VoiceHudChannelMember member in snapshot.ChannelMembers)
-        {
-            int width = Math.Min(14, member.Name.Length) + 3;
-            if (cursor > 0 && cursor + width > 24)
-            {
-                lines++;
-                cursor = 0;
-            }
-
-            cursor += width;
-        }
-
-        return Math.Clamp(lines, 1, 4);
-    }
-
-    private static bool SnapshotEquals(VoiceHudSnapshot left, VoiceHudSnapshot right)
-    {
-        return left.MicrophoneEnabled == right.MicrophoneEnabled
-            && left.IconState == right.IconState
-            && left.Speaking == right.Speaking
-            && Math.Abs(left.VoiceLevel - right.VoiceLevel) < 0.01f
-            && left.Status == right.Status
-            && left.Mode == right.Mode
-            && left.Detail == right.Detail
-            && ChannelMembersEqual(left.ChannelMembers, right.ChannelMembers);
-    }
-
-    private static bool ChannelMembersEqual(VoiceHudChannelMember[] left, VoiceHudChannelMember[] right)
-    {
-        if (left.Length != right.Length)
-        {
-            return false;
-        }
-
-        for (int i = 0; i < left.Length; i++)
-        {
-            if (left[i].Name != right[i].Name || left[i].Speaking != right[i].Speaking)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    public override void Dispose()
-    {
-        mutedSurface?.Dispose();
-        whisperingSurface?.Dispose();
-        talkingSurface?.Dispose();
-        voiceDisabledSurface?.Dispose();
-        channelSpeakingSurface?.Dispose();
-        foreach (ImageSurface? surface in volumeSurfaces)
-        {
-            surface?.Dispose();
-        }
-
-        mutedSurface = null;
-        whisperingSurface = null;
-        talkingSurface = null;
-        voiceDisabledSurface = null;
-        channelSpeakingSurface = null;
-        base.Dispose();
+        x = y = width = height = 0;
+        if (!IsOpened()) return false;
+        var b = Document!.GetElementById("voice-hud")!.Bounds;
+        x = b.X; y = b.Y; width = b.Width; height = b.Height; return true;
     }
 }

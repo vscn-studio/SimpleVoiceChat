@@ -280,7 +280,6 @@ public sealed class ClientVoiceController : IDisposable
         };
 
         hud = new VoiceHud(capi, BuildHudSnapshot, ShouldShowHud, () => (config.VoiceHudOffsetX, config.VoiceHudOffsetY));
-        capi.Gui.RegisterDialog(hud);
         settingsDialog = new VoiceSettingsDialog(capi, this, settingsExtensions);
         setupWizard = new VoiceSetupWizardDialog(capi, this);
         inviteDialog = new VoiceInviteDialog(
@@ -293,7 +292,6 @@ public sealed class ClientVoiceController : IDisposable
             () => FormatHotkey(VoiceConstants.AcceptChannelInviteHotKey, "Ctrl+F8"),
             () => FormatHotkey(VoiceConstants.DeclineChannelInviteHotKey, "F7"));
         hudPositionDialog = new VoiceHudPositionDialog(capi, config, hud, inviteDialog, SetHudPositionFromSettings, SetHudPositionEditingState);
-        capi.Gui.RegisterDialog(hudPositionDialog);
         hud.Refresh();
         ShowInitialSetupPrompt();
 
@@ -767,7 +765,7 @@ public sealed class ClientVoiceController : IDisposable
         controlChannel.SendPacket(new VoiceHelloPacket
         {
             ProtocolVersion = VoiceProtocol.CurrentVersion,
-            ModVersion = "1.2.7-pre.3",
+            ModVersion = "1.2.7",
             SupportedCodecs = new[] { VoiceProtocol.CodecOpus },
             Capabilities = (int)(VoiceCapability.ProtocolV4
                 | VoiceCapability.ChannelDeltas
