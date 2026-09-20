@@ -122,6 +122,15 @@ void CheckButtonLabel(RmlDocument doc, string id)
     Check(inkRows.Length > 0 && Math.Abs((inkRows[0] + inkRows[^1] + 1) / 2f - height / 2f) <= 2 * scale,
         id + " renders visible glyphs centered inside the button");
 }
+void CheckIconCentered(RmlDocument doc, string id)
+{
+    var button = doc.GetElementById(id)!;
+    var bounds = button.Bounds;
+    var icon = button.QuerySelector(".icon")!.Bounds;
+    Check(Math.Abs(icon.X + icon.Width / 2 - bounds.X - bounds.Width / 2) <= 1
+        && Math.Abs(icon.Y + icon.Height / 2 - bounds.Y - bounds.Height / 2) <= 1,
+        id + " icon is centered");
+}
 void CheckSelectLabel(RmlDocument doc, string id)
 {
     Draw(doc);
@@ -169,6 +178,11 @@ using (var settings = new VoiceSettingsDialog(api, controller))
         && doc.GetElementById("speech-recognition-model") is null && doc.GetElementById("channel-search") is null,
         "home shows only its original controls without sidebar or other pages");
     Check(doc.GetElementById("open-admin") is null, "moderation entry requires server privileges");
+    CheckIconCentered(doc, "window-close");
+    var initialWindow = doc.GetElementById("window")!.Bounds;
+    Check(Math.Abs(initialWindow.X + initialWindow.Width / 2 - frameWidth / 2f) <= 1
+        && Math.Abs(initialWindow.Y + initialWindow.Height / 2 - frameHeight / 2f) <= 1,
+        "settings window opens centered in the viewport");
     CheckButtonLabel(doc, "open-settings");
     CheckSelectLabel(doc, "quick-channel"); CheckSelectLabel(doc, "quick-transmit");
     Click(doc, "quick-transmit"); Screenshot(doc, "rml-home-dropdown");
@@ -283,6 +297,11 @@ using (var settings = new VoiceSettingsDialog(api, controller))
     Check(moved.X + moved.Width <= frameWidth + 1 && moved.Y + moved.Height <= frameHeight + 1, "dragging outside the title keeps the window on screen");
     doc.InputFilter(new(RmlInputKind.MouseUp, 5000, 5000, 0)); doc.Call(7, 0); ui.DrainEvents();
     Check(doc.CapturedPointer == null, "title drag releases capture outside the window");
+    settings.TryClose(); settings.TryOpen(); Pump(); Draw(doc);
+    var reopenedWindow = doc.GetElementById("window")!.Bounds;
+    Check(Math.Abs(reopenedWindow.X + reopenedWindow.Width / 2 - frameWidth / 2f) <= 1
+        && Math.Abs(reopenedWindow.Y + reopenedWindow.Height / 2 - frameHeight / 2f) <= 1,
+        "reopening settings recenters the window");
     Click(doc, "window-close");
     Check(doc.GetElementById("open-settings") is not null && doc.GetElementById("adminAction") is null,
         "closing a settings page restores only the home controls");

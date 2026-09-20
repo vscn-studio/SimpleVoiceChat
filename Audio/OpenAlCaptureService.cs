@@ -34,6 +34,12 @@ public sealed class OpenAlCaptureService : IDisposable
 
         try
         {
+            if (string.Equals(config.InputDeviceName, VoiceConstants.WebMicrophoneInputDevice, StringComparison.Ordinal))
+            {
+                FailureReason = "网页麦克风已选中";
+                IsAvailable = false;
+                return false;
+            }
             string? deviceName = string.IsNullOrWhiteSpace(config.InputDeviceName) ? null : config.InputDeviceName;
             captureDevice = ALC.CaptureOpenDevice(deviceName, VoiceConstants.SampleRate, ALFormat.Mono16, VoiceConstants.SamplesPerFrame * CaptureBufferFrames);
             if (captureDevice.Handle == IntPtr.Zero)

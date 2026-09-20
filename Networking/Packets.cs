@@ -25,6 +25,16 @@ public sealed class ClientVoiceStatePacket
 }
 
 [ProtoContract]
+public sealed class WebMicrophoneTokenPacket
+{
+    [ProtoMember(1)] public string Token = string.Empty;
+    [ProtoMember(2)] public bool Active;
+    [ProtoMember(3)] public long ExpiresAtUnixMilliseconds;
+    [ProtoMember(4)] public int SessionId;
+    [ProtoMember(5)] public ushort Sequence;
+}
+
+[ProtoContract]
 public sealed class ServerVoiceConfigPacket
 {
     [ProtoMember(1)]

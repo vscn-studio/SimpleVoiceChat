@@ -51,6 +51,9 @@ public sealed class SimpleVoiceChatServerConfig
     public int AuditRetention { get; set; } = 500;
     public bool AllowContinuousTalk { get; set; } = true;
     public bool EnableChannels { get; set; } = true;
+    public bool EnableWebMicrophone { get; set; } = true;
+    public string WebMicrophoneBindAddress { get; set; } = "127.0.0.1";
+    public int WebMicrophonePort { get; set; } = 5082;
     public bool AllowPlayerChannelCreation { get; set; } = true;
     public bool EnableDirectorProximityCapture { get; set; } = false;
     public int MaxDirectorListeners { get; set; } = 1;
@@ -160,6 +163,9 @@ public sealed class SimpleVoiceChatServerConfig
         MaxRecorderDownloadKbps = Math.Clamp(MaxRecorderDownloadKbps, 256, 100_000);
         MaxChannelsPerPlayer = Math.Clamp(MaxChannelsPerPlayer, 1, 8);
         MaxChannels = Math.Clamp(MaxChannels, 16, 512);
+        WebMicrophoneBindAddress = string.IsNullOrWhiteSpace(WebMicrophoneBindAddress) ? "127.0.0.1" : WebMicrophoneBindAddress.Trim();
+        if (WebMicrophoneBindAddress.Length > 128) WebMicrophoneBindAddress = "127.0.0.1";
+        WebMicrophonePort = Math.Clamp(WebMicrophonePort, 1024, 65535);
         MaxChannelNameLength = Math.Clamp(MaxChannelNameLength, 1, Networking.VoiceProtocol.MaxControlStringLength);
         ChannelMemberPageSize = Math.Clamp(ChannelMemberPageSize, 8, 50);
         AuditRetention = Math.Clamp(AuditRetention, 50, 2_000);

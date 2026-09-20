@@ -27,6 +27,12 @@ SimpleVoiceChat `1.2.7` 是适用于 Vintage Story `1.22.3` 的客户端/服务�
 - 语音识别按钮和配置窗口由主模组提供；本地 Whisper 的托管和原生依赖由 `SimpleVoiceChatASR` 客户端依赖包提供。
 - VS Director 是可选集成，不是前置模组，也不需要单独的集成模组。
 
+### 网页麦克风（LauncherGo）
+
+服务端默认在 `127.0.0.1:5082` 提供 `/voice` WebSocket 入口。玩家在客户端语音设置中选择“网页麦克风（LauncherGo）”后，游戏会弹出一次性 Token；将 Token 填入 LauncherGo 内置语音网页，连接地址默认为 `ws://127.0.0.1:5082/voice`。网页发送的麦克风帧会在服务端重新编码为 Opus，并复用附近语音、频道、距离和权限路由。
+
+服务端配置文件 `SimpleVoiceChat.Server.json` 可设置 `EnableWebMicrophone`、`WebMicrophoneBindAddress` 和 `WebMicrophonePort`。向公网开放时应使用 HTTPS/WSS 反向代理和防火墙限制，Token 只在短时间内有效。
+
 ### 安装
 
 1. 关闭 Vintage Story 客户端和服务器。

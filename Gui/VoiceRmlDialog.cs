@@ -31,6 +31,7 @@ public abstract class VoiceRmlDialog : IDisposable
     public virtual bool TryOpen()
     {
         if (disposed || Document is not { IsDisposed: false }) return false;
+        RecenterWindow();
         Document.Show();
         return true;
     }
@@ -56,6 +57,23 @@ public abstract class VoiceRmlDialog : IDisposable
             window.SetProperty("left", N(Math.Clamp(bounds.X, 0, Math.Max(0, Document.Viewport.Width - bounds.Width)) / scale) + "dp");
             window.SetProperty("top", N(Math.Clamp(bounds.Y, 0, Math.Max(0, Document.Viewport.Height - bounds.Height)) / scale) + "dp");
         }
+    }
+
+    /// <summary>Restores the centered layout used when a regular dialog opens.</summary>
+    protected void RecenterWindow()
+    {
+        if (Document?.GetElementById("window") is not { } window
+            || window.ClassNames.Contains("overlay-host", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        positioned = false;
+        window.SetProperty("left", "0dp");
+        window.SetProperty("right", "0dp");
+        window.SetProperty("top", "0dp");
+        window.SetProperty("bottom", "0dp");
+        window.SetProperty("margin", "auto");
     }
 
     protected void Load(string body, string id, VoiceRmlForm? form = null)
@@ -117,6 +135,9 @@ public abstract class VoiceRmlDialog : IDisposable
         if (Document is { IsDisposed: false } && Document.GetElementById("form") is { } content)
         {
             var scroll = Document.GetElementById("content")!.Bounds;
+            string previousClass = Document.GetElementById("window")!.ClassNames;
+            float previousWidth = Document.GetElementById("window")!.Bounds.Width;
+            float previousHeight = Document.GetElementById("window")!.Bounds.Height;
             Form?.Dispose();
             Form = form;
             content.InnerRml = form.Markup;
@@ -125,6 +146,11 @@ public abstract class VoiceRmlDialog : IDisposable
             Document.GetElementById("window")!.ClassNames = windowClass;
             Document.GetElementById("window")!.SetProperty("width", N(width) + "dp");
             Document.GetElementById("window")!.SetProperty("height", N(windowHeight) + "dp");
+            if (!overlayOnly && (!previousClass.Equals(windowClass, StringComparison.Ordinal)
+                || Math.Abs(previousWidth - width) > 1 || Math.Abs(previousHeight - windowHeight) > 1))
+            {
+                RecenterWindow();
+            }
             form.Bind(Document);
             Document.GetElementById("content")!.SetScrollOffset(scroll.ScrollX, scroll.ScrollY);
             return;

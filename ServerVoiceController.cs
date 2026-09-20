@@ -4,6 +4,10 @@ using SimpleVoiceChat.Integration;
 using SimpleVoiceChat.Networking;
 using SimpleVoiceChat.Server;
 using System.Diagnostics;
+using System.Net;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
 using Vintagestory.API.Datastructures;
@@ -25,6 +29,10 @@ public sealed class ServerVoiceController : IDisposable
     private readonly Dictionary<string, PacketRateWindow> packetRates = new();
     private readonly Dictionary<string, IServerPlayer> onlinePlayersByUid = new(StringComparer.Ordinal);
     private readonly Dictionary<string, VoiceClientSession> sessionsByUid = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, WebMicrophoneCredential> webMicrophoneCredentials = new(StringComparer.Ordinal);
+    private readonly object webMicrophoneGate = new();
+    private HttpListener? webMicrophoneListener;
+    private CancellationTokenSource? webMicrophoneCancellation;
     private readonly Dictionary<string, DirectorVoiceListener> directorListenersByUid = new(StringComparer.Ordinal);
     private readonly HashSet<string> recorderListeners = new(StringComparer.Ordinal);
     private readonly Dictionary<string, RecorderParticipantState> recorderParticipants = new(StringComparer.Ordinal);
@@ -77,6 +85,7 @@ public sealed class ServerVoiceController : IDisposable
     {
         channelProviders = providers?.Take(32).ToArray() ?? Array.Empty<IVoiceChannelProvider>();
         SynchronizeChannelProviders();
+        StartWebMicrophoneListener();
     }
 
     public void Start()
@@ -100,6 +109,7 @@ public sealed class ServerVoiceController : IDisposable
     {
         controlChannel = sapi.Network.RegisterChannel(VoiceConstants.ControlChannelName)
             .RegisterMessageType<ClientVoiceStatePacket>()
+            .RegisterMessageType<WebMicrophoneTokenPacket>()
             .RegisterMessageType<ServerVoiceConfigPacket>()
             .RegisterMessageType<AdminVoiceConfigPacket>()
             .RegisterMessageType<MutePlayerPacket>()
@@ -127,6 +137,7 @@ public sealed class ServerVoiceController : IDisposable
             .RegisterMessageType<VoiceNetworkQualityPacket>()
             .RegisterMessageType<VoiceBitrateControlPacket>()
             .SetMessageHandler<ClientVoiceStatePacket>(OnClientState)
+            .SetMessageHandler<WebMicrophoneTokenPacket>(OnWebMicrophoneToken)
             .SetMessageHandler<MutePlayerPacket>(OnMutePlayer)
             .SetMessageHandler<AdminVoiceControlPacket>(OnAdminVoiceControl)
             .SetMessageHandler<AdminVoiceConfigPacket>(OnAdminVoiceConfig)
@@ -680,6 +691,11 @@ public sealed class ServerVoiceController : IDisposable
         sessionsByUid.Remove(player.PlayerUID);
         listenerEgressBudget.Remove(player.PlayerUID);
         handshakeRatesByUid.Remove(player.PlayerUID);
+        lock (webMicrophoneGate)
+        {
+            foreach (string key in webMicrophoneCredentials.Where(pair => pair.Value.PlayerUid == player.PlayerUID).Select(pair => pair.Key).ToArray())
+                webMicrophoneCredentials.Remove(key);
+        }
         spatialIndex.Remove(player.PlayerUID);
         streamArbiter.RemovePlayer(player.PlayerUID);
         directorStreamArbiter.RemovePlayer(player.PlayerUID);
@@ -758,6 +774,194 @@ public sealed class ServerVoiceController : IDisposable
             SendSnapshots(onlinePlayersByUid.Keys);
         }
     }
+
+    private void OnWebMicrophoneToken(IServerPlayer player, WebMicrophoneTokenPacket packet)
+    {
+        if (!lifecycle.IsStarted || !config.EnableWebMicrophone
+            || !sessionsByUid.ContainsKey(player.PlayerUID)) return;
+        DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+        lock (webMicrophoneGate)
+        {
+            foreach (string key in webMicrophoneCredentials
+                .Where(pair => pair.Value.ExpiresAtUtc <= nowUtc || pair.Value.PlayerUid == player.PlayerUID)
+                .Select(pair => pair.Key).ToArray()) webMicrophoneCredentials.Remove(key);
+        }
+        if (!packet.Active || string.IsNullOrWhiteSpace(packet.Token) || packet.Token.Length > 256 || packet.SessionId <= 0) return;
+        if (sessionsByUid.TryGetValue(player.PlayerUID, out VoiceClientSession? voiceSession))
+        {
+            voiceSession.WebSessionId = packet.SessionId;
+            voiceSession.WebSequence = (ushort)(packet.Sequence + 1);
+        }
+        DateTimeOffset expiry = packet.ExpiresAtUnixMilliseconds > 0
+            ? DateTimeOffset.FromUnixTimeMilliseconds(packet.ExpiresAtUnixMilliseconds)
+            : DateTimeOffset.UtcNow.AddMinutes(10);
+        if (expiry <= DateTimeOffset.UtcNow || expiry > DateTimeOffset.UtcNow.AddMinutes(15)) return;
+        lock (webMicrophoneGate) webMicrophoneCredentials[packet.Token] = new WebMicrophoneCredential(player.PlayerUID, expiry);
+    }
+
+    private void StartWebMicrophoneListener()
+    {
+        if (!config.EnableWebMicrophone || webMicrophoneListener != null) return;
+        try
+        {
+            string bind = config.WebMicrophoneBindAddress is "0.0.0.0" or "::" ? "+" : config.WebMicrophoneBindAddress;
+            webMicrophoneListener = new HttpListener();
+            webMicrophoneListener.Prefixes.Add($"http://{bind}:{config.WebMicrophonePort}/");
+            webMicrophoneListener.Start();
+            webMicrophoneCancellation = new CancellationTokenSource();
+            _ = WebMicrophoneLoopAsync(webMicrophoneListener, webMicrophoneCancellation.Token);
+            sapi.Logger.Notification("SimpleVoiceChat web microphone listening on {0}:{1}", config.WebMicrophoneBindAddress, config.WebMicrophonePort);
+        }
+        catch (Exception ex)
+        {
+            sapi.Logger.Warning("SimpleVoiceChat web microphone could not start: {0}", ex.Message);
+            webMicrophoneListener?.Close();
+            webMicrophoneListener = null;
+        }
+    }
+
+    private async Task WebMicrophoneLoopAsync(HttpListener listener, CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            HttpListenerContext context;
+            try { context = await listener.GetContextAsync().WaitAsync(cancellationToken); }
+            catch { break; }
+            _ = HandleWebMicrophoneRequestAsync(context, cancellationToken);
+        }
+    }
+
+    private async Task HandleWebMicrophoneRequestAsync(HttpListenerContext context, CancellationToken cancellationToken)
+    {
+        if (!context.Request.IsWebSocketRequest || !context.Request.Url!.AbsolutePath.Equals("/voice", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Response.StatusCode = 404;
+            context.Response.Close();
+            return;
+        }
+        WebSocket socket;
+        try { socket = (await context.AcceptWebSocketAsync(null)).WebSocket; }
+        catch { context.Response.StatusCode = 400; context.Response.Close(); return; }
+        using (socket)
+        {
+            string? playerUid = null;
+            try
+            {
+                byte[] helloBytes = await ReceiveWebMessageAsync(socket, cancellationToken);
+                if (helloBytes.Length == 0) return;
+                using JsonDocument hello = JsonDocument.Parse(helloBytes);
+                if (!hello.RootElement.TryGetProperty("type", out JsonElement type) || type.GetString() != "hello"
+                    || !hello.RootElement.TryGetProperty("token", out JsonElement tokenElement)) return;
+                string token = tokenElement.GetString() ?? string.Empty;
+                playerUid = ResolveWebMicrophonePlayer(token);
+                if (playerUid == null)
+                {
+                    await SendWebJsonAsync(socket, new { type = "error", message = "Token 无效或已过期。" }, cancellationToken);
+                    return;
+                }
+                await SendWebJsonAsync(socket, new { type = "accepted", sampleRate = VoiceConstants.SampleRate, frameSamples = VoiceConstants.SamplesPerFrame }, cancellationToken);
+                IVoiceEncoder encoder = VoiceCodecFactory.CreateEncoder(VoiceProtocol.CodecOpus, config.DefaultOpusBitrateKbps * 1000);
+                using (encoder)
+                {
+                    byte[] receiveBuffer = new byte[32 * 1024];
+                    byte[] pending = Array.Empty<byte>();
+                    int sequence = sessionsByUid.TryGetValue(playerUid, out VoiceClientSession? webSession)
+                        ? webSession.WebSequence
+                        : 0;
+                    while (socket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
+                    {
+                        WebSocketReceiveResult result = await socket.ReceiveAsync(receiveBuffer, cancellationToken);
+                        if (result.MessageType == WebSocketMessageType.Close) break;
+                        if (result.MessageType != WebSocketMessageType.Binary || result.Count == 0) continue;
+                        byte[] merged = new byte[pending.Length + result.Count];
+                        Buffer.BlockCopy(pending, 0, merged, 0, pending.Length);
+                        Buffer.BlockCopy(receiveBuffer, 0, merged, pending.Length, result.Count);
+                        pending = merged;
+                        while (pending.Length >= VoiceConstants.SamplesPerFrame * sizeof(short))
+                        {
+                            byte[] frameBytes = pending[..(VoiceConstants.SamplesPerFrame * sizeof(short))];
+                            pending = pending[(VoiceConstants.SamplesPerFrame * sizeof(short))..];
+                            short[] samples = new short[VoiceConstants.SamplesPerFrame];
+                            Buffer.BlockCopy(frameBytes, 0, samples, 0, frameBytes.Length);
+                            byte[] payload = encoder.Encode(samples);
+                            if (payload.Length == 0) continue;
+                            int frameSequence = sequence++ & ushort.MaxValue;
+                            await EnqueueWebVoiceFrameAsync(playerUid, payload, frameSequence);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or WebSocketException or IOException)
+            {
+                sapi.Logger.Debug("SimpleVoiceChat web microphone disconnected: {0}", ex.Message);
+            }
+        }
+    }
+
+    private string? ResolveWebMicrophonePlayer(string token)
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        lock (webMicrophoneGate)
+        {
+            if (!webMicrophoneCredentials.TryGetValue(token, out WebMicrophoneCredential? credential)
+                || credential is null
+                || credential.ExpiresAtUtc <= now
+                || !sessionsByUid.ContainsKey(credential.PlayerUid)
+                || !onlinePlayersByUid.ContainsKey(credential.PlayerUid)) return null;
+            return credential.PlayerUid;
+        }
+    }
+
+    private Task EnqueueWebVoiceFrameAsync(string playerUid, byte[] payload, int sequence)
+    {
+        TaskCompletionSource<bool> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        sapi.Event.EnqueueMainThreadTask(() =>
+        {
+            try
+            {
+                if (!onlinePlayersByUid.TryGetValue(playerUid, out IServerPlayer? player)
+                    || !sessionsByUid.TryGetValue(playerUid, out VoiceClientSession? session)) { completion.TrySetResult(false); return; }
+                ClientVoiceStatePacket state = statesByUid.TryGetValue(playerUid, out ClientVoiceStatePacket? current) ? current : new();
+                OnVoiceFrameV3(player, new VoiceFrameV3Packet
+                {
+                    ConnectionEpoch = session.ConnectionEpoch,
+                    SessionId = session.WebSessionId > 0 ? session.WebSessionId : int.MaxValue - 1,
+                    Sequence = (ushort)sequence,
+                    Mode = state.Mode,
+                    Target = VoiceTransmitTarget.ProximityAndChannel,
+                    ChannelId = session.SelectedChannelId,
+                    Level = 128,
+                    Payload = payload,
+                    CaptureServerTimestampMilliseconds = MonotonicClock.NowMilliseconds
+                });
+                completion.TrySetResult(true);
+            }
+            catch { completion.TrySetResult(false); }
+        }, "simplevoicechat-web-microphone");
+        return completion.Task;
+    }
+
+    private static async Task<byte[]> ReceiveWebMessageAsync(WebSocket socket, CancellationToken cancellationToken)
+    {
+        using MemoryStream stream = new();
+        byte[] buffer = new byte[8 * 1024];
+        while (true)
+        {
+            WebSocketReceiveResult result = await socket.ReceiveAsync(buffer, cancellationToken);
+            if (result.MessageType == WebSocketMessageType.Close) return Array.Empty<byte>();
+            stream.Write(buffer, 0, result.Count);
+            if (result.EndOfMessage) return stream.ToArray();
+            if (stream.Length > 16 * 1024) return Array.Empty<byte>();
+        }
+    }
+
+    private static Task SendWebJsonAsync(WebSocket socket, object value, CancellationToken cancellationToken)
+    {
+        byte[] data = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(value));
+        return socket.SendAsync(data, WebSocketMessageType.Text, true, cancellationToken);
+    }
+
+    private sealed record WebMicrophoneCredential(string PlayerUid, DateTimeOffset ExpiresAtUtc);
 
     private void OnMutePlayer(IServerPlayer fromPlayer, MutePlayerPacket packet)
     {
@@ -3540,6 +3744,12 @@ public sealed class ServerVoiceController : IDisposable
             StopRecorderSession(null, MonotonicClock.NowMilliseconds, "server-shutdown");
         }
         hostedRecorder.Dispose();
+        webMicrophoneCancellation?.Cancel();
+        webMicrophoneCancellation?.Dispose();
+        webMicrophoneCancellation = null;
+        webMicrophoneListener?.Close();
+        webMicrophoneListener = null;
+        lock (webMicrophoneGate) webMicrophoneCredentials.Clear();
         sapi.Event.PlayerJoin -= OnPlayerJoin;
         sapi.Event.PlayerLeave -= OnPlayerLeave;
         sapi.Event.PlayerChat -= OnPlayerChat;
@@ -3660,6 +3870,8 @@ public sealed class ServerVoiceController : IDisposable
         }
 
         public int ConnectionEpoch { get; }
+        public int WebSessionId { get; set; }
+        public ushort WebSequence { get; set; }
         public int Codec { get; }
         public int MaximumOpusBitrateKbps { get; }
         public bool SupportsServerGuidedBitrate { get; }

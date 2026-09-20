@@ -12,7 +12,8 @@ button:active { background-color: #585858; }
 button.primary { background-color: #365f9b; }
 button.primary:hover, button.primary:focus { background-color: #4575b9; }
 button:disabled, input:disabled, select:disabled { color: #777777; background-color: #303030; cursor: default; }
-.close { position: absolute; right: 10dp; top: 8dp; width: 28dp; height: 28dp; font-size: 22dp; background-color: transparent; padding: 0; }
+.close { position: absolute; right: 10dp; top: 8dp; width: 28dp; height: 28dp; display: flex; align-items: center; justify-content: center; font-size: 22dp; background-color: transparent; padding: 0; }
+.close > .icon { display: block; width: 22dp; height: 22dp; line-height: 22dp; text-align: center; }
 #content { position: absolute; left: 20dp; right: 20dp; top: 54dp; bottom: 14dp; overflow: auto; }
 #form { position: relative; width: 100%; }
 .text { overflow: hidden; pointer-events: none; word-break: break-all; }

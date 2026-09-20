@@ -12,6 +12,7 @@ public static class VoiceConstants
     public const int FrameMilliseconds = 20;
     public const int SamplesPerFrame = SampleRate * FrameMilliseconds / 1000;
     public const int MaxUdpPacketBytes = 508;
+    public const string WebMicrophoneInputDevice = "__simplevoicechat_web_microphone__";
     public const long ChannelInviteTimeoutMilliseconds = 10_000;
 
     public const string PushToTalkHotKey = "simplevoicechat-pushtotalk-v2";

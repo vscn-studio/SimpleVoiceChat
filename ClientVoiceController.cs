@@ -76,6 +76,8 @@ public sealed class ClientVoiceController : IDisposable
     private VoiceSetupWizardDialog? setupWizard;
     private VoiceInviteDialog? inviteDialog;
     private VoiceHudPositionDialog? hudPositionDialog;
+    private VoiceWebMicrophoneDialog? webMicrophoneDialog;
+    private Networking.WebMicrophoneToken? webMicrophoneToken;
     private readonly short[] captureBuffer = new short[VoiceConstants.SamplesPerFrame];
     private readonly VoiceCapturePreprocessor capturePreprocessor = new();
     private RnnoiseNoiseSuppressor? noiseSuppressor;
@@ -292,6 +294,7 @@ public sealed class ClientVoiceController : IDisposable
             () => FormatHotkey(VoiceConstants.AcceptChannelInviteHotKey, "Ctrl+F8"),
             () => FormatHotkey(VoiceConstants.DeclineChannelInviteHotKey, "F7"));
         hudPositionDialog = new VoiceHudPositionDialog(capi, config, hud, inviteDialog, SetHudPositionFromSettings, SetHudPositionEditingState);
+        webMicrophoneDialog = new VoiceWebMicrophoneDialog(capi);
         hud.Refresh();
         ShowInitialSetupPrompt();
 
@@ -308,6 +311,7 @@ public sealed class ClientVoiceController : IDisposable
     {
         controlChannel = capi.Network.RegisterChannel(VoiceConstants.ControlChannelName)
             .RegisterMessageType<ClientVoiceStatePacket>()
+            .RegisterMessageType<WebMicrophoneTokenPacket>()
             .RegisterMessageType<ServerVoiceConfigPacket>()
             .RegisterMessageType<AdminVoiceConfigPacket>()
             .RegisterMessageType<MutePlayerPacket>()
@@ -1370,7 +1374,7 @@ public sealed class ClientVoiceController : IDisposable
 
     internal string[] GetInputDeviceValues()
     {
-        List<string> values = new() { string.Empty };
+        List<string> values = new() { string.Empty, VoiceConstants.WebMicrophoneInputDevice };
         try
         {
             foreach (string device in ALC.GetString(AlcGetStringList.CaptureDeviceSpecifier))
@@ -1396,7 +1400,9 @@ public sealed class ClientVoiceController : IDisposable
 
     internal static string[] GetInputDeviceNames(string[] values)
     {
-        return values.Select(value => string.IsNullOrEmpty(value) ? SVCLang.Get("default-microphone") : value).ToArray();
+        return values.Select(value => string.IsNullOrEmpty(value)
+            ? SVCLang.Get("default-microphone")
+            : value == VoiceConstants.WebMicrophoneInputDevice ? "网页麦克风（LauncherGo）" : value).ToArray();
     }
 
     internal VoiceSettingsMemberOption[] BuildChannelMembersForSettings(string channelId)
@@ -1458,6 +1464,18 @@ public sealed class ClientVoiceController : IDisposable
         }
         config.InputDeviceName = next;
         SaveConfig();
+        if (next == VoiceConstants.WebMicrophoneInputDevice)
+        {
+            var token = Networking.WebMicrophoneToken.Create();
+            webMicrophoneToken = token;
+            controlChannel?.SendPacket(new WebMicrophoneTokenPacket { Token = token.Value, Active = true, SessionId = sessionId, Sequence = sequence, ExpiresAtUnixMilliseconds = token.ExpiresAtUtc.ToUnixTimeMilliseconds() });
+            webMicrophoneDialog?.ShowToken(token.Value, token.ExpiresAtUtc);
+        }
+        else
+        {
+            webMicrophoneToken = null;
+            controlChannel?.SendPacket(new WebMicrophoneTokenPacket { Active = false });
+        }
         ReinitializeCapture();
     }
 
@@ -3705,6 +3723,9 @@ public sealed class ClientVoiceController : IDisposable
         inviteDialog?.Dismiss();
         inviteDialog?.Dispose();
         inviteDialog = null;
+        webMicrophoneDialog?.TryClose();
+        webMicrophoneDialog?.Dispose();
+        webMicrophoneDialog = null;
         controlChannel = null;
         voiceChannel = null;
         channelInfos = Array.Empty<ChannelInfoPacket>();
