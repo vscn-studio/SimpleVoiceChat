@@ -51,9 +51,10 @@ public sealed class SimpleVoiceChatServerConfig
     public int AuditRetention { get; set; } = 500;
     public bool AllowContinuousTalk { get; set; } = true;
     public bool EnableChannels { get; set; } = true;
-    public bool EnableWebMicrophone { get; set; } = true;
+    /// <summary>Enables the LauncherGo web microphone bridge. Disabled by default.</summary>
+    public bool EnableWebMicrophone { get; set; } = false;
     public string WebMicrophoneBindAddress { get; set; } = "127.0.0.1";
-    public int WebMicrophonePort { get; set; } = 5082;
+    public int WebMicrophonePort { get; set; } = 15082;
     public bool AllowPlayerChannelCreation { get; set; } = true;
     public bool EnableDirectorProximityCapture { get; set; } = false;
     public int MaxDirectorListeners { get; set; } = 1;

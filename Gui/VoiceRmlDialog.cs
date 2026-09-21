@@ -18,6 +18,7 @@ public abstract class VoiceRmlDialog : IDisposable
     private float dragX, dragY, startLeft, startTop;
     protected bool PointerPressed { get; private set; }
     protected virtual RmlDocumentOptions Options => new() { Mode = RmlWindowMode.Window, DrawOrder = .48, InputOrder = .3 };
+    protected virtual bool AllowWindowDrag => false;
     protected VoiceRmlDialog(ICoreClientAPI api)
     {
         capi = api;
@@ -114,7 +115,7 @@ public abstract class VoiceRmlDialog : IDisposable
             return HandleInput(input);
         };
         form?.Bind(Document);
-        if (Document.GetElementById("window-header") is { } header)
+        if (AllowWindowDrag && Document.GetElementById("window-header") is { } header)
         {
             header.On("mousedown", e =>
             {

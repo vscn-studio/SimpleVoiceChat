@@ -77,7 +77,10 @@ public sealed class ClientVoiceController : IDisposable
     private VoiceInviteDialog? inviteDialog;
     private VoiceHudPositionDialog? hudPositionDialog;
     private VoiceWebMicrophoneDialog? webMicrophoneDialog;
+    private bool restoreSettingsAfterCredential;
     private Networking.WebMicrophoneToken? webMicrophoneToken;
+    private bool webTransmitRequested;
+    internal bool IsWebMicrophoneSelected => config.InputDeviceName == VoiceConstants.WebMicrophoneInputDevice;
     private readonly short[] captureBuffer = new short[VoiceConstants.SamplesPerFrame];
     private readonly VoiceCapturePreprocessor capturePreprocessor = new();
     private RnnoiseNoiseSuppressor? noiseSuppressor;
@@ -168,6 +171,14 @@ public sealed class ClientVoiceController : IDisposable
     private bool channelTransmitBlocked;
     private bool lastRecordingPlaybackActive;
     private float lastMicRms;
+    private long lastWebMicrophoneFeedbackMs = -1;
+    private bool hasWebMicrophoneFeedbackSequence;
+    private ushort lastWebMicrophoneFeedbackSequence;
+    private int webMicrophoneTestId;
+    private int stoppedWebMicrophoneTestId;
+    private long webMicrophoneTestTailDeadlineMs;
+    private bool HasFreshWebMicrophoneLevel => IsWebMicrophoneSelected && lastWebMicrophoneFeedbackMs >= 0
+        && capi.World.ElapsedMilliseconds - lastWebMicrophoneFeedbackMs is >= 0 and < 500;
     private bool voiceActivationTriggered;
     private int voiceActivationHangoverFrames;
     private bool setupMicrophoneMonitoring;
@@ -294,7 +305,21 @@ public sealed class ClientVoiceController : IDisposable
             () => FormatHotkey(VoiceConstants.AcceptChannelInviteHotKey, "Ctrl+F8"),
             () => FormatHotkey(VoiceConstants.DeclineChannelInviteHotKey, "F7"));
         hudPositionDialog = new VoiceHudPositionDialog(capi, config, hud, inviteDialog, SetHudPositionFromSettings, SetHudPositionEditingState);
-        webMicrophoneDialog = new VoiceWebMicrophoneDialog(capi);
+        webMicrophoneDialog = new VoiceWebMicrophoneDialog(capi, RequestWebMicrophoneCredential,
+            () =>
+            {
+                restoreSettingsAfterCredential = settingsDialog?.IsOpened() == true || setupWizard?.IsOpened() == true;
+                settingsDialog?.TryClose();
+                setupWizard?.TryClose();
+                hudPositionDialog?.TryClose();
+                inviteDialog?.TryClose();
+            },
+            () =>
+            {
+                bool restore = restoreSettingsAfterCredential;
+                restoreSettingsAfterCredential = false;
+                if (restore && settingsDialog?.ResumeAfterCredential() == false) settingsDialog.TryOpen();
+            });
         hud.Refresh();
         ShowInitialSetupPrompt();
 
@@ -338,6 +363,9 @@ public sealed class ClientVoiceController : IDisposable
             .RegisterMessageType<VoicePongPacket>()
             .RegisterMessageType<VoiceNetworkQualityPacket>()
             .RegisterMessageType<VoiceBitrateControlPacket>()
+            .RegisterMessageType<WebMicrophoneFeedbackPacket>()
+            .SetMessageHandler<WebMicrophoneTokenPacket>(OnWebMicrophoneCredential)
+            .SetMessageHandler<WebMicrophoneFeedbackPacket>(OnWebMicrophoneFeedbackControl)
             .SetMessageHandler<ServerVoiceConfigPacket>(OnServerConfig)
             .SetMessageHandler<VoiceWelcomePacket>(OnVoiceWelcome)
             .SetMessageHandler<ChannelSnapshotPacket>(OnChannelSnapshot)
@@ -360,10 +388,12 @@ public sealed class ClientVoiceController : IDisposable
             .RegisterMessageType<RecorderVoiceRelayFrameV3Packet>()
             .RegisterMessageType<VoicePingPacket>()
             .RegisterMessageType<VoicePongPacket>()
+            .RegisterMessageType<WebMicrophoneFeedbackPacket>()
             .SetMessageHandler<VoiceRelayFrameV3Packet>(OnVoiceRelayFrameV3)
             .SetMessageHandler<DirectorVoiceRelayFrameV3Packet>(OnDirectorVoiceRelayFrameV3)
             .SetMessageHandler<RecorderVoiceRelayFrameV3Packet>(OnRecorderVoiceRelayFrameV3)
-            .SetMessageHandler<VoicePongPacket>(OnVoicePong);
+            .SetMessageHandler<VoicePongPacket>(OnVoicePong)
+            .SetMessageHandler<WebMicrophoneFeedbackPacket>(OnWebMicrophoneFeedback);
     }
 
     private void RegisterHotkeys()
@@ -446,6 +476,11 @@ public sealed class ClientVoiceController : IDisposable
             if (!settingsPressed)
             {
                 settingsPressed = true;
+                if (webMicrophoneDialog?.IsOpened() == true)
+                {
+                    webMicrophoneDialog.TryClose();
+                    return true;
+                }
                 if (config.InitialSetupCompleted)
                 {
                     settingsDialog?.Toggle();
@@ -465,6 +500,7 @@ public sealed class ClientVoiceController : IDisposable
             }
 
             multiTrackSettingsPressed = true;
+            if (webMicrophoneDialog?.IsOpened() == true) return true;
             if (!hasServerControl || !serverConfig.EnableRecorderCapture)
             {
                 ShowChatMessage(SVCLang.Get("chat-multitrack-admin-only"));
@@ -822,6 +858,9 @@ public sealed class ClientVoiceController : IDisposable
         }
         ActivateCurrentServerProfile(packet.ServerInstanceId);
         connectionEpoch = voiceHandshakeAccepted ? packet.ConnectionEpoch : 0;
+        hasWebMicrophoneFeedbackSequence = false;
+        lastWebMicrophoneFeedbackSequence = 0;
+        lastWebMicrophoneFeedbackMs = -1;
         voiceHandshakeAcceptedMs = voiceHandshakeAccepted ? capi.World.ElapsedMilliseconds : 0;
         negotiatedCodec = packet.Codec;
         hasServerControl = voiceHandshakeAccepted && packet.HasServerControl;
@@ -1464,19 +1503,38 @@ public sealed class ClientVoiceController : IDisposable
         }
         config.InputDeviceName = next;
         SaveConfig();
-        if (next == VoiceConstants.WebMicrophoneInputDevice)
-        {
-            var token = Networking.WebMicrophoneToken.Create();
-            webMicrophoneToken = token;
-            controlChannel?.SendPacket(new WebMicrophoneTokenPacket { Token = token.Value, Active = true, SessionId = sessionId, Sequence = sequence, ExpiresAtUnixMilliseconds = token.ExpiresAtUtc.ToUnixTimeMilliseconds() });
-            webMicrophoneDialog?.ShowToken(token.Value, token.ExpiresAtUtc);
-        }
-        else
-        {
-            webMicrophoneToken = null;
-            controlChannel?.SendPacket(new WebMicrophoneTokenPacket { Active = false });
-        }
+        webTransmitRequested = false;
+        webMicrophoneToken = null;
+        webMicrophoneDialog?.TryClose();
         ReinitializeCapture();
+        if (IsWebMicrophoneSelected) RequestWebMicrophoneCredential();
+        else controlChannel?.SendPacket(new WebMicrophoneTokenPacket { Active = false });
+    }
+
+    internal bool RequestWebMicrophoneCredential()
+    {
+        if (!IsWebMicrophoneSelected || !voiceHandshakeAccepted || controlChannel?.Connected != true)
+        {
+            ShowChatMessage("请先加入服务器并选择网页麦克风，再获取凭证。");
+            return false;
+        }
+        webMicrophoneToken = null;
+        BeginVoiceSession();
+        SendState(force: true);
+        controlChannel.SendPacket(new WebMicrophoneTokenPacket { Active = true, SessionId = sessionId });
+        return true;
+    }
+
+    private void OnWebMicrophoneCredential(WebMicrophoneTokenPacket packet)
+    {
+        if (!IsWebMicrophoneSelected || packet.SessionId != sessionId) return;
+        if (!packet.Active || string.IsNullOrWhiteSpace(packet.Token))
+        {
+            ShowChatMessage("暂时无法获取凭证，请确认服务器已启用网页麦克风，稍后重试。");
+            return;
+        }
+        webMicrophoneToken = new Networking.WebMicrophoneToken(packet.Token, DateTimeOffset.FromUnixTimeMilliseconds(packet.ExpiresAtUnixMilliseconds));
+        webMicrophoneDialog?.ShowToken(webMicrophoneToken.Value, webMicrophoneToken.ExpiresAtUtc);
     }
 
     internal void SetOutputDeviceFromSettings(string value)
@@ -1611,15 +1669,22 @@ public sealed class ClientVoiceController : IDisposable
             return StopMicrophoneTestRecording();
         }
 
-        if (microphoneTest == null || capture?.IsAvailable != true)
+        if (microphoneTest == null || (IsWebMicrophoneSelected ? !HasFreshWebMicrophoneLevel : capture?.IsAvailable != true))
         {
-            ShowChatMessage(SVCLang.Get("chat-recording-unavailable", capture?.FailureReason ?? string.Empty));
+            ShowChatMessage(IsWebMicrophoneSelected ? "请先在语音网页连接麦克风，再开始测试录音。"
+                : SVCLang.Get("chat-recording-unavailable", capture?.FailureReason ?? string.Empty));
             return false;
         }
 
         microphoneTest.Start();
-        capture.Start();
-        settingsDialog?.RefreshConfiguration();
+        if (IsWebMicrophoneSelected)
+        {
+            webMicrophoneTestId = webMicrophoneTestId == int.MaxValue ? 1 : webMicrophoneTestId + 1;
+            webTransmitRequested = false;
+            SendState(force: true);
+        }
+        else capture!.Start();
+        settingsDialog?.RefreshMicrophoneTestState();
         return true;
     }
 
@@ -1631,12 +1696,20 @@ public sealed class ClientVoiceController : IDisposable
         }
 
         bool captured = microphoneTest.Stop();
+        if (IsWebMicrophoneSelected)
+        {
+            // Reliable feedback frames can still be in flight after the stop
+            // click. Keep accepting this test's tail without reopening it.
+            stoppedWebMicrophoneTestId = webMicrophoneTestId;
+            webMicrophoneTestTailDeadlineMs = capi.World.ElapsedMilliseconds + 4000;
+            SendState(force: true);
+        }
         if (!lastPressed && recording?.IsRecording != true)
         {
             capture?.Stop();
         }
 
-        settingsDialog?.RefreshConfiguration();
+        settingsDialog?.RefreshMicrophoneTestState();
         if (!captured)
         {
             ShowChatMessage(SVCLang.Get("chat-recording-empty"));
@@ -1650,7 +1723,7 @@ public sealed class ClientVoiceController : IDisposable
         {
             playback?.StopRecordingPlayback();
             lastRecordingPlaybackActive = false;
-            settingsDialog?.RefreshConfiguration();
+            settingsDialog?.RefreshMicrophoneTestState();
             return true;
         }
 
@@ -1668,7 +1741,7 @@ public sealed class ClientVoiceController : IDisposable
         }
 
         lastRecordingPlaybackActive = true;
-        settingsDialog?.RefreshConfiguration();
+        settingsDialog?.RefreshMicrophoneTestState();
         return true;
     }
 
@@ -1995,6 +2068,7 @@ public sealed class ClientVoiceController : IDisposable
             _ => VoiceTransmitTarget.Proximity
         };
         SaveConfig();
+        SendState(force: true);
         hud?.Refresh();
     }
 
@@ -2667,14 +2741,26 @@ public sealed class ClientVoiceController : IDisposable
             && capture?.IsAvailable == true;
         bool isRecording = recording?.IsRecording == true || testRecordingActive;
         bool canSpeak = false;
-        if (pressed && capture?.IsAvailable != true && !captureWarningShown)
+        if (!IsWebMicrophoneSelected && pressed && capture?.IsAvailable != true && !captureWarningShown)
         {
             captureWarningShown = true;
             ShowChatMessage(SVCLang.Get("chat-mic-unavailable", capture?.FailureReason ?? string.Empty));
         }
 
         bool speechPressed = speechCaptureReady && IsSpeechRecognitionPressed();
-        if (speechPressed || speechRecognitionActive)
+        if (IsWebMicrophoneSelected)
+        {
+            // The game owns PTT; the browser never supplies its own permission to transmit.
+            canSpeak = pressed && !testRecordingActive && !setupMonitoringActive
+                && !localMuted && !globalMuted && serverConfig.Enabled && voiceHandshakeAccepted
+                && controlChannel?.Connected == true;
+            if (webTransmitRequested != canSpeak)
+            {
+                webTransmitRequested = canSpeak;
+                SendState(force: true);
+            }
+        }
+        else if (speechPressed || speechRecognitionActive)
         {
             lastPressed = false;
             if (speechPressed)
@@ -2749,7 +2835,7 @@ public sealed class ClientVoiceController : IDisposable
             DrainCapturedFrames(sendVoice: false);
         }
 
-        if (!canSpeak && !setupMonitoringActive)
+        if (IsWebMicrophoneSelected ? !HasFreshWebMicrophoneLevel : !canSpeak && !setupMonitoringActive && !testRecordingActive)
         {
             lastMicLevel = 0f;
             lastMicRms = 0f;
@@ -2789,7 +2875,7 @@ public sealed class ClientVoiceController : IDisposable
         TryRecoverCapture();
         UpdatePendingInviteTimeout();
         SendState(force: false);
-        if (!lastSpeaking)
+        if (!lastSpeaking && !HasFreshWebMicrophoneLevel)
         {
             lastMicLevel = 0f;
         }
@@ -2899,7 +2985,7 @@ public sealed class ClientVoiceController : IDisposable
     private void TryRecoverCapture()
     {
         long now = capi.World.ElapsedMilliseconds;
-        if (capture?.IsAvailable == true
+        if (IsWebMicrophoneSelected || capture?.IsAvailable == true
             || now - lastCaptureRecoveryAttemptMs < CaptureRecoveryIntervalMilliseconds)
         {
             return;
@@ -2937,7 +3023,7 @@ public sealed class ClientVoiceController : IDisposable
         if (playbackActive != lastRecordingPlaybackActive)
         {
             lastRecordingPlaybackActive = playbackActive;
-            settingsDialog?.RefreshConfiguration();
+            settingsDialog?.RefreshMicrophoneTestState();
         }
     }
 
@@ -3025,8 +3111,69 @@ public sealed class ClientVoiceController : IDisposable
             GlobalMuted = globalMuted,
             IsSpeaking = lastSpeaking,
             HideSelfFromPlayerLists = config.HideSelfFromPlayerLists,
-            RejectChannelInvites = config.RejectChannelInvites
+            RejectChannelInvites = config.RejectChannelInvites,
+            WebMicrophoneActive = IsWebMicrophoneSelected,
+            WebTransmitRequested = IsWebMicrophoneSelected && webTransmitRequested && !localMuted && !globalMuted,
+            TransmitTarget = config.TransmitTarget,
+            WebVoiceActivation = config.PreferVoiceActivation,
+            WebActivationThreshold = config.VoiceActivationThreshold,
+            WebMicrophoneTestId = IsWebMicrophoneSelected && IsMicrophoneTestRecording ? webMicrophoneTestId : 0
         });
+    }
+
+    private void OnWebMicrophoneFeedback(WebMicrophoneFeedbackPacket packet)
+    {
+        if (!lifecycle.IsStarted || !IsWebMicrophoneSelected || !voiceHandshakeAccepted
+            || packet.ConnectionEpoch != connectionEpoch || !float.IsFinite(packet.Rms)
+            || packet.Rms is < 0 or > 1) return;
+        if (!IsNewWebMicrophoneFeedbackSequence(packet.Sequence)) return;
+        lastWebMicrophoneFeedbackMs = capi.World.ElapsedMilliseconds;
+        lastMicRms = packet.Rms;
+        lastMicLevel = NormalizeVoiceLevel(packet.Rms, mode);
+        AppendWebMicrophoneTestFeedback(packet);
+    }
+
+    // Older servers delivered this packet on the reliable control channel and
+    // did not populate Sequence. Keep that path compatible; UDP uses ordering.
+    private void OnWebMicrophoneFeedbackControl(WebMicrophoneFeedbackPacket packet)
+    {
+        if (!lifecycle.IsStarted || !IsWebMicrophoneSelected || !voiceHandshakeAccepted
+            || packet.ConnectionEpoch != connectionEpoch || !float.IsFinite(packet.Rms)
+            || packet.Rms is < 0 or > 1) return;
+        lastWebMicrophoneFeedbackMs = capi.World.ElapsedMilliseconds;
+        lastMicRms = packet.Rms;
+        lastMicLevel = NormalizeVoiceLevel(packet.Rms, mode);
+        AppendWebMicrophoneTestFeedback(packet);
+    }
+
+    private void AppendWebMicrophoneTestFeedback(WebMicrophoneFeedbackPacket packet)
+    {
+        if (packet.TestId <= 0 || packet.Pcm?.Length != VoiceConstants.SamplesPerFrame * 2 || microphoneTest == null)
+            return;
+        long now = capi.World.ElapsedMilliseconds;
+        bool active = IsMicrophoneTestRecording && packet.TestId == webMicrophoneTestId;
+        bool tail = packet.TestId == stoppedWebMicrophoneTestId && now <= webMicrophoneTestTailDeadlineMs;
+        if (!active && !tail) return;
+        short[] samples = new short[VoiceConstants.SamplesPerFrame];
+        for (int i = 0; i < samples.Length; i++)
+            samples[i] = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(packet.Pcm.AsSpan(i * 2, 2));
+        if (active) microphoneTest.AppendInput(samples);
+        else microphoneTest.AppendLateInput(samples);
+    }
+
+    private bool IsNewWebMicrophoneFeedbackSequence(ushort sequence)
+    {
+        if (!hasWebMicrophoneFeedbackSequence)
+        {
+            hasWebMicrophoneFeedbackSequence = true;
+            lastWebMicrophoneFeedbackSequence = sequence;
+            return true;
+        }
+
+        short delta = unchecked((short)(sequence - lastWebMicrophoneFeedbackSequence));
+        if (delta <= 0) return false;
+        lastWebMicrophoneFeedbackSequence = sequence;
+        return true;
     }
 
     private void SyncMutedPlayersToServer()
@@ -3430,7 +3577,7 @@ public sealed class ClientVoiceController : IDisposable
 
     private VoiceHudSnapshot BuildHudSnapshot()
     {
-        bool captureAvailable = capture?.IsAvailable == true;
+        bool captureAvailable = IsWebMicrophoneSelected || capture?.IsAvailable == true;
         VoiceHudIconState iconState = GetHudIconState(captureAvailable);
         bool microphoneEnabled = iconState is VoiceHudIconState.Whispering or VoiceHudIconState.Talking;
         bool udpResponsive = voiceProbeTracker.IsResponsive(capi.World.ElapsedMilliseconds, VoiceProbeTimeoutMilliseconds);
@@ -3711,6 +3858,7 @@ public sealed class ClientVoiceController : IDisposable
         hud?.TryClose();
         hud?.Dispose();
         hud = null;
+        restoreSettingsAfterCredential = false;
         settingsDialog?.TryClose();
         settingsDialog?.Dispose();
         settingsDialog = null;

@@ -87,6 +87,20 @@ public sealed class VoiceTestRecordingBuffer
             samples.AddRange(input.ToArray());
         }
     }
+
+    /// <summary>Appends frames that were already in flight when a web test stopped.</summary>
+    public void AppendLateInput(ReadOnlySpan<short> input)
+    {
+        if (input.IsEmpty) return;
+        lock (gate)
+        {
+            if (recording || lastClip == null) return;
+            short[] merged = new short[lastClip.Samples.Length + input.Length];
+            lastClip.Samples.CopyTo(merged, 0);
+            input.CopyTo(merged.AsSpan(lastClip.Samples.Length));
+            lastClip = RecordedAudioClip.FromPcm(merged, lastClip.Channels, lastClip.SampleRate);
+        }
+    }
 }
 
 /// <summary>

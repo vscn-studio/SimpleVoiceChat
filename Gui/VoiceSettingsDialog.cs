@@ -146,6 +146,8 @@ public sealed class VoiceSettingsDialog : VoiceRmlDialog
 
     internal bool IsCurrentStatusOpen => IsOpened() && overlay == VoiceSettingsOverlay.CurrentStatus;
 
+    internal bool ResumeAfterCredential() => base.TryOpen();
+
     public override bool TryOpen()
     {
         controller.RequestSettingsRefresh();
@@ -183,6 +185,36 @@ public sealed class VoiceSettingsDialog : VoiceRmlDialog
         {
             QueueCompose();
         }
+    }
+
+    internal void RefreshMicrophoneTestState()
+    {
+        if (!IsOpened() || selectedPage != VoiceSettingsPage.Audio || overlay != VoiceSettingsOverlay.None)
+            return;
+        if (Form?.GetButton("recording-toggle") is VoiceSettingsTextButton recording)
+        {
+            recording.SetState(
+                controller.IsMicrophoneTestRecording
+                    ? SVCLang.Get("button-recording-stop")
+                    : SVCLang.Get("button-recording-start"),
+                controller.IsMicrophoneTestRecording);
+        }
+        if (Form?.GetButton("recording-playback-toggle") is VoiceSettingsTextButton playback)
+        {
+            playback.SetState(
+                controller.IsMicrophoneTestPlaybackActive
+                    ? SVCLang.Get("button-play-recording-stop")
+                    : SVCLang.Get("button-play-recording-start"),
+                controller.IsMicrophoneTestPlaybackActive);
+        }
+        Form?.GetDynamicText("recording-status")?.SetNewText(
+            controller.IsMicrophoneTestRecording
+                ? SVCLang.Get("recording-status-recording")
+                : controller.IsMicrophoneTestPlaybackActive
+                    ? SVCLang.Get("recording-status-playback")
+                    : controller.HasMicrophoneTestRecording
+                        ? SVCLang.Get("recording-status-ready")
+                        : SVCLang.Get("recording-status-none"));
     }
 
     private void Compose()
@@ -342,8 +374,11 @@ public sealed class VoiceSettingsDialog : VoiceRmlDialog
 
         composer
             .AddStaticText(SVCLang.Get("label-input-device"), label, ElementBounds.Fixed(labelX, y + 3, 210, 30))
-            .AddVoiceDropDown(inputValues, inputNames, Math.Max(0, Array.IndexOf(inputValues, selectedInput)), OnInputDeviceChanged, ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), "inputDevice")
-            .AddStaticText(SVCLang.Get("label-output-device"), label, ElementBounds.Fixed(labelX, y += 46, 210, 30))
+            .AddVoiceDropDown(inputValues, inputNames, Math.Max(0, Array.IndexOf(inputValues, selectedInput)), OnInputDeviceChanged, ElementBounds.Fixed(controlX, y, controller.IsWebMicrophoneSelected ? controlWidth - 140 : controlWidth, controlHeight), "inputDevice");
+        if (controller.IsWebMicrophoneSelected)
+            AddFlatButton(composer, "获取凭证", controller.RequestWebMicrophoneCredential,
+                ElementBounds.Fixed(controlX + controlWidth - 128, y, 128, controlHeight), "web-microphone-credential");
+        composer.AddStaticText(SVCLang.Get("label-output-device"), label, ElementBounds.Fixed(labelX, y += 46, 210, 30))
             .AddVoiceDropDown(outputValues, outputNames, Math.Max(0, Array.IndexOf(outputValues, selectedOutput)), OnOutputDeviceChanged, ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), "outputDevice")
             .AddStaticText(SVCLang.Get("label-output-volume"), label, ElementBounds.Fixed(labelX, y += 46, 210, 30))
             .AddVoiceSlider(value => { controller.SetOutputVolumeFromSettings(value); return true; }, ElementBounds.Fixed(controlX, y, controlWidth, controlHeight), "outputVolume")
@@ -402,7 +437,8 @@ public sealed class VoiceSettingsDialog : VoiceRmlDialog
                         ? SVCLang.Get("recording-status-ready")
                         : SVCLang.Get("recording-status-none"),
             VoiceRmlFont.WhiteDetailText().WithColor(new[] { 0.78, 0.82, 0.88, 1.0 }),
-            ElementBounds.Fixed(controlX + 404, recordingY + 3, 190, 30));
+            ElementBounds.Fixed(controlX + 404, recordingY + 3, 190, 30),
+            "recording-status");
 
         // Keep the first behavior row clear of the recording and playback controls.
         y = recordingY + 54;
@@ -421,12 +457,16 @@ public sealed class VoiceSettingsDialog : VoiceRmlDialog
             "reject-invites", config.RejectChannelInvites, controller.SetRejectChannelInvitesFromSettings);
         AddSwitchRow(composer, labelX + 430, ref secondaryBehaviorY, SVCLang.Get("label-hide-chat-messages"),
             "hide-chat-messages", config.HideChatMessages, controller.SetHideChatMessagesFromSettings);
-        AddFlatButton(composer, hudPositionEditing
-                ? SVCLang.Get("button-confirm-hud-position")
-                : SVCLang.Get("button-adjust-hud-position"),
-            () => { controller.OpenHudPositionDialogFromSettings(); return true; },
-            ElementBounds.Fixed(labelX + 430, secondaryBehaviorY - 4, 220, 32), "adjust-hud-position");
-        secondaryBehaviorY += 40;
+        // The position editor owns the centered confirmation button. Keep the
+        // settings row hidden while it is open so two confirmation buttons are
+        // never presented at the same time.
+        if (!hudPositionEditing)
+        {
+            AddFlatButton(composer, SVCLang.Get("button-adjust-hud-position"),
+                () => { controller.OpenHudPositionDialogFromSettings(); return true; },
+                ElementBounds.Fixed(labelX + 430, secondaryBehaviorY - 4, 220, 32), "adjust-hud-position");
+            secondaryBehaviorY += 40;
+        }
         composer.AddStaticText(
             SVCLang.Get("label-start-noise-suppression"),
             label,
@@ -1901,7 +1941,11 @@ public sealed class VoiceSettingsDialog : VoiceRmlDialog
 
     private void OnInputDeviceChanged(string value, bool selected)
     {
-        if (selected) controller.SetInputDeviceFromSettings(value);
+        if (selected)
+        {
+            controller.SetInputDeviceFromSettings(value);
+            QueueCompose();
+        }
     }
 
     private void OnOutputDeviceChanged(string value, bool selected)

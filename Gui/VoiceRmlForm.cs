@@ -180,10 +180,37 @@ public sealed class VoiceSettingsDropDown(ElementBounds bounds, string[] values,
     }
 }
 
-internal sealed class VoiceSettingsTextButton(ICoreClientAPI api, string text, ActionConsumable action, ElementBounds bounds, VoiceRmlFont font, bool active = false) : VoiceRmlControl(bounds)
+internal sealed class VoiceSettingsTextButton : VoiceRmlControl
 {
-    internal override string Render() { _ = api; return $"<button {Attributes(active ? "primary" : "")} title='{E(text)}'><span class='button-label' style='font-size:{N(font.Size)}dp'>{E(text)}</span></button>"; }
+    private readonly ICoreClientAPI api;
+    private readonly ActionConsumable action;
+    private readonly VoiceRmlFont font;
+    private string text;
+    private bool active;
+
+    internal VoiceSettingsTextButton(ICoreClientAPI api, string text, ActionConsumable action, ElementBounds bounds, VoiceRmlFont font, bool active = false)
+        : base(bounds)
+    {
+        this.api = api;
+        this.text = text;
+        this.action = action;
+        this.font = font;
+        this.active = active;
+    }
+
+    internal override string Render() => $"<button {Attributes(active ? "primary" : "")} title='{E(text)}'><span class='button-label' style='font-size:{N(font.Size)}dp'>{E(text)}</span></button>";
     internal override void Bind(RmlDocument document, List<IDisposable> subscriptions) { base.Bind(document, subscriptions); On(subscriptions, "click", _ => action()); }
+
+    internal void SetState(string nextText, bool nextActive)
+    {
+        text = nextText;
+        active = nextActive;
+        if (Element?.Document.IsDisposed == false)
+        {
+            Element.QuerySelector(".button-label")!.Text = nextText;
+            Element.ClassNames = nextActive ? "primary" : string.Empty;
+        }
+    }
 }
 
 internal sealed class VoiceSettingsIconButton(ICoreClientAPI api, ElementBounds bounds, string iconName, Action<bool>? clicked, bool darkIcon = false) : VoiceRmlControl(bounds)

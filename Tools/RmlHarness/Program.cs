@@ -61,9 +61,15 @@ var player = ApiProxy.Create<IClientPlayer>((method, _) => method.Name switch { 
 var remotePlayer = ApiProxy.Create<IClientPlayer>((method, _) => method.Name switch { "get_PlayerUID" => "remote", "get_PlayerName" => "小林", _ => null });
 var world = ApiProxy.Create<IClientWorldAccessor>((method, _) => method.Name switch { "get_Player" => player, "get_AllOnlinePlayers" => new IPlayer[] { player, remotePlayer }, "get_ElapsedMilliseconds" => now, _ => null });
 var logger = ApiProxy.Create<ILogger>((_, _) => null);
+var inputApi = ApiProxy.Create<IInputAPI>((method, args) =>
+{
+    if (method.Name == "set_ClipboardText") host.Clipboard = (string)args![0]!;
+    if (method.Name == "get_KeyboardKeyState") return new bool[512];
+    return method.Name == "get_ClipboardText" ? host.Clipboard : null;
+});
 var api = ApiProxy.Create<ICoreClientAPI>((method, _) => method.Name switch
 {
-    "get_ModLoader" => loader, "get_Event" => events, "get_Render" => render, "get_World" => world, "get_Logger" => logger, _ => null
+    "get_ModLoader" => loader, "get_Event" => events, "get_Render" => render, "get_World" => world, "get_Logger" => logger, "get_Input" => inputApi, _ => null
 });
 foreach (string locale in new[] { "en", "zh-cn" })
 {
@@ -212,6 +218,13 @@ using (var settings = new VoiceSettingsDialog(api, controller))
     Click(doc, "window-close"); Click(doc, "open-settings");
     Check(doc.GetElementById("outputVolume-range")!.GetAttribute("max") == "200", "output gain range preserved");
     Check(doc.GetElementById("activationThresholds-gate")!.GetAttribute("max") == "200", "noise gate range preserved");
+    controller.SetVoiceActivationThresholdFromSettings(123);
+    settings.RefreshConfiguration(); Pump();
+    var triggerThreshold = doc.GetElementById("activationThresholds-trigger")!;
+    Check(triggerThreshold.GetAttribute("value") == "123", "trigger threshold accepts a non-default value");
+    settings.RefreshMicrophoneTestState();
+    Check(doc.GetElementById("activationThresholds-trigger")!.GetAttribute("value") == "123",
+        "microphone test state refresh preserves the configured trigger threshold");
     Screenshot(doc, "rml-audio");
     CheckButtonLabel(doc, "recording-toggle");
     CheckSelectLabel(doc, "inputDevice"); CheckSelectLabel(doc, "opusBitrate");
@@ -291,10 +304,11 @@ using (var settings = new VoiceSettingsDialog(api, controller))
     var header = doc.GetElementById("window-header")!.Bounds;
     int headerX = (int)(header.X + 30), headerY = (int)(header.Y + 20);
     doc.Call(5, headerX, headerY); doc.Call(6, 0); ui.DrainEvents();
-    Check(doc.CapturedPointer != null, "title bar captures the pointer");
+    Check(doc.CapturedPointer == null, "settings title bar does not capture the pointer");
     doc.InputFilter!(new(RmlInputKind.MouseMove, 5000, 5000)); Draw(doc);
     var moved = doc.GetElementById("window")!.Bounds;
-    Check(moved.X + moved.Width <= frameWidth + 1 && moved.Y + moved.Height <= frameHeight + 1, "dragging outside the title keeps the window on screen");
+    Check(Math.Abs(moved.X + moved.Width / 2 - frameWidth / 2f) <= 1
+        && Math.Abs(moved.Y + moved.Height / 2 - frameHeight / 2f) <= 1, "dragging the title leaves settings fixed in the center");
     doc.InputFilter(new(RmlInputKind.MouseUp, 5000, 5000, 0)); doc.Call(7, 0); ui.DrainEvents();
     Check(doc.CapturedPointer == null, "title drag releases capture outside the window");
     settings.TryClose(); settings.TryOpen(); Pump(); Draw(doc);
@@ -360,6 +374,97 @@ using (var settings = new VoiceSettingsDialog(api, controller, registry))
     settings.TryClose();
     Check(ticks.Count == 1, "closing the parent releases its extension window");
 }
+config.InputDeviceName = VoiceConstants.WebMicrophoneInputDevice;
+using (var settings = new VoiceSettingsDialog(api, controller))
+{
+    settings.TryOpen(); var doc = Doc(settings); Draw(doc); Click(doc, "open-settings");
+    Check(doc.GetElementById("web-microphone-credential") != null, "web microphone has a credential button");
+    CheckButtonLabel(doc, "web-microphone-credential");
+    var selector = doc.GetElementById("inputDevice")!.Bounds;
+    var button = doc.GetElementById("web-microphone-credential")!.Bounds;
+    Check(selector.X + selector.Width <= button.X, "credential button does not overlap input selector");
+    Screenshot(doc, "rml-web-microphone-settings");
+}
+int credentialRequests = 0;
+VoiceWebMicrophoneDialog? activeCredentialDialog = null;
+using (var parentSettings = new VoiceSettingsDialog(api, controller))
+using (var tokenDialog = new VoiceWebMicrophoneDialog(api, () => { credentialRequests++; return true; },
+    () => { Check(activeCredentialDialog!.IsOpened(), "credential host opens before settings close"); parentSettings.TryClose(); },
+    () => {
+        Check(activeCredentialDialog!.IsOpened(), "settings restore before credential host closes");
+        typeof(VoiceSettingsDialog).GetMethod("ResumeAfterCredential", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(parentSettings, null);
+    }))
+{
+    activeCredentialDialog = tokenDialog;
+    parentSettings.TryOpen(); Click(Doc(parentSettings), "open-settings");
+    tokenDialog.ShowToken("test-single-use-credential", DateTimeOffset.UtcNow.AddMinutes(10));
+    var doc = Doc(tokenDialog); Pump(); Draw(doc);
+    Check(!parentSettings.IsOpened(), "credential dialog hides the settings window");
+    var bounds = doc.GetElementById("window")!.Bounds;
+    Check(Math.Abs(bounds.X + bounds.Width / 2 - frameWidth / 2f) <= 1
+        && Math.Abs(bounds.Y + bounds.Height / 2 - frameHeight / 2f) <= 1, "credential dialog is centered");
+    CheckButtonLabel(doc, "copy"); CheckButtonLabel(doc, "renew");
+    var content = doc.GetElementById("content")!.Bounds;
+    var tokenBounds = doc.GetElementById("token")!.Bounds;
+    var closeBounds = doc.GetElementById("close")!.Bounds;
+    Check(Math.Abs(tokenBounds.Width - content.Width) <= 1, "credential input fills the content width");
+    Check(Math.Abs(closeBounds.X + closeBounds.Width - content.X - content.Width) <= 1
+        && Math.Abs(closeBounds.Y + closeBounds.Height - content.Y - content.Height) <= 1, "credential actions align bottom right");
+    Click(doc, "copy"); Check(host.Clipboard == "test-single-use-credential", "credential copy updates clipboard");
+    Click(doc, "renew"); Check(credentialRequests == 1, "credential renew invokes callback");
+    var header = doc.GetElementById("window-header")!.Bounds;
+    doc.Call(5, (int)header.X + 30, (int)header.Y + 15); doc.Call(6, 0); ui.DrainEvents();
+    Check(doc.CapturedPointer == null, "credential dialog cannot be dragged");
+    doc.Call(7, 0); ui.DrainEvents();
+    Screenshot(doc, "rml-web-microphone-token");
+    tokenDialog.ShowToken("renewed-single-use-credential", DateTimeOffset.UtcNow.AddMinutes(10));
+    Check(ReferenceEquals(doc, Doc(tokenDialog)), "credential renewal preserves the document and mouse host");
+    Check(doc.GetElementById("token")!.Value == "renewed-single-use-credential", "credential renewal updates the input");
+    Click(doc, "copy"); Check(host.Clipboard == "renewed-single-use-credential", "copy uses the renewed token");
+    Pump(); Check(!parentSettings.IsOpened(), "renewing credentials keeps settings hidden");
+    foreach (string closeAction in new[] { "close", "window-close", "escape" })
+    {
+        doc = Doc(tokenDialog); Draw(doc);
+        if (closeAction == "escape")
+            typeof(VoiceWebMicrophoneDialog).GetMethod("OnEscape", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(tokenDialog, null);
+        else Click(doc, closeAction);
+        Pump();
+        Check(!tokenDialog.IsOpened() && parentSettings.IsOpened(), "closing credentials restores settings: " + closeAction);
+        Check(Doc(parentSettings).GetElementById("inputDevice") != null, "restored settings retain the audio page: " + closeAction);
+        if (closeAction != "escape") tokenDialog.ShowToken("next-single-use-credential", DateTimeOffset.UtcNow.AddMinutes(10));
+    }
+}
+{
+    const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+    void SetField(string name, object value) => typeof(ClientVoiceController).GetField(name, flags)!.SetValue(controller, value);
+    object? Call(string name, params object[] args) => typeof(ClientVoiceController).GetMethod(name, flags)!.Invoke(controller, args);
+    var lifecycle = typeof(ClientVoiceController).GetField("lifecycle", flags)!.GetValue(controller)!;
+    lifecycle.GetType().GetMethod("TryStart")!.Invoke(lifecycle, [controller]);
+    SetField("voiceHandshakeAccepted", true); SetField("connectionEpoch", 42);
+    var buffer = new SimpleVoiceChat.Audio.VoiceTestRecordingBuffer();
+    SetField("microphoneTest", buffer);
+    Call("OnWebMicrophoneFeedback", new WebMicrophoneFeedbackPacket { ConnectionEpoch = 42, Rms = .15f, Sequence = 1 });
+    Check((float)typeof(ClientVoiceController).GetProperty("MicrophoneRms", flags)!.GetValue(controller)! == .15f, "web input drives settings meter");
+    var snapshot = Call("BuildHudSnapshot")!;
+    Check((float)snapshot.GetType().GetProperty("VoiceLevel")!.GetValue(snapshot)! > 0, "web input drives HUD volume");
+    Check((bool)Call("ToggleMicrophoneTestRecording")!, "web microphone starts test without a local capture device");
+    int testId = (int)typeof(ClientVoiceController).GetField("webMicrophoneTestId", flags)!.GetValue(controller)!;
+    byte[] pcm = new byte[1920];
+    System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(pcm, -1234);
+    Call("OnWebMicrophoneFeedback", new WebMicrophoneFeedbackPacket { ConnectionEpoch = 41, Rms = .1f, TestId = testId, Pcm = pcm, Sequence = 2 });
+    Call("OnWebMicrophoneFeedback", new WebMicrophoneFeedbackPacket { ConnectionEpoch = 42, Rms = .1f, TestId = testId + 1, Pcm = pcm, Sequence = 2 });
+    Call("OnWebMicrophoneFeedback", new WebMicrophoneFeedbackPacket { ConnectionEpoch = 42, Rms = .1f, TestId = testId, Pcm = pcm, Sequence = 3 });
+    Call("OnFastTick", .02f);
+    Check((float)typeof(ClientVoiceController).GetProperty("MicrophoneRms", flags)!.GetValue(controller)! > 0, "fast tick preserves web meter during recording");
+    Check((bool)Call("ToggleMicrophoneTestRecording")!, "web microphone test stops with playable audio");
+    Check(buffer.LastClip?.Samples.Length == 960 && buffer.LastClip.Samples[0] == -1234, "test clip contains only current epoch and recording samples");
+    now += 600;
+    Call("OnFastTick", .02f);
+    Check((float)typeof(ClientVoiceController).GetProperty("MicrophoneRms", flags)!.GetValue(controller)! == 0, "stale web input resets settings meter");
+    snapshot = Call("BuildHudSnapshot")!;
+    Check((float)snapshot.GetType().GetProperty("VoiceLevel")!.GetValue(snapshot)! == 0, "stale web input resets HUD volume");
+}
+config.InputDeviceName = "";
 using (var settings = new VoiceSettingsDialog(api, controller))
 {
     settings.TryOpen();

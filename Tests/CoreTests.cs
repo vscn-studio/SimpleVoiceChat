@@ -365,6 +365,10 @@ public sealed class CoreTests
         Assert.Equal(1, clip.Channels);
         Assert.Equal(VoiceConstants.SampleRate, clip.SampleRate);
         Assert.Equal(samples, clip.Samples);
+
+        short[] tail = { 500, -600 };
+        buffer.AppendLateInput(tail);
+        Assert.Equal(samples.Concat(tail), buffer.LastClip!.Samples);
     }
 
     [Fact]

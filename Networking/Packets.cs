@@ -22,6 +22,23 @@ public sealed class ClientVoiceStatePacket
 
     [ProtoMember(6)]
     public bool RejectChannelInvites;
+
+    [ProtoMember(7)] public bool WebMicrophoneActive;
+    [ProtoMember(8)] public bool WebTransmitRequested;
+    [ProtoMember(9)] public VoiceTransmitTarget TransmitTarget;
+    [ProtoMember(10)] public bool WebVoiceActivation;
+    [ProtoMember(11)] public float WebActivationThreshold;
+    [ProtoMember(12)] public int WebMicrophoneTestId;
+}
+
+[ProtoContract]
+public sealed class WebMicrophoneFeedbackPacket
+{
+    [ProtoMember(1)] public int ConnectionEpoch;
+    [ProtoMember(2)] public float Rms;
+    [ProtoMember(3)] public int TestId;
+    [ProtoMember(4)] public byte[] Pcm = [];
+    [ProtoMember(5)] public ushort Sequence;
 }
 
 [ProtoContract]

@@ -29,9 +29,11 @@ SimpleVoiceChat `1.2.7` 是适用于 Vintage Story `1.22.3` 的客户端/服务�
 
 ### 网页麦克风（LauncherGo）
 
-服务端默认在 `127.0.0.1:5082` 提供 `/voice` WebSocket 入口。玩家在客户端语音设置中选择“网页麦克风（LauncherGo）”后，游戏会弹出一次性 Token；将 Token 填入 LauncherGo 内置语音网页，连接地址默认为 `ws://127.0.0.1:5082/voice`。网页发送的麦克风帧会在服务端重新编码为 Opus，并复用附近语音、频道、距离和权限路由。
+网页麦克风默认关闭。服务端配置 `EnableWebMicrophone` 为 `true` 后，模组才会在 `127.0.0.1:15082` 提供 `/voice` WebSocket 接入与 `/health` 状态检查。语音网页由 LauncherGo 的独立进程提供（默认 `http://127.0.0.1:5082/`），其启停不影响游戏服务器；游戏关闭时网页仍可打开。玩家在客户端语音设置中选择“网页麦克风（LauncherGo）”后，游戏会弹出 Token；将 Token 填入网页，网页通过同源 WebSocket 转发到模组。Token 认证、PCM 转 Opus、附近语音和频道权限均由模组处理。
 
-服务端配置文件 `SimpleVoiceChat.Server.json` 可设置 `EnableWebMicrophone`、`WebMicrophoneBindAddress` 和 `WebMicrophonePort`。向公网开放时应使用 HTTPS/WSS 反向代理和防火墙限制，Token 只在短时间内有效。
+服务端配置文件 `SimpleVoiceChat.Server.json` 可设置 `EnableWebMicrophone`、`WebMicrophoneBindAddress` 和 `WebMicrophonePort`。默认值为 `false`、`127.0.0.1` 和 `15082`；启用后可通过后两个字段修改模组接入地址和端口。LauncherGo 网页服务默认使用 `5082`，与模组接入端口分开。旧版把模组接入配置为 `5082` 的，需要保存为 `15082` 后重启游戏服务器一次。远程访问麦克风时，在 LauncherGo 网页服务配置 HTTPS 证书，或通过支持 WebSocket 的 HTTPS 反向代理访问；Token 只在短时间内有效。
+
+音频设置的网页麦克风旁及凭证弹窗均提供“获取凭证”。凭证由服务端生成，须在 10 分钟内用于首次认证，仅能成功连接一次；断线后需要重新获取。认证成功后，连接不受凭证有效期限制。重新获取、切换输入设备、退出游戏或重新握手会撤销旧连接。网页显示本次连接时间。游戏内按键说话、静音、耳语/正常/大喊，以及附近/所选频道/两者的发送目标均控制网页音频；自由麦使用声音阈值。网页只采集麦克风，其他玩家声音仍由游戏播放。客户端、服务端和 LauncherGo 网页需一并更新。
 
 ### 安装
 

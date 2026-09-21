@@ -1,7 +1,13 @@
 body { width: 100%; height: 100%; margin: 0; font-family: vsrmlui-default; font-size: 14dp; line-height: 20dp; color: #eeeeee; pointer-events: none; }
 div { display: block; box-sizing: border-box; }
 .window { position: absolute; left: 0; right: 0; top: 0; bottom: 0; margin: auto; max-width: 98%; max-height: 96%; background-color: #242424; border: 1dp #555555; border-radius: 8dp; pointer-events: auto; }
-#window-header { height: 44dp; cursor: move; }
+#window-header { height: 44dp; cursor: default; }
+.web-token #window-header { cursor: default; }
+.web-token .token-detail { font-size: 12dp; line-height: 20dp; white-space: normal; }
+.web-token #token { display: block; width: 100%; height: 36dp; margin-top: 12dp; margin-bottom: 10dp; }
+.web-token #copy-status { margin-top: 6dp; color: #b8ffca; }
+.web-token .token-actions { position: absolute; right: 0; bottom: 0; display: flex; }
+.web-token .token-actions button { width: 96dp; height: 34dp; margin-left: 8dp; font-size: 12dp; }
 #window-title { display: block; padding: 10dp 48dp 0dp; text-align: center; font-size: 20dp; font-weight: bold; }
 button, input, select { box-sizing: border-box; font-family: vsrmlui-default; font-size: 14dp; line-height: 20dp; color: #eeeeee; background-color: #303030; border: 1dp #52545a; border-radius: 4dp; padding: 5dp 8dp; }
 button { display: flex; align-items: center; justify-content: center; cursor: pointer; text-align: center; border-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
