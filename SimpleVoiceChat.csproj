@@ -54,6 +54,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Remove="docs\**" />
+    <Content Remove="docs\**" />
     <Content Include="LICENSE" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="modinfo.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -71,6 +73,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+
+  <Target Name="RemoveDocumentationFromPackage" AfterTargets="Build">
+    <RemoveDir Directories="$(TargetDir)docs" Condition="Exists('$(TargetDir)docs')" />
+  </Target>
 
   <Target Name="RemoveWhisperNativeRuntimeFromPackage" AfterTargets="Build">
     <Delete Files="$(TargetDir)ggml-metal.metal" />

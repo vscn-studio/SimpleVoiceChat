@@ -8,8 +8,6 @@ SimpleVoiceChat `1.2.7` 是适用于 Vintage Story `1.22.3` 的客户端/服务�
 
 - [中文说明](#中文说明)
 - [English](#english)
-- [中文 HTML 使用与管理指南](docs/简单语音对话-使用与管理指南.html)
-- [English HTML User and Administration Guide](docs/SimpleVoiceChat-User-and-Administration-Guide.html)
 
 ## 中文说明
 
