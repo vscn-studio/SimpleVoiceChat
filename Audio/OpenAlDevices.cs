@@ -41,19 +41,6 @@ internal static class OpenAlDevices
         return names;
     }
 
-    internal static IReadOnlyList<string> ReadUtf8List(ReadOnlySpan<byte> bytes)
-    {
-        List<string> names = new();
-        int start = 0;
-        for (int i = 0; i <= bytes.Length; i++)
-        {
-            if (i != bytes.Length && bytes[i] != 0) continue;
-            if (i > start) names.Add(System.Text.Encoding.UTF8.GetString(bytes[start..i]));
-            start = i + 1;
-        }
-        return names;
-    }
-
     internal static T WithUtf8Name<T>(string? name, Func<IntPtr, T> action)
     {
         // Null means the default device. Do not round-trip device names through ANSI,
