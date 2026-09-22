@@ -23,7 +23,10 @@ public sealed class VoiceHudPositionDialog : VoiceRmlDialog
     {
         if (IsOpened()) return true;
         hud.BeginPositionEditing(); invite.BeginPositionEditing(); editingChanged?.Invoke(true);
-        Load($"<div id='voice-handle' class='drag-handle'></div><div id='invite-handle' class='drag-handle'></div><button id='confirm' class='position-help primary'><span class='button-label'>{E(SVCLang.Get("button-confirm-hud-position"))}</span></button>", "hud-position");
+        // The settings window owns the adjustment button. It changes to
+        // “Confirm adjustment” while this editor is open, so there is only
+        // one control and it stays in its original row.
+        Load("<div id='voice-handle' class='drag-handle'></div><div id='invite-handle' class='drag-handle'></div>", "hud-position");
         foreach (string target in new[] { "voice", "invite" })
         {
             var handle = Document!.GetElementById(target + "-handle")!;
@@ -36,7 +39,6 @@ public sealed class VoiceHudPositionDialog : VoiceRmlDialog
             });
         }
         Document!.InputCancelled += () => dragTarget = null;
-        Document.GetElementById("confirm")!.On("click", _ => TryClose());
         UpdateHandles(); return base.TryOpen();
     }
     internal void ConfirmFromSettings() => TryClose();

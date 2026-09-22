@@ -1203,7 +1203,12 @@ public sealed class ServerVoiceController : IDisposable
             return;
         }
 
-        if (!packet.Apply || packet.Config == null)
+        if (!packet.Apply)
+        {
+            controlChannel?.SendPacket(PacketMapper.ToPacket(config), fromPlayer);
+            return;
+        }
+        if (packet.Config == null)
         {
             return;
         }
@@ -1273,6 +1278,9 @@ public sealed class ServerVoiceController : IDisposable
             AuditRetention = packet.AuditRetention,
             AllowContinuousTalk = packet.AllowContinuousTalk,
             EnableChannels = packet.EnableChannels,
+            EnableWebMicrophone = config.EnableWebMicrophone,
+            WebMicrophoneBindAddress = config.WebMicrophoneBindAddress,
+            WebMicrophonePort = config.WebMicrophonePort,
             AllowPlayerChannelCreation = packet.AllowPlayerChannelCreation,
             EnableDirectorProximityCapture = packet.EnableDirectorProximityCapture,
             MaxDirectorListeners = packet.MaxDirectorListeners,

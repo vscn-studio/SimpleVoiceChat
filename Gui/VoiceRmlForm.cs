@@ -134,12 +134,22 @@ public sealed class VoiceSettingsTextInput(ElementBounds bounds, Action<string> 
     public void SetMaxLength(int length) => maxLength = length;
     public void SetPlaceHolderText(string text) => placeholder = text;
     public void HideCharacters() => type = "password";
+    /// <summary>Returns the value currently held by the native input, including text typed before blur.</summary>
+    public string CurrentValue => Element is { } element && !element.Document.IsDisposed ? element.Value : value;
     public string[] GetLines() => new[] { value };
     internal override string Render() => $"<input {Attributes()} type='{type}' value='{E(value)}' maxlength='{maxLength}' placeholder='{E(placeholder)}'/>";
     internal override void Bind(RmlDocument document, List<IDisposable> subscriptions)
     {
         base.Bind(document, subscriptions);
-        On(subscriptions, "change", _ => { string next = Element!.Value; if (next == value) return; value = next; changed(next); });
+        void UpdateValue()
+        {
+            string next = Element!.Value;
+            if (next == value) return;
+            value = next;
+            changed(next);
+        }
+        On(subscriptions, "input", _ => UpdateValue());
+        On(subscriptions, "change", _ => UpdateValue());
     }
 }
 
@@ -147,9 +157,11 @@ public sealed class VoiceSettingsSlider(ElementBounds bounds, ActionConsumable<i
 {
     private int value, min, max = 100, step = 1;
     private string suffix = "";
-    public void Configure(int value, int min, int max, int step, string suffix)
-    { this.min = min; this.max = max; this.value = Math.Clamp(value, min, max); this.step = step; this.suffix = suffix; }
-    internal override string Render() => $"<div {Attributes("slider-field")}>{RmlControls.Slider(Id + "-range", value, min, max, step)}<span id='{E(Id)}-value' class='slider-value'>{value}{E(suffix)}</span></div>";
+    private double displayDivisor = 1;
+    private string DisplayValue => N(value / displayDivisor) + suffix;
+    public void Configure(int value, int min, int max, int step, string suffix, double displayDivisor = 1)
+    { this.min = min; this.max = max; this.value = Math.Clamp(value, min, max); this.step = step; this.suffix = suffix; this.displayDivisor = displayDivisor; }
+    internal override string Render() => $"<div {Attributes("slider-field")}>{RmlControls.Slider(Id + "-range", value, min, max, step)}<span id='{E(Id)}-value' class='slider-value'>{E(DisplayValue)}</span></div>";
     internal override void Bind(RmlDocument document, List<IDisposable> subscriptions)
     {
         base.Bind(document, subscriptions);
@@ -159,7 +171,7 @@ public sealed class VoiceSettingsSlider(ElementBounds bounds, ActionConsumable<i
             if (!Enabled || !double.TryParse(e.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double number) || !double.IsFinite(number)) return;
             int next = (int)Math.Clamp(Math.Round(number), min, max);
             if (next == value) return;
-            value = next; document.GetElementById(Id + "-value")!.Text = value + suffix; changed(value);
+            value = next; document.GetElementById(Id + "-value")!.Text = DisplayValue; changed(value);
         }));
     }
 }

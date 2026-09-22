@@ -223,6 +223,8 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 
 - `SimpleVoiceChat.Client.json`：本机设备、音量、快捷方式、语音识别服务商配置和每服务器偏好。
 - `SimpleVoiceChat.Server.json`：范围、公共聊天可视距离、频道、容量、路由和 VS Director 捕获策略。
+
+拥有 `controlserver` 权限的管理员可在管理员窗口向下滚动到“服务器配置”，直接修改语音开关、距离、频道限制、码率、流量和录音设置。“保存并应用”写入服务器配置并立即生效，无需重启；“从文件重载”读取服务器配置文件并热重载；“刷新配置”读取当前生效值。后两项会替换界面中未保存的修改。网页麦克风开关、监听地址和端口仍通过服务器文件管理，变更后需要重启服务器；装备规则继续在服务器文件中编辑。
 - 频道名称创建/修改限制由服务端 `MaxChannelNameLength` 控制，默认 24，范围 1-128；调整只作用于之后的创建和重命名，不会改动已有频道名称。也可使用 `/svc channelnamelength <1-128>` 修改并广播配置。
 - `SimpleVoiceChat.Audit.json`：服务器管理操作审计，不记录语音内容。
 
@@ -409,6 +411,8 @@ Server administrators can use `/svc enable`, `/svc disable`, `/svc reload`, `/sv
 
 - `SimpleVoiceChat.Client.json`: local devices, levels, input preferences, speech-recognition provider settings, and per-server preferences.
 - `SimpleVoiceChat.Server.json`: ranges, public-chat visibility, channels, capacity, routing, and VS Director capture policy.
+
+Administrators with `controlserver` can scroll to Server configuration in the administrator window to edit voice options, ranges, channel limits, bitrate, bandwidth, and recording settings. Save and apply persists changes and activates them immediately. Reload from file hot-reloads the server file; Refresh config fetches the currently active values. Both replace unsaved edits. Web microphone enable/address/port settings remain in the server file and require a server restart; equipment rules also remain file-managed.
 - `SimpleVoiceChat.Audit.json`: server administration events; it does not contain voice content.
 
 ## Build and Verification

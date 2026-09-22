@@ -2443,18 +2443,19 @@ public sealed class ClientVoiceController : IDisposable
 
     internal ServerVoiceConfigPacket ServerSettings => serverConfig;
 
-    internal void ApplyServerConfigFromSettings(ServerVoiceConfigPacket settings, bool reload)
+    internal bool ApplyServerConfigFromSettings(ServerVoiceConfigPacket settings, bool reload, bool refresh = false)
     {
         if (!hasServerControl || controlChannel?.Connected != true)
         {
-            return;
+            return false;
         }
         controlChannel.SendPacket(new AdminVoiceConfigPacket
         {
-            Apply = !reload,
+            Apply = !reload && !refresh,
             Reload = reload,
             Config = settings ?? new ServerVoiceConfigPacket()
         });
+        return true;
     }
 
     internal void RequestSettingsRefresh()

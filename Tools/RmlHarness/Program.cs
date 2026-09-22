@@ -43,7 +43,7 @@ int frameWidth = 1280, frameHeight = 800; float scale = 1;
 ui.Dimensions = () => (frameWidth, frameHeight, scale);
 ui.RegisterFont("game:fonts/Montserrat-Regular.ttf", "vsrmlui-default");
 ui.RegisterFont("game:fonts/Montserrat-Bold.ttf", "vsrmlui-default", 700);
-ui.RegisterFont("vsrmlui:fonts/NotoSansCJKsc-Regular.otf", "vsrmlui-cjk", fallback: true);
+ui.ConfigureFonts("Montserrat", "zh-cn", Directory.GetFiles(Path.Combine(game, "assets/game/fonts"), "*.ttf").Select(File.ReadAllBytes));
 var system = new RmlUiModSystem();
 typeof(RmlUiModSystem).GetField("runtime", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(system, ui);
 var loader = ApiProxy.Create<IModLoader>((method, _) => method.Name == "GetModSystem" ? system : null);
@@ -256,6 +256,14 @@ using (var settings = new VoiceSettingsDialog(api, controller))
     settings.RefreshData(); Pump();
     Click(doc, "window-close"); Click(doc, "open-channels"); Screenshot(doc, "rml-channels");
     CheckButtonLabel(doc, "channel-search-submit");
+    Click(doc, "channel-search");
+    Check(doc.QuerySelector("#channel-search:focus") is not null, "clicking channel search focuses the input");
+    doc.Call(11, text: "missing-channel"); ui.DrainEvents(); Pump();
+    Check(doc.GetElementById("channel-search")!.Value == "missing-channel", "channel search accepts typed text");
+    Click(doc, "channel-search-submit");
+    Check(doc.GetElementById("channel-name-0") is null, "channel search filters after clicking search");
+    Click(doc, "channel-search-cancel");
+    Check(doc.GetElementById("channel-name-0") is not null && doc.GetElementById("channel-search")!.Value == "", "clearing channel search restores the list");
     Click(doc, "channel-settings-0");
     var targetPlayer = doc.GetElementById("overlay-channel-target-player")!;
     targetPlayer.Value = "remote"; targetPlayer.DispatchEvent("change"); Pump();
@@ -271,12 +279,28 @@ using (var settings = new VoiceSettingsDialog(api, controller))
     Check(doc.GetElementById("overlay-channel-volume") is not null, "channel settings open from the channel list");
     Click(doc, "channel-overlay-close");
     ScrollTo(doc, "open-players"); Click(doc, "open-players"); Screenshot(doc, "rml-players");
+    Check(doc.GetElementById("window-title")!.InnerRml == "Simple Voice Chat"
+        && doc.GetElementById("window-header")!.Bounds.Height > 0,
+        "player list shows the independent Simple Voice Chat window title");
+    Check(doc.GetElementById("players-list-title")!.InnerRml.Contains(SVCLang.Get("players-title")),
+        "player list retains its original section title");
+    var playerFooter = doc.GetElementById("player-pagination-next")!.Bounds;
+    var playerContent = doc.GetElementById("content")!.Bounds;
+    Check(playerContent.Y + playerContent.Height - playerFooter.Y - playerFooter.Height is >= 0 and <= 18,
+        "player pagination sits at the bottom of the content area");
+    Click(doc, "players-search");
+    Check(doc.QuerySelector("#players-search:focus") is not null, "player search accepts mouse focus");
+    doc.Call(11, text: "missing-player"); ui.DrainEvents(); Pump();
+    Click(doc, "players-search-submit");
+    Check(doc.GetElementById("overlay-player-volume-0") is null, "player search filters typed text");
+    Click(doc, "players-search-cancel");
     Check(doc.GetElementById("overlay-player-volume-0") is not null, "player list renders player volume controls");
     Click(doc, "overlay-player-settings-0"); Screenshot(doc, "rml-player");
     Check(doc.GetElementById("overlay-player-action") is not null, "player settings open from the player list");
     Click(doc, "player-overlay-close");
     Check(doc.GetElementById("players-search") is not null, "closing player settings returns to the player list");
-    Click(doc, "players-overlay-close");
+    Click(doc, "window-close");
+    Check(doc.GetElementById("channel-search") is not null, "closing the player list restores the channel list");
     Set(settings, "overlayChannelId", "channel-1"); Set(settings, "joinChannelId", "channel-1");
     Set(settings, "ownerLeaveChannelId", "channel-1"); Set(settings, "confirmChannelId", "channel-1");
     Set(settings, "confirmChannelAction", "disband"); Set(settings, "overlayPlayerUid", "remote");
@@ -285,9 +309,10 @@ using (var settings = new VoiceSettingsDialog(api, controller))
         Set(settings, "overlay", overlay);
         typeof(VoiceSettingsDialog).GetMethod("Compose", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(settings, null);
         Draw(doc);
-        Check(doc.QuerySelector(".overlay-panel") is not null, "renders overlay " + overlay);
+        bool playerList = overlay == VoiceSettingsOverlay.Players;
+        Check(playerList ? doc.GetElementById("players-list-title") is not null : doc.QuerySelector(".overlay-panel") is not null, "renders overlay " + overlay);
         Check(doc.GetElementById("quick-mute") is null && doc.GetElementById("channel-search") is null
-            && doc.GetElementById("inputDevice") is null && doc.GetElementById("window")!.ClassNames.Contains("overlay-host"),
+            && doc.GetElementById("inputDevice") is null && doc.GetElementById("window")!.ClassNames.Contains("overlay-host") != playerList,
             "overlay has no duplicated parent content or close button: " + overlay);
     }
     doc.InputFilter!(new(RmlInputKind.KeyDown, Key: (int)GlKeys.Escape)); Pump(); Draw(doc);
@@ -297,6 +322,54 @@ using (var settings = new VoiceSettingsDialog(api, controller))
     typeof(VoiceSettingsDialog).GetMethod("Compose", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(settings, null);
     Draw(doc); Check(doc.GetElementById("adminAction") is not null, "administrator tools retain their controls");
     Screenshot(doc, "rml-admin");
+    var adminDefaults = new SimpleVoiceChatServerConfig(); adminDefaults.Normalize();
+    Set(controller, "serverConfig", PacketMapper.ToPacket(adminDefaults));
+    settings.OnServerConfigRefreshed(); settings.RefreshData(); Pump(); Draw(doc);
+    Check(doc.GetElementById("adminConfigApply")!.GetAttribute("disabled") != "", "unchanged server configuration cannot be saved");
+    ScrollTo(doc, "adminConfigApply"); Screenshot(doc, "rml-admin-config");
+    CheckButtonLabel(doc, "adminConfigReload"); CheckButtonLabel(doc, "adminConfigRefresh");
+    var enabledConfig = doc.GetElementById("admin-config-enabled")!;
+    ScrollTo(doc, "admin-config-enabled"); Click(doc, "admin-config-enabled");
+    Check(doc.GetElementById("adminConfigApply")!.GetAttribute("disabled") == "", "editing server configuration enables saving");
+    ScrollTo(doc, "adminConfigApply"); Click(doc, "adminConfigApply");
+    Check(doc.GetElementById("adminConfigApply")!.GetAttribute("disabled") == "", "disconnected save preserves unsaved changes");
+    settings.OnServerConfigRefreshed(); settings.RefreshData(); Pump(); Draw(doc);
+    Check(doc.QuerySelector("#admin-config-enabled[checked]") is null, "unsolicited configuration refresh preserves unsaved edits");
+    var configRequests = new List<AdminVoiceConfigPacket>();
+    var configChannel = ApiProxy.Create<IClientNetworkChannel>((method, args) =>
+    {
+        if (method.Name == "get_Connected") return true;
+        if (method.Name == "SendPacket" && args![0] is AdminVoiceConfigPacket packet) configRequests.Add(packet);
+        return null;
+    });
+    Set(controller, "controlChannel", configChannel);
+    Click(doc, "adminConfigApply");
+    Check(configRequests.Count == 1 && configRequests[^1].Apply && !configRequests[^1].Reload && !configRequests[^1].Config.Enabled,
+        "save sends the edited settings through the administrator control channel");
+    Set(controller, "serverConfig", configRequests[^1].Config);
+    settings.OnServerConfigRefreshed(); settings.RefreshData(); Pump(); Draw(doc);
+    Check(doc.QuerySelector("#admin-config-enabled[checked]") is null && doc.GetElementById("adminConfigApply")!.GetAttribute("disabled") != "",
+        "server response updates the saved configuration in the window");
+    Click(doc, "adminConfigReload");
+    Check(configRequests.Count == 2 && configRequests[^1].Reload && !configRequests[^1].Apply, "reload requests the server file without sending edits");
+    Click(doc, "adminConfigRefresh");
+    Check(configRequests.Count == 3 && !configRequests[^1].Reload && !configRequests[^1].Apply, "refresh only requests active configuration");
+    Set(controller, "serverConfig", PacketMapper.ToPacket(adminDefaults));
+    settings.OnServerConfigRefreshed(); settings.RefreshData(); Pump(); Draw(doc);
+    Check(doc.QuerySelector("#admin-config-enabled[checked]") is not null, "refresh shows the server values");
+    ScrollTo(doc, "admin-config-max-range");
+    Check(doc.GetElementById("admin-config-max-range-value")!.InnerRml == "40 m", "server ranges display meters rather than tenths");
+    ScrollTo(doc, "admin-config-recorder-download");
+    var finalConfigRow = doc.GetElementById("admin-config-recorder-download")!.Bounds;
+    var configViewport = doc.GetElementById("content")!.Bounds;
+    Check(finalConfigRow.Y >= configViewport.Y && finalConfigRow.Y + finalConfigRow.Height <= configViewport.Y + configViewport.Height,
+        "last server configuration setting is reachable by scrolling");
+    Set(controller, "hasServerControl", false);
+    Check(!controller.ApplyServerConfigFromSettings(PacketMapper.ToPacket(adminDefaults), false) && configRequests.Count == 3,
+        "client refuses configuration changes without administrator privilege");
+    Set(controller, "hasServerControl", true);
+    typeof(ClientVoiceController).GetField("controlChannel", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(controller, null);
+    doc.GetElementById("content")!.SetScrollOffset(0, 0); Draw(doc);
     int SubscriptionCount() => ((System.Collections.IDictionary)typeof(RmlRuntime).GetField("subscriptions", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(ui)!).Count;
     int before = SubscriptionCount();
     for (int i = 0; i < 8; i++) { settings.RefreshData(); Pump(); }
@@ -352,7 +425,7 @@ using (var invite = new VoiceInviteDialog(api, () => now, () => { accepted++; re
     using (var position = new VoiceHudPositionDialog(api, config, hud, invite, (x, y, inviteY) => { }))
     {
         position.TryOpen(); Draw(Doc(position));
-        CheckButtonLabel(Doc(position), "confirm");
+        Check(Doc(position).GetElementById("confirm") is null, "HUD editor uses the settings adjustment button");
         Check(Doc(position).GetElementById("voice-handle")!.Bounds.Width > 0, "position editor tracks real HUD bounds");
         var editor = Doc(position); var handle = editor.GetElementById("voice-handle")!.Bounds;
         int x = (int)(handle.X + 20), y = (int)(handle.Y + 20), initialX = config.VoiceHudOffsetX;
