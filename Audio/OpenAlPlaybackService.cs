@@ -103,7 +103,7 @@ public sealed class OpenAlPlaybackService : IDisposable
     {
         try
         {
-            ALDevice selectedDevice = ALC.OpenDevice(clientConfig.OutputDeviceName);
+            ALDevice selectedDevice = OpenAlDevices.OpenPlaybackDevice(clientConfig.OutputDeviceName);
             if (selectedDevice.Handle == IntPtr.Zero)
             {
                 throw new InvalidOperationException("The selected OpenAL output device could not be opened.");

@@ -4,7 +4,6 @@ using SimpleVoiceChat.Gui;
 using SimpleVoiceChat.Integration;
 using SimpleVoiceChat.Networking;
 using SimpleVoiceChat.SpeechRecognition;
-using OpenTK.Audio.OpenAL;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
@@ -256,6 +255,9 @@ public sealed class ClientVoiceController : IDisposable
             noiseSuppressor = RnnoiseNoiseSuppressor.TryCreate();
             config.EnableNoiseSuppression = noiseSuppressor != null;
         }
+        // Repair names saved by the old ANSI enumerator before opening selected devices.
+        if (!string.IsNullOrWhiteSpace(config.InputDeviceName) && !IsWebMicrophoneSelected) GetInputDeviceValues();
+        if (!string.IsNullOrWhiteSpace(config.OutputDeviceName)) GetOutputDeviceValues();
         SaveConfig();
         RegisterChannels();
         RegisterHotkeys();
@@ -1416,7 +1418,14 @@ public sealed class ClientVoiceController : IDisposable
         List<string> values = new() { string.Empty, VoiceConstants.WebMicrophoneInputDevice };
         try
         {
-            foreach (string device in ALC.GetString(AlcGetStringList.CaptureDeviceSpecifier))
+            IReadOnlyList<string> devices = OpenAlDevices.GetCaptureDevices();
+            string resolvedName = OpenAlDevices.ResolveLegacyName(config.InputDeviceName, devices);
+            if (resolvedName != config.InputDeviceName)
+            {
+                config.InputDeviceName = resolvedName;
+                SaveConfig();
+            }
+            foreach (string device in devices)
             {
                 if (!string.IsNullOrWhiteSpace(device) && !values.Contains(device, StringComparer.Ordinal))
                 {
@@ -1462,7 +1471,13 @@ public sealed class ClientVoiceController : IDisposable
         List<string> values = new() { string.Empty };
         try
         {
-            IEnumerable<string> devices = ALC.GetString(AlcGetStringList.AllDevicesSpecifier);
+            IReadOnlyList<string> devices = OpenAlDevices.GetPlaybackDevices();
+            string resolvedName = OpenAlDevices.ResolveLegacyName(config.OutputDeviceName, devices);
+            if (resolvedName != config.OutputDeviceName)
+            {
+                config.OutputDeviceName = resolvedName;
+                SaveConfig();
+            }
             foreach (string device in devices)
             {
                 if (!string.IsNullOrWhiteSpace(device) && !values.Contains(device, StringComparer.Ordinal))

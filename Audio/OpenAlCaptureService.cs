@@ -41,7 +41,7 @@ public sealed class OpenAlCaptureService : IDisposable
                 return false;
             }
             string? deviceName = string.IsNullOrWhiteSpace(config.InputDeviceName) ? null : config.InputDeviceName;
-            captureDevice = ALC.CaptureOpenDevice(deviceName, VoiceConstants.SampleRate, ALFormat.Mono16, VoiceConstants.SamplesPerFrame * CaptureBufferFrames);
+            captureDevice = OpenAlDevices.OpenCaptureDevice(deviceName, VoiceConstants.SampleRate, ALFormat.Mono16, VoiceConstants.SamplesPerFrame * CaptureBufferFrames);
             if (captureDevice.Handle == IntPtr.Zero)
             {
                 FailureReason = SVCLang.Get("capture-open-failed");
