@@ -38,7 +38,7 @@ SimpleVoiceChat `1.2.7` 是适用于 Vintage Story `1.22.3` 的客户端/服务�
 1. 关闭 Vintage Story 客户端和服务器。
 2. 删除 `Mods` 目录中的旧版 SimpleVoiceChat 压缩包，避免同时加载多个版本。
 3. 将 `SimpleVoiceChat-v1.2.7.zip` 原样放入客户端和服务器的 `Mods` 目录，不要解压模组包。
-4. 在客户端和服务器的 `Mods` 目录同时安装 `VSRmlUi (vsrmlui) 1.0.1` 或更新兼容版本。
+4. 在客户端和服务器的 `Mods` 目录同时安装 `VSRmlUi (vsrmlui) 1.0.2` 或更新兼容版本。
 5. 启动服务器，然后启动客户端。首次按 `'` 会打开设置向导。
 
 SimpleVoiceChat 的设置、向导、邀请和 HUD 使用 RmlUi，需安装 `vsrmlui` 前置。VS Director 仅为可选集成与界面样式参考，无需安装。
@@ -247,7 +247,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 1. Stop the Vintage Story client and server.
 2. Remove older SimpleVoiceChat archives from each `Mods` directory so that only one version can load.
 3. Place `SimpleVoiceChat-v1.2.7.zip` unchanged in the client and server `Mods` directories. Do not extract the mod archive.
-4. Install `VSRmlUi (vsrmlui) 1.0.1` or a newer compatible version in both client and server `Mods` directories.
+4. Install `VSRmlUi (vsrmlui) 1.0.2` or a newer compatible version in both client and server `Mods` directories.
 5. Start the server and client. Press `'` to open the first-run setup wizard.
 
 Settings, setup, invitations, and the HUD require the `vsrmlui` mod. VS Director remains an optional integration and visual reference, not a dependency.
@@ -403,7 +403,7 @@ Client commands:
 /svc diag
 ```
 
-Server administrators can use `/svc enable`, `/svc disable`, `/svc reload`, `/svc setrange`, channel administration, player moderation, diagnostics, metrics, and audit commands. See the English HTML guide for complete parameters.
+Server administrators can use `/svc enable`, `/svc disable`, `/svc reload`, `/svc setrange`, channel administration, player moderation, diagnostics, metrics, and audit commands.
 
 ### Configuration Files
 
@@ -416,9 +416,10 @@ Server administrators can use `/svc enable`, `/svc disable`, `/svc reload`, `/sv
 ```powershell
 dotnet test Tests\SimpleVoiceChat.Tests.csproj
 dotnet build SimpleVoiceChat.csproj -c Release
+./Package-Mod.ps1
 ```
 
-The release is written to `bin\Release\Mods\mod`. Install `SimpleVoiceChatASR` on clients that use local Whisper; it supplies dependencies only and does not add a second settings button.
+`Package-Mod.ps1` always deletes the previous `SimpleVoiceChat-v<version>.zip`, any matching `.sha256` file, stale `release-<version>` output, and the Release staging directory before building. It writes the fresh package to `artifacts\SimpleVoiceChat-v<version>.zip` and validates that documentation, debug symbols, and unused legacy icon assets are not included. The release staging directory is `bin\Release\Mods\mod`. Install `SimpleVoiceChatASR` on clients that use local Whisper; it supplies dependencies only and does not add a second settings button.
 
 ### RmlUi development and validation
 

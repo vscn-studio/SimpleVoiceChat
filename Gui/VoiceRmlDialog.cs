@@ -88,7 +88,7 @@ public abstract class VoiceRmlDialog : IDisposable
         Form?.Dispose();
         Form = form;
         var ui = capi.ModLoader.GetModSystem<RmlUiModSystem>().Service
-            ?? throw new InvalidOperationException("SimpleVoiceChat requires the vsrmlui 1.0.1 client runtime.");
+            ?? throw new InvalidOperationException("SimpleVoiceChat requires the vsrmlui 1.0.2 client runtime.");
         ui.RegisterFont("simplevoicechat:fonts/tabler/tabler-icons.ttf", "svc-tabler");
         Document = ui.LoadDocumentFromString("simplevoicechat",
             "<rml><head><link type='text/rcss' href='simplevoicechat:dialog/voice.rcss'/>"

@@ -76,6 +76,10 @@
 
   <Target Name="RemoveDocumentationFromPackage" AfterTargets="Build">
     <RemoveDir Directories="$(TargetDir)docs" Condition="Exists('$(TargetDir)docs')" />
+    <ItemGroup>
+      <DebugSymbolFiles Include="$(TargetDir)**\*.pdb" />
+    </ItemGroup>
+    <Delete Files="@(DebugSymbolFiles)" />
   </Target>
 
   <Target Name="RemoveWhisperNativeRuntimeFromPackage" AfterTargets="Build">

@@ -13,9 +13,6 @@ Copyright (c) 2013-2025, Eric Lasota and Concentus contributors.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the conditions in the upstream `LICENSE` file are met. The complete upstream license is included in the Concentus NuGet package referenced by this project.
 
-The settings controls include Lucide icons from https://lucide.dev/ under the ISC License.
-The complete license text is included at `assets/simplevoicechat/licenses/LUCIDE.txt`.
-
 SimpleVoiceChat bundles the third-party `YellowDogMan.RRNoise.NET` 0.1.9 package for local microphone noise suppression. Its native builds are included for Windows x64/x86 and Linux x64/arm64. The package is maintained and built by Yellow Dog Man Studios S.r.o.; SimpleVoiceChat does not claim authorship of these binaries.
 
 - https://github.com/Yellow-Dog-Man/RNNoise.Net
