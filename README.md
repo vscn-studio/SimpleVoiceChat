@@ -11,19 +11,95 @@ SimpleVoiceChat `1.2.7` 是适用于 Vintage Story `1.22.3` 的客户端/服务�
 
 ## 中文说明
 
-### 主要功能
+### 功能清单
 
-- 接近度语音支持耳语、正常说话和大喊，距离由服务器配置。
-- 可将声音发送到接近度范围、当前频道或两者。
+以下清单按当前 `1.2.7` 代码实现整理。默认值指新建配置；已有配置和服务器策略可能不同。OBS 插件、LauncherGo 和本地 Whisper 依赖包需要单独安装。
+
+#### 语音通话与播放
+
+- 支持按键说话和语音触发通话（自由麦），可分别调整噪声门和触发阈值。
+- 支持耳语、正常说话和大喊；默认范围为 8、18、35 格，服务器最大范围默认 40 格。
+- 可发送到接近度范围、当前频道或两者；同时满足频道与附近条件的接收者优先走频道路径，避免重复播放。
+- 接近度语音具有空间定位和距离衰减，到范围边界时静音；频道语音不随距离衰减。
+- 支持本地麦克风静音、拒听全部语音、指定玩家静音，以及总音量、频道音量和玩家单独音量。
+
+#### 音频设备与处理
+
+- 可选择默认或指定输入/输出设备；OpenAL 设备名按 UTF-8 枚举和打开，支持中文名称，并尝试精确迁移旧版保存的乱码名称。
+- 麦克风采集包含高通滤波、自动增益、手动增益、软限幅和噪声门；可选 RNNoise 降噪。
+- 降噪默认关闭。发行包内置 `YellowDogMan.RRNoise.NET 0.1.9` 的 Windows x64/x86、Linux x64/arm64 原生库；macOS 未内置该库，使用基础处理，也可从 `VintagestoryData\ModData\SimpleVoiceChat\native` 加载兼容外部库。
+- 麦克风测试支持内存录音和试听，本地设备测试不生成文件、不向服务器发送音频；网页麦克风测试需经过网页桥接。
+- 设备采集失败后会尝试恢复；指定播放设备不可用时回退到游戏音频设备。
+- 当前未实现回声消除，保留的 `EnableEchoCancellation` 配置字段不代表该功能可用。
+
+#### 环境效果与性能选项
+
+- 支持方块遮挡、水下、头盔/面具、天气，以及根据实体状态计算的低时间稳定度和中毒音效。
+- 水下与装备状态由服务器判定，装备匹配规则支持通配符；客户端可控制本机遮挡和环境效果，服务器可强制遮挡效果。
+- 性能模式默认关闭；启用后，遮挡采样由 9 次降为 5 次，环境状态缓存由 150 ms 延长为 250 ms。它不改变音频驱动、48 kHz 采样率或 Opus 编码复杂度，也不扩大设备兼容范围。
+
+#### 频道、玩家与界面
+
+- RmlUi 提供首次设置向导、主页、音频设置、语音识别、频道、玩家、管理员、状态和录音界面；保留逐级返回逻辑。
+- HUD 显示语音状态、模式和音量，采用紧凑半透明无边框设计；可显示/隐藏，拖动调整 HUD 和邀请提示位置，并在原按钮确认。
+- 频道列表支持搜索、创建、加入、选择和退出；成员与玩家列表支持分页，玩家详情提供音量、静音和频道操作。
 - 自定义频道支持开放、密码和隐藏可见性，以及所有者、主持人、成员、只听和封禁角色。
-- 支持按键说话、语音触发通话（自由麦）、输入/输出设备选择、增益、噪声门、玩家单独音量与静音。
-- 本发行包内置第三方构建的 `YellowDogMan.RRNoise.NET 0.1.9` RNNoise 原生库，支持 Windows x64/x86 以及 Linux x64/arm64，无需玩家手动部署。该包不提供 macOS 原生库；macOS 会自动回退到内置 AGC/噪声门处理，也仍可从 `VintagestoryData\ModData\SimpleVoiceChat\native` 加载兼容的外部库。
-- 全链路使用 48 kHz 单声道、20 ms 帧和 Opus；默认 24 Kbps，自适应范围为 12-48 Kbps。客户端和服务器必须使用协议 V10 兼容版本，旧版 V9 不互通。
-- 接近度语音在客户端按距离平滑衰减到静音；频道/群组语音不受距离衰减影响，服务端转发范围不会扩大。
-- 可选的公共聊天距离可视：开启后，普通公共聊天只会显示给同维度且处于“聊天可视距离”内的玩家，发言者始终能看到自己的消息。
-- 可在本机进行麦克风试听，并主动保存仅输入或输入+输出 WAV；多人分轨由服务器权威托管。
-- 语音识别按钮和配置窗口由主模组提供；本地 Whisper 的托管和原生依赖由 `SimpleVoiceChatASR` 客户端依赖包提供。
-- VS Director 是可选集成，不是前置模组，也不需要单独的集成模组。
+- 根据权限支持邀请、移除成员、角色调整、禁言/解禁、封禁/解封、锁定/解锁、转让所有权、重命名和解散；持久频道及成员信息可跨服务器重启保存。
+- 邀请提示支持接受、拒绝和超时；玩家可拒收邀请、在普通玩家列表中隐藏自己或隐藏模组聊天提示。
+- 按服务器保存当前频道、发送目标、频道音量、玩家音量/静音、遮挡、环境效果和抖动缓冲偏好。
+
+#### 网络、容量与诊断
+
+- 使用游戏网络通道传输语音和控制消息；V10 语音采用 48 kHz 单声道、20 ms 帧和 Opus，默认 24 Kbps，支持 12-48 Kbps 自适应码率。
+- 支持客户端码率偏好、服务器码率指导、自适应抖动缓冲、Opus 前向纠错和丢帧补偿；解码在后台任务执行，PCM 缓冲池减少重复分配。
+- 服务器通过空间索引、同时发言准入、包速率/字节限流和出口带宽预算控制转发。默认每个听众最多 8 路语音，其中附近语音最多 6 路；每频道最多 3 人同时发言。
+- 默认每频道最多 100 名成员、每玩家最多 8 个频道、全服最多 256 个频道；名称长度默认 24 字符。管理员可调整这些限制。
+- 提供握手与连接状态、往返延迟、丢包、码率、抖动/纠错统计，以及服务器转发量、丢弃原因、路由耗时、玩家诊断和操作审计。
+- V9 与 V10 不互通。虽然保留 ADPCM 编解码代码和 `AllowAdpcmFallback` 字段，当前 V10 握手与网络校验只接受 Opus。
+
+#### 管理员与服务器配置
+
+- 拥有 `controlserver` 权限的管理员可管理频道、全服禁言和强制阻止发送；命令还支持临时禁言与临时拒听。
+- 管理员窗口支持修改语音开关、距离、公共聊天可视范围、频道容量、码率、带宽、录音和导演捕获设置。
+- “保存并应用”写盘并立即生效；“从文件重载”读取磁盘配置；“刷新配置”获取当前生效值。网页麦克风监听参数仍需修改文件并重启服务器，装备规则也在服务器文件中维护。
+- 可选公共聊天距离限制仅影响普通公共聊天，按同维度和距离筛选接收者；默认关闭。
+- 提供无效数据包校验、重复违规自动暂停语音、管理审计和滚动指标重置；审计文件不保存语音内容。
+
+#### 网页麦克风与语音转文字
+
+- 可选 LauncherGo 网页麦克风，通过一次性短时凭证接入服务器；游戏控制按键说话、自由麦、静音、模式和发送目标，其他玩家声音仍由游戏播放。
+- 网页桥接默认关闭；启用后，模组默认监听 `127.0.0.1:15082`，提供 `/voice` 和 `/health`，与 LauncherGo 的网页服务分开。
+- 语音转文字支持阿里云、硅基流动、Deepgram 和本地 Whisper，按服务商保存密钥、模型和接口地址；启用后按住 `V` 录音，松开发送识别文字到聊天。
+- 云端识别需要对应服务的凭证与网络；本地 Whisper 需要 `SimpleVoiceChatASR` 依赖包和本地模型。语音识别默认关闭。
+
+#### 录音、OBS 与 VS Director
+
+- 支持本地“仅输入”WAV，以及将输入和接收音频分别写入左右声道的“输入+输出”WAV，可播放最近的本地录音。
+- 管理员多人分轨录音由服务器托管，为每位发言者保存独立 WAV、统一时间轴、参与者状态和缺帧记录；需先启用 `EnableRecorderCapture`。
+- 支持录音会话查询、停止、分块下载、定期 checkpoint 和服务器重启后的会话恢复；管理员客户端断线不结束服务器录音。
+- 仓库内的独立 OBS 插件提供 `SimpleVoiceChat Player Voice` 混合音源，通过本机管道/Unix socket 接收玩家语音；同步 OBS 起点后，可导出多音轨 MKV 和 FCPXML。插件需另行安装到 OBS。
+- 可选 VS Director 集成通过运行时 API 提供语音捕获，支持距离和回放区域路由、独立流数与带宽预算；需服务器与 VS Director 同时开启相应功能。
+
+#### 开发者扩展
+
+- `ClientSettingsExtensions` 支持文字按钮、图片按钮、自定义 RML 控件和独立扩展窗口。
+- `RegisterVoiceChannelProvider` / `IVoiceChannelProvider` 允许其他模组提供由外部管理的频道、成员和角色快照。
+- `ClientAudioBuses` 暴露客户端玩家语音总线；OBS 原生插件源码和 RmlUi/容量验证工具包含在仓库中。
+
+#### 默认开关速查
+
+| 功能 | 新建配置默认状态 | 条件 |
+| --- | --- | --- |
+| 语音、频道、玩家创建频道 | 开启 | 客户端与服务器协议兼容 |
+| 按键说话 / 自由麦 | 按键说话 | 自由麦还需服务器允许 |
+| HUD、遮挡、环境效果、自适应码率/抖动缓冲 | 开启 | 效果受服务器策略控制 |
+| RNNoise 降噪、语音识别、性能模式 | 关闭 | 客户端按需开启 |
+| 网页麦克风 | 关闭 | 服务器配置并重启，另需网页客户端 |
+| 公共聊天距离限制 | 关闭 | 服务器开启 |
+| 服务器多人分轨录音 | 关闭 | 服务器开启，管理员操作 |
+| VS Director 捕获 | 关闭 | 服务器开启，另需 VS Director |
+
+代码入口：[客户端控制器](ClientVoiceController.cs)、[服务器控制器](ServerVoiceController.cs)、[客户端配置](Config/SimpleVoiceChatClientConfig.cs)、[服务器配置](Config/SimpleVoiceChatServerConfig.cs)、[音频处理](Audio)、[界面](Gui)、[语音识别](SpeechRecognition)、[扩展](Integration)、[OBS 插件](ObsPlugin)。
 
 ### 网页麦克风（LauncherGo）
 
@@ -57,6 +133,8 @@ SimpleVoiceChat 的设置、向导、邀请和 HUD 使用 RmlUi，需安装 `vsr
 | 打开设置 | `'` |
 | 打开多人分轨设置（管理员） | `Ctrl + F9` |
 | 语音转文字聊天 | 按住 `V` 录音，松开识别并发送 |
+| 接受频道邀请 | `Ctrl + F8` |
+| 拒绝频道邀请 | `F7` |
 
 快捷键可在 Vintage Story 的游戏按键设置中修改。
 
@@ -107,7 +185,7 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");
 
 ### 语音转文字
 
-打开 SimpleVoiceChat 主页，点击“语音识别”进入配置窗口。启用后按住 `V` 录音，松开后将识别文字发送到当前聊天频道。客户端需要额外安装 `SimpleVoiceChatASR`，它只提供 Whisper.net 运行时依赖；模型文件仍需玩家自行下载并在主模组配置窗口中填写路径。
+打开 SimpleVoiceChat 主页，点击“语音识别”进入配置窗口，可选择阿里云、硅基流动、Deepgram 或本地 Whisper。启用后按住 `V` 录音，松开后将识别文字发送到聊天。云端服务在主模组中配置密钥、模型和接口地址即可；仅使用本地 Whisper 时需要额外安装 `SimpleVoiceChatASR` 依赖包，并自行下载模型、填写本地模型路径。
 
 ### 频道和录音
 
@@ -119,7 +197,7 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");
 %APPDATA%\VintagestoryData\ModData\SimpleVoiceChat
 ```
 
-设置页的“麦克风测试”只保存在内存中，不会生成文件或发送到服务器。
+设置页的“麦克风测试”只保存在内存中，不会生成文件。本地设备测试不发送音频到服务器；网页麦克风测试经过服务器桥接回传测试音频，不向其他玩家广播。
 
 ### 水下与装备语音效果
 
@@ -217,7 +295,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 /svc diag
 ```
 
-服务器管理员可使用 `/svc enable`、`/svc disable`、`/svc reload`、`/svc setrange`、频道管理、玩家管制、诊断、指标和审计命令。完整参数见中文 HTML 指南。
+服务器管理员可使用 `/svc enable`、`/svc disable`、`/svc reload`、`/svc setrange`、频道管理、玩家管制、诊断、指标和审计命令。可用子命令及参数以 [ServerVoiceController.cs](ServerVoiceController.cs) 的命令处理为准。
 
 ### 配置文件
 
@@ -232,17 +310,91 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 
 ### Features
 
-- Proximity voice with server-configured whisper, talk, and shout ranges.
-- Transmit to proximity, the selected custom channel, or both.
-- Open, password-protected, and hidden channels with Owner, Moderator, Member, Listen Only, and Banned roles.
-- Push-to-talk, voice activation, input/output device selection, gain, noise gate, per-player volume, and local mute.
-- This release bundles the third-party `YellowDogMan.RRNoise.NET 0.1.9` RNNoise native builds for Windows x64/x86 and Linux x64/arm64; players do not need to install them manually. That package has no macOS native build, so macOS falls back to the built-in AGC/gate processing and may still load a compatible external library from `VintagestoryData\ModData\SimpleVoiceChat\native`.
-- The V10 protocol uses 48 kHz mono Opus only; compatible V10 builds are required on both sides. V9 clients are rejected.
-- Proximity playback applies a client-side distance fade to silence at the configured boundary; channel/group voice bypasses that fade and server forwarding does not expand.
-- Optional proximity visibility for public chat can limit ordinary chat messages to players in the same dimension and within a server-configured range; the sender always sees their own message.
-- In-memory microphone testing plus input-only, input-and-output, and server-hosted administrator multi-track WAV recording.
-- Speech-to-chat is configured and processed by the main mod; the separate `SimpleVoiceChatASR` client package supplies the Whisper runtime dependencies.
-- Optional runtime VS Director integration without a hard dependency or a separate integration mod.
+The list below describes the current `1.2.7` implementation. Defaults refer to newly created configuration files; existing client settings and server policy may differ. The OBS plugin, LauncherGo web client, and local Whisper dependency package are installed separately.
+
+#### Voice communication and playback
+
+- Supports push-to-talk and voice activation, with separately configurable noise gate and activation threshold.
+- Supports whisper, talk, and shout. Default ranges are 8, 18, and 35 blocks; the default server maximum is 40 blocks.
+- Voice can target proximity, the selected channel, or both. A recipient who qualifies for both channel and proximity delivery is sent the channel path once to avoid duplicate playback.
+- Proximity voice is spatialized and attenuated by distance, fading to silence at the range boundary. Channel voice does not fade with distance.
+- Provides local microphone mute, deafen, per-player mute, master and channel volume, and per-player volume.
+
+#### Audio devices and processing
+
+- Selects the default or a specific input/output device. OpenAL device names are enumerated and opened as UTF-8, including Chinese names; the mod also attempts to migrate an exact match for a previously saved garbled device name.
+- Microphone capture includes high-pass filtering, automatic and manual gain, soft limiting, and a noise gate; RNNoise suppression is optional.
+- Noise suppression is off by default. The archive bundles `YellowDogMan.RRNoise.NET 0.1.9` native libraries for Windows x64/x86 and Linux x64/arm64. No macOS library is bundled, so macOS uses basic processing or may load a compatible external library from `VintagestoryData\ModData\SimpleVoiceChat\native`.
+- Microphone tests support in-memory recording and playback. Local device tests create no files and send no audio to the server; web microphone tests use the web bridge.
+- Capture attempts recovery after device failures; unavailable selected playback devices fall back to the game's audio device.
+- Echo cancellation is not implemented. The retained `EnableEchoCancellation` configuration field does not make the feature available.
+
+#### Environmental effects and performance
+
+- Supports block occlusion, underwater, helmet/mask, weather, low temporal stability, and poisoning effects based on entity state.
+- The server determines underwater and equipment states. Equipment matching supports wildcards; clients control local occlusion and environmental playback while the server can force occlusion.
+- Performance mode is off by default. When enabled, it reduces occlusion samples from 9 to 5 and extends the environmental-state cache from 150 ms to 250 ms. It does not change the audio driver, 48 kHz sample rate, or Opus complexity, and does not expand device compatibility.
+
+#### Channels, players, and interface
+
+- RmlUi screens include first-run setup, home, audio settings, speech recognition, channels, players, administration, status, and recording, with hierarchical navigation.
+- The HUD shows voice state, mode, and volume in a compact translucent borderless layout. It can be shown or hidden; the HUD and invitation prompt can be repositioned and confirmed with the same adjustment button.
+- Channel lists support search, creation, joining, selection, and leaving. Member and player lists are paginated; player details provide volume, mute, and channel actions.
+- Custom channels support open, password-protected, and hidden visibility, plus Owner, Moderator, Member, Listen Only, and Banned roles.
+- Depending on permissions, channel actions include inviting/removing members, changing roles, muting/unmuting, banning/unbanning, locking/unlocking, transferring ownership, renaming, and disbanding. Persistent channels and membership survive server restarts.
+- Invitation prompts support accept, decline, and timeout. Players can reject invitations, hide themselves from ordinary player lists, or hide mod chat notices.
+- Per-server preferences include the selected channel, transmit target, channel/player volume and mute, occlusion, environmental effects, and jitter-buffer settings.
+
+#### Networking, capacity, and diagnostics
+
+- Voice and control messages use the game's network channel. V10 voice is 48 kHz mono, 20 ms Opus frames at 24 Kbps by default, with adaptive rates from 12 to 48 Kbps.
+- Supports client bitrate preference, server bitrate guidance, adaptive jitter buffering, Opus forward error correction, and packet-loss concealment. Decoding runs in background tasks and a PCM buffer pool reduces repeated allocations.
+- Server forwarding uses spatial indexing, concurrent-speaker admission, packet/byte rate limits, and egress budgets. Defaults allow up to 8 voice streams per listener (6 proximity streams maximum) and 3 simultaneous speakers per channel.
+- Defaults allow 100 members per channel, 8 channels per player, 256 channels server-wide, and 24 characters per channel name. Administrators can change these limits.
+- Diagnostics include handshake/connection state, round-trip latency, packet loss, bitrate, jitter/FEC statistics, forwarding volume, drop reasons, routing time, player diagnostics, and administrative audit.
+- V9 and V10 are incompatible. Although ADPCM codec code and the `AllowAdpcmFallback` field remain, the current V10 handshake and packet validation accept Opus only.
+
+#### Administration and server configuration
+
+- Administrators with `controlserver` can manage channels, server-wide mute, and forced transmit blocking; commands also support temporary mute and deafen.
+- The admin window can edit voice enablement, ranges, public-chat visibility range, channel capacity, bitrate, bandwidth, recording, and Director capture settings.
+- Save and Apply writes changes and applies them immediately; Reload from File reads the disk configuration; Refresh Configuration fetches the current active values. Web microphone listener settings still require editing the server file and restarting, and equipment rules are maintained in that file.
+- Optional public-chat distance filtering affects ordinary public chat only and filters recipients by dimension and distance; it is off by default.
+- Includes invalid-packet validation, automatic voice suspension for repeated violations, administrative audit, and rolling metric reset. Audit files do not store voice content.
+
+#### Web microphone and speech-to-chat
+
+- Optional LauncherGo web microphone connects to the server using a short-lived, one-time credential. In-game controls still govern push-to-talk, voice activation, mute, mode, and transmit target; other players' voices remain in game playback.
+- The web microphone bridge is disabled by default. When enabled, the mod listens on `127.0.0.1:15082` by default and exposes `/voice` and `/health`; this is separate from the LauncherGo web service.
+- Speech-to-chat supports Aliyun, SiliconFlow, Deepgram, and local Whisper. Credentials, model, and endpoint are configured per provider. Hold `V` to record; releasing it sends the recognized text to chat.
+- Cloud recognition requires provider credentials and network access. Local Whisper requires the `SimpleVoiceChatASR` dependency package and a local model. Speech recognition is off by default.
+
+#### Recording, OBS, and VS Director
+
+- Local recording supports input-only WAV and input/output WAV split between left and right channels, with playback of recent local recordings.
+- Administrator multi-track recording is hosted by the server and writes a separate WAV per speaker on one shared timeline, with participant state and missing-frame records. Enable `EnableRecorderCapture` first.
+- Recording sessions support listing, stopping, chunked downloads, periodic checkpoints, and recovery after a server restart. Disconnecting the administrator client does not end a server recording.
+- The separate OBS plugin in this repository provides a `SimpleVoiceChat Player Voice` mixed source over a local pipe/Unix socket. After synchronizing the OBS start time, it can export multi-track MKV and FCPXML. Install the plugin separately into OBS.
+- Optional VS Director integration uses its runtime API for voice capture, proximity/replay-area routing, and independent stream and bandwidth budgets. The corresponding features must be enabled in both the server and VS Director.
+
+#### Developer extensions
+
+- `ClientSettingsExtensions` supports text buttons, image buttons, custom RML controls, and standalone extension windows.
+- `RegisterVoiceChannelProvider` / `IVoiceChannelProvider` lets other mods provide externally managed channel, member, and role snapshots.
+- `ClientAudioBuses` exposes the client player-voice bus. The repository also contains OBS native plugin source and RmlUi/capacity validation tools.
+
+#### Default settings at a glance
+
+| Feature | New configuration default | Condition |
+| --- | --- | --- |
+| Voice, channels, player-created channels | Enabled | Client and server protocols must be compatible |
+| Push-to-talk / voice activation | Push-to-talk | Voice activation also requires server permission |
+| HUD, occlusion, environmental effects, adaptive bitrate/jitter buffer | Enabled | Subject to server policy |
+| RNNoise, speech recognition, performance mode | Disabled | Enable on the client as needed |
+| Web microphone | Disabled | Enable in server config and restart; separate web client required |
+| Public-chat distance filtering | Disabled | Enable on the server |
+| Server multi-track recording | Disabled | Enable on server; administrator operation required |
+| VS Director capture | Disabled | Enable on server; VS Director also required |
 
 ### Installation
 
@@ -266,6 +418,8 @@ Settings, setup, invitations, and the HUD require the `vsrmlui` mod. VS Director
 | Open settings | `'` |
 | Open multi-track settings (administrator) | `Ctrl + F9` |
 | Speech-to-chat | Hold `V`, then release to transcribe and send |
+| Accept channel invitation | `Ctrl + F8` |
+| Decline channel invitation | `F7` |
 
 Bindings can be changed in Vintage Story's game key settings.
 
@@ -303,7 +457,7 @@ These APIs are client-only. Registration IDs may contain letters, digits, `.`, `
 
 ### Speech-to-Chat
 
-Open Speech Recognition from the SimpleVoiceChat home page to configure the provider and model. When enabled, hold `V` to record and release it to transcribe and send text to the active chat channel. Install the separate client-only `SimpleVoiceChatASR` package for Whisper.net managed and native runtime dependencies; the main mod owns the configuration window and recognition workflow.
+Open Speech Recognition from the SimpleVoiceChat home page to select Aliyun, SiliconFlow, Deepgram, or local Whisper. When enabled, hold `V` to record and release it to transcribe and send text to chat. Configure cloud credentials, model, and endpoint in the main mod. Only local Whisper requires the separate client-only `SimpleVoiceChatASR` runtime package and a downloaded model with its local path configured.
 
 ### Channels and Recording
 
@@ -315,7 +469,7 @@ The home-page recording button offers Input Only, Input+Output, and Multi-track 
 %APPDATA%\VintagestoryData\ModData\SimpleVoiceChat
 ```
 
-Microphone Test is memory-only and neither creates a file nor sends audio to the server.
+Microphone Test is memory-only and creates no files. Local device tests send no audio to the server; web microphone tests return test audio through the server bridge without broadcasting to other players.
 
 ### Underwater and Equipment Voice Effects
 
