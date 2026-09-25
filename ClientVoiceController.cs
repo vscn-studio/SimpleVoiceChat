@@ -59,6 +59,7 @@ public sealed class ClientVoiceController : IDisposable
     private readonly ICoreClientAPI capi;
     private readonly SimpleVoiceChatClientConfig config;
     private readonly VoiceSettingsExtensionRegistry settingsExtensions;
+    private readonly DownedVoiceIntegration downedVoiceIntegration;
     private readonly ControllerLifecycle lifecycle = new();
     private IClientNetworkChannel? controlChannel;
     private IClientNetworkChannel? voiceChannel;
@@ -193,6 +194,7 @@ public sealed class ClientVoiceController : IDisposable
     {
         this.capi = capi;
         this.config = config;
+        downedVoiceIntegration = new DownedVoiceIntegration(capi);
         this.settingsExtensions = settingsExtensions ?? new VoiceSettingsExtensionRegistry();
         selectedChannelRestorePending = !string.IsNullOrEmpty(config.SelectedChannelId);
         sessionId = NextSessionId();
@@ -799,7 +801,7 @@ public sealed class ClientVoiceController : IDisposable
         controlChannel.SendPacket(new VoiceHelloPacket
         {
             ProtocolVersion = VoiceProtocol.CurrentVersion,
-            ModVersion = "1.2.7",
+            ModVersion = "1.2.8-pre.1",
             SupportedCodecs = new[] { VoiceProtocol.CodecOpus },
             Capabilities = (int)(VoiceCapability.ProtocolV4
                 | VoiceCapability.ChannelDeltas
@@ -2521,6 +2523,7 @@ public sealed class ClientVoiceController : IDisposable
             || !voiceHandshakeAccepted
             || !serverConfig.Enabled
             || globalMuted
+            || IsDownedVoiceSilenced(capi.World.Player.Entity)
             || !VoiceProtocolValidation.IsValidRelayShape(packet)
             || packet.SenderEntityId == capi.World.Player.Entity.EntityId)
         {
@@ -3018,8 +3021,17 @@ public sealed class ClientVoiceController : IDisposable
         {
             return;
         }
-        playback?.Update(serverConfig);
-        directorVoice?.Update(serverConfig);
+        bool downedVoiceSilenced = IsDownedVoiceSilenced(capi.World.Player.Entity);
+        if (downedVoiceSilenced)
+        {
+            playback?.ClearRemoteVoice();
+            directorVoice?.ClearRemoteStreams();
+        }
+        else
+        {
+            playback?.Update(serverConfig);
+            directorVoice?.Update(serverConfig);
+        }
         recorderVoice?.Update(MonotonicClock.NowMilliseconds);
         audioBuses.Flush(MonotonicClock.NowMilliseconds);
         bool playbackActive = playback?.IsRecordingPlaybackActive == true;
@@ -3309,9 +3321,10 @@ public sealed class ClientVoiceController : IDisposable
             }
             bool active = stats.Active && (!requireVoiceActivation || activationDetected || voiceActivationHangoverFrames > 0);
             VoiceTransmitTarget transmitTarget = ResolveTransmitTarget(config.TransmitTarget, config.SelectedChannelId);
+            bool downedVoiceSilenced = IsDownedVoiceSilenced(capi.World.Player.Entity);
             // Director records the local proximity microphone independently of
             // VAD. VAD still controls network transmission below.
-            if (captureDirectorAudio)
+            if (captureDirectorAudio && !downedVoiceSilenced)
             {
                 directorVoice?.SubmitLocalFrame(
                     captureBuffer,
@@ -3320,7 +3333,7 @@ public sealed class ClientVoiceController : IDisposable
                     transmitTarget,
                     serverConfig);
             }
-            if (!active)
+            if (!active || downedVoiceSilenced)
             {
                 continue;
             }
@@ -3359,7 +3372,7 @@ public sealed class ClientVoiceController : IDisposable
 
     private void SendCapturedFrame(byte[] payload, VoiceFrameStats stats, long captureTimestampMilliseconds)
     {
-        if (!voiceHandshakeAccepted || voiceEncoder == null)
+        if (!voiceHandshakeAccepted || voiceEncoder == null || IsDownedVoiceSilenced(capi.World.Player.Entity))
         {
             return;
         }
@@ -3401,6 +3414,9 @@ public sealed class ClientVoiceController : IDisposable
             });
         }
     }
+
+    private bool IsDownedVoiceSilenced(Entity? entity)
+        => serverConfig.EnableDownedVoiceSilence && downedVoiceIntegration.IsDowned(entity);
 
     private void FlushPendingVoiceFrame(bool voiceReady)
     {

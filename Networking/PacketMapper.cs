@@ -22,6 +22,7 @@ public static class PacketMapper
             EnableWeatherEffects = config.EnableWeatherEffects,
             EnableEnvironmentalVoiceEffects = config.EnableEnvironmentalVoiceEffects,
             ApplyUnderwaterEffectsToChannels = config.ApplyUnderwaterEffectsToChannels,
+            EnableDownedVoiceSilence = config.EnableDownedVoiceSilence,
             EnableHudIndicators = config.EnableHudIndicators,
             ProtocolVersion = VoiceProtocol.CurrentVersion,
             MaxStreamsPerListener = config.MaxStreamsPerListener,

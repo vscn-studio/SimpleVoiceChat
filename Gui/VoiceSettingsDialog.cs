@@ -1706,6 +1706,7 @@ public sealed class VoiceSettingsDialog : VoiceRmlDialog
         AddAdminConfigSwitch(composer, x, ref y, label, "enable-weather", SVCLang.Get("admin-config-enable-weather"), value => adminConfigDraft.EnableWeatherEffects = value);
         AddAdminConfigSwitch(composer, x, ref y, label, "environmental-effects", SVCLang.Get("admin-config-environmental-effects"), value => adminConfigDraft.EnableEnvironmentalVoiceEffects = value);
         AddAdminConfigSwitch(composer, x, ref y, label, "underwater-channels", SVCLang.Get("admin-config-underwater-channels"), value => adminConfigDraft.ApplyUnderwaterEffectsToChannels = value);
+        AddAdminConfigSwitch(composer, x, ref y, label, "downed-voice-silence", SVCLang.Get("admin-config-downed-voice-silence"), value => adminConfigDraft.EnableDownedVoiceSilence = value);
         AddAdminConfigSwitch(composer, x, ref y, label, "enable-hud", SVCLang.Get("admin-config-enable-hud"), value => adminConfigDraft.EnableHudIndicators = value);
         AddAdminConfigSwitch(composer, x, ref y, label, "allow-continuous-talk", SVCLang.Get("admin-config-allow-continuous-talk"), value => adminConfigDraft.AllowContinuousTalk = value);
         AddAdminConfigSwitch(composer, x, ref y, label, "enable-channels", SVCLang.Get("admin-config-enable-channels"), value => adminConfigDraft.EnableChannels = value);
@@ -1777,6 +1778,7 @@ public sealed class VoiceSettingsDialog : VoiceRmlDialog
         "enable-weather" => adminConfigDraft.EnableWeatherEffects,
         "environmental-effects" => adminConfigDraft.EnableEnvironmentalVoiceEffects,
         "underwater-channels" => adminConfigDraft.ApplyUnderwaterEffectsToChannels,
+        "downed-voice-silence" => adminConfigDraft.EnableDownedVoiceSilence,
         "enable-hud" => adminConfigDraft.EnableHudIndicators,
         "allow-continuous-talk" => adminConfigDraft.AllowContinuousTalk,
         "enable-channels" => adminConfigDraft.EnableChannels,
@@ -1832,6 +1834,7 @@ public sealed class VoiceSettingsDialog : VoiceRmlDialog
             EnableWeatherEffects = source.EnableWeatherEffects, EnableHudIndicators = source.EnableHudIndicators,
             EnableEnvironmentalVoiceEffects = source.EnableEnvironmentalVoiceEffects,
             ApplyUnderwaterEffectsToChannels = source.ApplyUnderwaterEffectsToChannels,
+            EnableDownedVoiceSilence = source.EnableDownedVoiceSilence,
             ProtocolVersion = source.ProtocolVersion, MaxStreamsPerListener = source.MaxStreamsPerListener,
             AllowContinuousTalk = source.AllowContinuousTalk, ServerInstanceId = source.ServerInstanceId,
             EnableDirectorProximityCapture = source.EnableDirectorProximityCapture, EnableRecorderCapture = source.EnableRecorderCapture,

@@ -148,6 +148,7 @@ public sealed class ServerVoiceConfigPacket
     [ProtoMember(48)] public float ProximityChatRange;
     [ProtoMember(49)] public bool EnableEnvironmentalVoiceEffects;
     [ProtoMember(50)] public bool ApplyUnderwaterEffectsToChannels;
+    [ProtoMember(51)] public bool EnableDownedVoiceSilence;
 
     public float GetRange(VoiceMode mode)
     {

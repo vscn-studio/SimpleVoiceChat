@@ -476,6 +476,7 @@
   "simplevoicechat:admin-config-enable-weather": "Weather effects",
   "simplevoicechat:admin-config-environmental-effects": "Environmental voice effects",
   "simplevoicechat:admin-config-underwater-channels": "Underwater effects on channels",
+  "simplevoicechat:admin-config-downed-voice-silence": "Silence Downed players",
   "simplevoicechat:admin-config-enable-hud": "HUD indicators",
   "simplevoicechat:admin-config-allow-continuous-talk": "Continuous talk",
   "simplevoicechat:admin-config-enable-channels": "Enable channels",

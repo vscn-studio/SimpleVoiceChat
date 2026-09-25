@@ -476,6 +476,7 @@
   "simplevoicechat:admin-config-enable-weather": "天气效果",
   "simplevoicechat:admin-config-environmental-effects": "环境语音效果",
   "simplevoicechat:admin-config-underwater-channels": "频道应用水下效果",
+  "simplevoicechat:admin-config-downed-voice-silence": "昏迷玩家禁用语音",
   "simplevoicechat:admin-config-enable-hud": "HUD 指示器",
   "simplevoicechat:admin-config-allow-continuous-talk": "允许自由麦",
   "simplevoicechat:admin-config-enable-channels": "启用频道",

@@ -146,6 +146,16 @@ internal sealed class DirectorVoiceIntegration : IDisposable
         }
     }
 
+    internal void ClearRemoteStreams()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        ClearRemoteStreamsInternal();
+    }
+
     internal void SubmitLocalFrame(
         short[] samples,
         long timestampMilliseconds,
@@ -221,7 +231,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
         }
 
         disposed = true;
-        ClearRemoteStreams();
+        ClearRemoteStreamsInternal();
         foreach (DirectorVoiceSource source in sources.Values)
         {
             source.Dispose();
@@ -271,7 +281,7 @@ internal sealed class DirectorVoiceIntegration : IDisposable
         return reflection is not null;
     }
 
-    private void ClearRemoteStreams()
+    private void ClearRemoteStreamsInternal()
     {
         foreach (KeyValuePair<string, DirectorVoiceStream> entry in streams)
         {

@@ -22,6 +22,7 @@ public sealed class ServerVoiceController : IDisposable
     private readonly string runtimeInstanceId = Guid.NewGuid().ToString("N");
     private readonly ControllerLifecycle lifecycle = new();
     private SimpleVoiceChatServerConfig config;
+    private readonly DownedVoiceIntegration downedVoiceIntegration;
     private IServerNetworkChannel? controlChannel;
     private IServerNetworkChannel? voiceChannel;
     private readonly Dictionary<string, ClientVoiceStatePacket> statesByUid = new();
@@ -65,6 +66,7 @@ public sealed class ServerVoiceController : IDisposable
     {
         this.sapi = sapi;
         this.config = config;
+        downedVoiceIntegration = new DownedVoiceIntegration(sapi);
         this.channelProviders = channelProviders?.Take(32).ToArray() ?? Array.Empty<IVoiceChannelProvider>();
         config.Normalize();
         channels = new ChannelService(config.NextChannelNumber);
@@ -893,13 +895,14 @@ public sealed class ServerVoiceController : IDisposable
     {
         statesByUid.TryGetValue(lease.PlayerUid, out var state);
         sessionsByUid.TryGetValue(lease.PlayerUid, out var session);
+        onlinePlayersByUid.TryGetValue(lease.PlayerUid, out IServerPlayer? player);
         long now = sapi.World.ElapsedMilliseconds;
         bool allowed = lifecycle.IsStarted && config.Enabled && config.EnableWebMicrophone
             && webMicrophoneCredentials.IsActive(lease)
             && session?.ConnectionEpoch == lease.Epoch && onlinePlayersByUid.ContainsKey(lease.PlayerUid)
-            && !IsAdminSuppressedSpeaker(lease.PlayerUid) && moderation.CanTransmit(lease.PlayerUid, now);
+            && !IsAdminSuppressedSpeaker(lease.PlayerUid) && moderation.CanTransmit(lease.PlayerUid, now)
+            && !IsDownedVoiceSilenced(player?.Entity);
         string channelId = session?.SelectedChannelId ?? "";
-        onlinePlayersByUid.TryGetValue(lease.PlayerUid, out var player);
         VoiceMode mode = NormalizeMode(state?.Mode ?? VoiceMode.Talk);
         return WebMicrophoneControl.FromState(state, channelId, allowed,
             session == null ? long.MaxValue : now - session.LastWebStateMilliseconds) with
@@ -911,6 +914,7 @@ public sealed class ServerVoiceController : IDisposable
             Range = Math.Min(config.GetRange(mode), config.MaxRange),
             Muted = state?.LocalMuted == true || state?.GlobalMuted == true
                 || IsAdminSuppressedSpeaker(lease.PlayerUid) || !moderation.CanTransmit(lease.PlayerUid, now)
+                || IsDownedVoiceSilenced(player?.Entity)
         };
     }
 
@@ -1251,6 +1255,7 @@ public sealed class ServerVoiceController : IDisposable
             EnableWeatherEffects = packet.EnableWeatherEffects,
             EnableEnvironmentalVoiceEffects = packet.EnableEnvironmentalVoiceEffects,
             ApplyUnderwaterEffectsToChannels = packet.ApplyUnderwaterEffectsToChannels,
+            EnableDownedVoiceSilence = packet.EnableDownedVoiceSilence,
             EquipmentVoiceEffectRules = config.EquipmentVoiceEffectRules
                 .Select(rule => new VoiceEquipmentEffectRule
                 {
@@ -2064,6 +2069,7 @@ public sealed class ServerVoiceController : IDisposable
 
         if (IsAdminSuppressedSpeaker(fromPlayer.PlayerUID)
             || !moderation.CanTransmit(fromPlayer.PlayerUID, now)
+            || IsDownedVoiceSilenced(fromPlayer.Entity)
             || (statesByUid.TryGetValue(fromPlayer.PlayerUID, out ClientVoiceStatePacket? state)
                 && (state.LocalMuted || state.GlobalMuted)))
         {
@@ -2178,6 +2184,7 @@ public sealed class ServerVoiceController : IDisposable
             || !voiceSession.RecorderPacketRate.TryConsume(1, rateNow)
             || !voiceSession.RecorderByteRate.TryConsume(packet.Payload.Length, rateNow)
             || !voiceSession.RecorderSequenceWindow.TryAccept(packet.VoiceSessionId, packet.Sequence, rateNow, voiceSession.NewSessionRate)
+            || IsDownedVoiceSilenced(player.Entity)
             || IsAdminSuppressedSpeaker(player.PlayerUID)
             || !moderation.CanTransmit(player.PlayerUID, rateNow)
             || (statesByUid.TryGetValue(player.PlayerUID, out ClientVoiceStatePacket? state)
@@ -2513,6 +2520,7 @@ public sealed class ServerVoiceController : IDisposable
             || recorderSession == null
             || recorderListeners.Count == 0
             || speaker.Entity is null
+            || IsDownedVoiceSilenced(speaker.Entity)
             || frame.CaptureServerTimestampMilliseconds <= 0)
         {
             return;
@@ -2532,7 +2540,8 @@ public sealed class ServerVoiceController : IDisposable
             if (listenerUid != session.OwnerUid
                 || !onlinePlayersByUid.TryGetValue(listenerUid, out IServerPlayer? listener)
                 || !listener.HasPrivilege(Privilege.controlserver)
-                || !sessionsByUid.ContainsKey(listenerUid))
+                || !sessionsByUid.ContainsKey(listenerUid)
+                || IsDownedVoiceSilenced(listener.Entity))
             {
                 recorderListeners.Remove(listenerUid);
                 continue;
@@ -2614,7 +2623,8 @@ public sealed class ServerVoiceController : IDisposable
         if (recipientUid == speaker.PlayerUID
             || !onlinePlayersByUid.TryGetValue(recipientUid, out IServerPlayer? recipient)
             || recipient.Entity == null
-            || !sessionsByUid.ContainsKey(recipientUid))
+            || !sessionsByUid.ContainsKey(recipientUid)
+            || IsDownedVoiceSilenced(recipient.Entity))
         {
             return;
         }
@@ -2656,6 +2666,9 @@ public sealed class ServerVoiceController : IDisposable
 
         recipients[recipientUid] = new RelayRecipient(recipient, relayKind, channelId, priority);
     }
+
+    private bool IsDownedVoiceSilenced(Vintagestory.API.Common.Entities.Entity? entity)
+        => config.EnableDownedVoiceSilence && downedVoiceIntegration.IsDowned(entity);
 
     private void SendBitrateControl(
         IServerPlayer speaker,
@@ -2803,7 +2816,9 @@ public sealed class ServerVoiceController : IDisposable
         Vec3d position,
         long now)
     {
-        if (!config.EnableDirectorProximityCapture || speaker.Entity is null)
+        if (!config.EnableDirectorProximityCapture
+            || speaker.Entity is null
+            || IsDownedVoiceSilenced(speaker.Entity))
         {
             return;
         }
@@ -2840,6 +2855,7 @@ public sealed class ServerVoiceController : IDisposable
                 || listenerUid == speaker.PlayerUID
                 || !onlinePlayersByUid.TryGetValue(listenerUid, out IServerPlayer? target)
                 || !sessionsByUid.ContainsKey(listenerUid)
+                || IsDownedVoiceSilenced(target.Entity)
                 || (statesByUid.TryGetValue(listenerUid, out ClientVoiceStatePacket? state) && state.GlobalMuted)
                 || !moderation.CanReceive(listenerUid, now)
                 || (mutedByListenerUid.TryGetValue(listenerUid, out HashSet<string>? muted) && muted.Contains(speaker.PlayerUID)))

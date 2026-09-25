@@ -2,9 +2,9 @@
 
 Copyright © 2026 VSCN-Studio. `HansJack` is the founder of the VSCN-Studio team. See [LICENSE](LICENSE) for the project license.
 
-SimpleVoiceChat `1.2.7` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, server-hosted multi-track recording, moderation, optional speech-to-chat, and optional VS Director capture. The separate `SimpleVoiceChatASR` client package supplies Whisper runtime dependencies for local speech-to-chat.
+SimpleVoiceChat `1.2.8-pre.1` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, server-hosted multi-track recording, moderation, optional speech-to-chat, and optional VS Director capture. The separate `SimpleVoiceChatASR` client package supplies Whisper runtime dependencies for local speech-to-chat.
 
-SimpleVoiceChat `1.2.7` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、服务器托管多人分轨录音、管理功能、可选语音转文字以及可选 VS Director 录制集成。`SimpleVoiceChatASR` 客户端依赖包只提供本地语音识别所需的 Whisper 运行时文件。
+SimpleVoiceChat `1.2.8-pre.1` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、服务器托管多人分轨录音、管理功能、可选语音转文字以及可选 VS Director 录制集成。`SimpleVoiceChatASR` 客户端依赖包只提供本地语音识别所需的 Whisper 运行时文件。
 
 - [中文说明](#中文说明)
 - [English](#english)
@@ -13,7 +13,7 @@ SimpleVoiceChat `1.2.7` 是适用于 Vintage Story `1.22.3` 的客户端/服务�
 
 ### 功能清单
 
-以下清单按当前 `1.2.7` 代码实现整理。默认值指新建配置；已有配置和服务器策略可能不同。OBS 插件、LauncherGo 和本地 Whisper 依赖包需要单独安装。
+以下清单按当前 `1.2.8-pre.1` 代码实现整理。默认值指新建配置；已有配置和服务器策略可能不同。OBS 插件、LauncherGo 和本地 Whisper 依赖包需要单独安装。
 
 #### 语音通话与播放
 
@@ -53,6 +53,7 @@ SimpleVoiceChat `1.2.7` 是适用于 Vintage Story `1.22.3` 的客户端/服务�
 - 使用游戏网络通道传输语音和控制消息；V10 语音采用 48 kHz 单声道、20 ms 帧和 Opus，默认 24 Kbps，支持 12-48 Kbps 自适应码率。
 - 支持客户端码率偏好、服务器码率指导、自适应抖动缓冲、Opus 前向纠错和丢帧补偿；解码在后台任务执行，PCM 缓冲池减少重复分配。
 - 服务器通过空间索引、同时发言准入、包速率/字节限流和出口带宽预算控制转发。默认每个听众最多 8 路语音，其中附近语音最多 6 路；每频道最多 3 人同时发言。
+- 可选兼容 `Downed` 2.7.4：启用服务器配置 `EnableDownedVoiceSilence` 后，昏迷玩家不能发送或接收任何语音；默认关闭，未安装 `Downed` 时不会生效。
 - 默认每频道最多 100 名成员、每玩家最多 8 个频道、全服最多 256 个频道；名称长度默认 24 字符。管理员可调整这些限制。
 - 提供握手与连接状态、往返延迟、丢包、码率、抖动/纠错统计，以及服务器转发量、丢弃原因、路由耗时、玩家诊断和操作审计。
 - V9 与 V10 不互通。虽然保留 ADPCM 编解码代码和 `AllowAdpcmFallback` 字段，当前 V10 握手与网络校验只接受 Opus。
@@ -62,6 +63,7 @@ SimpleVoiceChat `1.2.7` 是适用于 Vintage Story `1.22.3` 的客户端/服务�
 - 拥有 `controlserver` 权限的管理员可管理频道、全服禁言和强制阻止发送；命令还支持临时禁言与临时拒听。
 - 管理员窗口支持修改语音开关、距离、公共聊天可视范围、频道容量、码率、带宽、录音和导演捕获设置。
 - “保存并应用”写盘并立即生效；“从文件重载”读取磁盘配置；“刷新配置”获取当前生效值。网页麦克风监听参数仍需修改文件并重启服务器，装备规则也在服务器文件中维护。
+- 管理员配置中的“昏迷玩家禁用语音”对应服务器字段 `EnableDownedVoiceSilence`，默认关闭；该设置只在服务器端控制。
 - 可选公共聊天距离限制仅影响普通公共聊天，按同维度和距离筛选接收者；默认关闭。
 - 提供无效数据包校验、重复违规自动暂停语音、管理审计和滚动指标重置；审计文件不保存语音内容。
 
@@ -113,7 +115,7 @@ SimpleVoiceChat `1.2.7` 是适用于 Vintage Story `1.22.3` 的客户端/服务�
 
 1. 关闭 Vintage Story 客户端和服务器。
 2. 删除 `Mods` 目录中的旧版 SimpleVoiceChat 压缩包，避免同时加载多个版本。
-3. 将 `SimpleVoiceChat-v1.2.7.zip` 原样放入客户端和服务器的 `Mods` 目录，不要解压模组包。
+3. 将 `SimpleVoiceChat-v1.2.8-pre.1.zip` 原样放入客户端和服务器的 `Mods` 目录，不要解压模组包。
 4. 在客户端和服务器的 `Mods` 目录同时安装 `VSRmlUi (vsrmlui) 1.0.2` 或更新兼容版本。
 5. 启动服务器，然后启动客户端。首次按 `'` 会打开设置向导。
 
@@ -310,7 +312,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 
 ### Features
 
-The list below describes the current `1.2.7` implementation. Defaults refer to newly created configuration files; existing client settings and server policy may differ. The OBS plugin, LauncherGo web client, and local Whisper dependency package are installed separately.
+The list below describes the current `1.2.8-pre.1` implementation. Defaults refer to newly created configuration files; existing client settings and server policy may differ. The OBS plugin, LauncherGo web client, and local Whisper dependency package are installed separately.
 
 #### Voice communication and playback
 
@@ -350,6 +352,7 @@ The list below describes the current `1.2.7` implementation. Defaults refer to n
 - Voice and control messages use the game's network channel. V10 voice is 48 kHz mono, 20 ms Opus frames at 24 Kbps by default, with adaptive rates from 12 to 48 Kbps.
 - Supports client bitrate preference, server bitrate guidance, adaptive jitter buffering, Opus forward error correction, and packet-loss concealment. Decoding runs in background tasks and a PCM buffer pool reduces repeated allocations.
 - Server forwarding uses spatial indexing, concurrent-speaker admission, packet/byte rate limits, and egress budgets. Defaults allow up to 8 voice streams per listener (6 proximity streams maximum) and 3 simultaneous speakers per channel.
+- Optional `Downed` 2.7.4 compatibility is available through `EnableDownedVoiceSilence`. When enabled, downed players cannot transmit or receive voice; it is off by default and has no effect when `Downed` is absent.
 - Defaults allow 100 members per channel, 8 channels per player, 256 channels server-wide, and 24 characters per channel name. Administrators can change these limits.
 - Diagnostics include handshake/connection state, round-trip latency, packet loss, bitrate, jitter/FEC statistics, forwarding volume, drop reasons, routing time, player diagnostics, and administrative audit.
 - V9 and V10 are incompatible. Although ADPCM codec code and the `AllowAdpcmFallback` field remain, the current V10 handshake and packet validation accept Opus only.
@@ -359,6 +362,7 @@ The list below describes the current `1.2.7` implementation. Defaults refer to n
 - Administrators with `controlserver` can manage channels, server-wide mute, and forced transmit blocking; commands also support temporary mute and deafen.
 - The admin window can edit voice enablement, ranges, public-chat visibility range, channel capacity, bitrate, bandwidth, recording, and Director capture settings.
 - Save and Apply writes changes and applies them immediately; Reload from File reads the disk configuration; Refresh Configuration fetches the current active values. Web microphone listener settings still require editing the server file and restarting, and equipment rules are maintained in that file.
+- The administrator setting `Silence Downed players` maps to the server-only `EnableDownedVoiceSilence` field and is disabled by default.
 - Optional public-chat distance filtering affects ordinary public chat only and filters recipients by dimension and distance; it is off by default.
 - Includes invalid-packet validation, automatic voice suspension for repeated violations, administrative audit, and rolling metric reset. Audit files do not store voice content.
 
@@ -400,7 +404,7 @@ The list below describes the current `1.2.7` implementation. Defaults refer to n
 
 1. Stop the Vintage Story client and server.
 2. Remove older SimpleVoiceChat archives from each `Mods` directory so that only one version can load.
-3. Place `SimpleVoiceChat-v1.2.7.zip` unchanged in the client and server `Mods` directories. Do not extract the mod archive.
+3. Place `SimpleVoiceChat-v1.2.8-pre.1.zip` unchanged in the client and server `Mods` directories. Do not extract the mod archive.
 4. Install `VSRmlUi (vsrmlui) 1.0.2` or a newer compatible version in both client and server `Mods` directories.
 5. Start the server and client. Press `'` to open the first-run setup wizard.
 

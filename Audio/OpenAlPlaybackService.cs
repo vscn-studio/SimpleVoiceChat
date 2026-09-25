@@ -280,6 +280,23 @@ public sealed class OpenAlPlaybackService : IDisposable
         }
     }
 
+    /// <summary>Immediately drops queued and active remote player voice.</summary>
+    public void ClearRemoteVoice()
+    {
+        lock (gate)
+        {
+            while (pendingEncodedFrames.Count > 0)
+            {
+                pendingEncodedFrames.Dequeue();
+            }
+            foreach (RemoteVoiceStream stream in streams.Values)
+            {
+                stream.Dispose();
+            }
+            streams.Clear();
+        }
+    }
+
     public bool PlayRecording(string path, out string error)
     {
         error = string.Empty;

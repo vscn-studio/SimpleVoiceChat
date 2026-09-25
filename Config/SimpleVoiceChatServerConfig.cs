@@ -28,6 +28,8 @@ public sealed class SimpleVoiceChatServerConfig
     public bool EnableEnvironmentalVoiceEffects { get; set; } = true;
     /// <summary>When false, only proximity voice is affected by water.</summary>
     public bool ApplyUnderwaterEffectsToChannels { get; set; }
+    /// <summary>When enabled, Downed players cannot transmit or receive voice.</summary>
+    public bool EnableDownedVoiceSilence { get; set; }
     /// <summary>First matching rule determines the speaker's equipment voice effect.</summary>
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
     public List<VoiceEquipmentEffectRule> EquipmentVoiceEffectRules { get; set; } = CreateDefaultEquipmentVoiceEffectRules();
