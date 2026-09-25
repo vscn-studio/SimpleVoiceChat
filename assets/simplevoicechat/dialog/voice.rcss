@@ -38,13 +38,14 @@ button:disabled, input:disabled, select:disabled { color: #777777; background-co
 select { padding-right: 30dp; }
 .slider-field { display: flex; align-items: center; }
 .slider-field .range { flex: 1; min-width: 0; height: 24dp; }
-.slider-value { width: 60dp; text-align: right; flex-shrink: 0; }
+.slider-value { width: 52dp; height: 26dp; margin-left: 6dp; padding: 3dp 5dp; text-align: right; flex-shrink: 0; pointer-events: auto; }
+.slider-suffix { width: 18dp; text-align: left; flex-shrink: 0; }
 .thresholds .meter { height: 6dp; background-color: #151515; }
 .meter-fill { height: 100%; background-color: #71bd98; }
 .threshold-row { display: flex; align-items: center; height: 26dp; }
 .threshold-row > span { width: 140dp; font-size: 12dp; }
 .threshold-row .range { flex: 1; min-width: 0; height: 20dp; }
-.threshold-row .threshold-value { width: 48dp; text-align: right; }
+.threshold-row .threshold-value { width: 56dp; height: 22dp; margin-left: 6dp; padding: 2dp 4dp; text-align: right; flex-shrink: 0; pointer-events: auto; }
 selectvalue { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 selectarrow { display: none; }
 selectbox { background-color: #303030; border: 1dp #777777; border-radius: 4dp; max-height: 240dp; overflow-y: auto; }

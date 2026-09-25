@@ -6,6 +6,35 @@ using static SimpleVoiceChat.Gui.VoiceRmlDialog;
 
 namespace SimpleVoiceChat.Gui;
 
+internal static class VoiceRmlSliderParsing
+{
+    internal static bool TryParse(string text, out int value)
+    {
+        if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double number)
+            || !double.IsFinite(number))
+        {
+            value = 0;
+            return false;
+        }
+
+        value = (int)Math.Round(number);
+        return true;
+    }
+
+    internal static bool TryParseDisplayed(string text, double divisor, out int value)
+    {
+        if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double number)
+            || !double.IsFinite(number))
+        {
+            value = 0;
+            return false;
+        }
+
+        value = (int)Math.Round(number * divisor);
+        return true;
+    }
+}
+
 /// <summary>Builds real RML controls from the settings' logical layout coordinates.</summary>
 public sealed class VoiceRmlForm : IDisposable
 {
@@ -158,20 +187,45 @@ public sealed class VoiceSettingsSlider(ElementBounds bounds, ActionConsumable<i
     private int value, min, max = 100, step = 1;
     private string suffix = "";
     private double displayDivisor = 1;
-    private string DisplayValue => N(value / displayDivisor) + suffix;
+    private string DisplayValue => N(value / displayDivisor);
     public void Configure(int value, int min, int max, int step, string suffix, double displayDivisor = 1)
     { this.min = min; this.max = max; this.value = Math.Clamp(value, min, max); this.step = step; this.suffix = suffix; this.displayDivisor = displayDivisor; }
-    internal override string Render() => $"<div {Attributes("slider-field")}>{RmlControls.Slider(Id + "-range", value, min, max, step)}<span id='{E(Id)}-value' class='slider-value'>{E(DisplayValue)}</span></div>";
+    internal override string Render() => $"<div {Attributes("slider-field")}>{RmlControls.Slider(Id + "-range", value, min, max, step)}<input id='{E(Id)}-value' class='slider-value' type='text' value='{E(DisplayValue)}'/><span class='slider-suffix'>{E(suffix)}</span></div>";
     internal override void Bind(RmlDocument document, List<IDisposable> subscriptions)
     {
         base.Bind(document, subscriptions);
         var range = document.GetElementById(Id + "-range")!;
+        var valueInput = document.GetElementById(Id + "-value")!;
+        void SetValue(int next, bool updateValueInput)
+        {
+            next = Math.Clamp(next, min, max);
+            if (next == value)
+            {
+                if (updateValueInput) valueInput.Value = DisplayValue;
+                return;
+            }
+
+            value = next;
+            range.Value = N(value);
+            if (updateValueInput) valueInput.Value = DisplayValue;
+            changed(value);
+        }
         subscriptions.Add(range.On("change", e =>
         {
-            if (!Enabled || !double.TryParse(e.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double number) || !double.IsFinite(number)) return;
-            int next = (int)Math.Clamp(Math.Round(number), min, max);
-            if (next == value) return;
-            value = next; document.GetElementById(Id + "-value")!.Text = DisplayValue; changed(value);
+            if (!Enabled || !VoiceRmlSliderParsing.TryParse(e.Value, out int next)) return;
+            SetValue(next, updateValueInput: true);
+        }));
+        subscriptions.Add(valueInput.On("change", _ =>
+        {
+            if (!Enabled) return;
+            if (VoiceRmlSliderParsing.TryParseDisplayed(valueInput.Value, displayDivisor, out int next))
+            {
+                SetValue(next, updateValueInput: true);
+            }
+            else
+            {
+                valueInput.Value = DisplayValue;
+            }
         }));
     }
 }
@@ -287,33 +341,77 @@ internal sealed class VoiceActivationThresholdControl(ElementBounds bounds, Func
     private int noiseGate, threshold;
     public void Configure(int noiseGate, int threshold) { this.noiseGate = Math.Clamp(noiseGate, 0, 200); this.threshold = Math.Clamp(threshold, this.noiseGate, 200); }
     internal override string Render() => $"<div {Attributes("thresholds")}><div class='meter'><div id='{E(Id)}-level' class='meter-fill'></div></div>"
-        + $"<div class='threshold-row'><span>{E(SVCLang.Get("setting-voice-noise-gate"))}</span>{RmlControls.Slider(Id + "-gate", noiseGate, 0, 200)}<span id='{E(Id)}-gate-value' class='threshold-value'>{N(noiseGate / 1000d)}</span></div>"
-        + $"<div class='threshold-row'><span>{E(SVCLang.Get("label-voice-trigger-threshold"))}</span>{RmlControls.Slider(Id + "-trigger", threshold, 0, 200)}<span id='{E(Id)}-trigger-value' class='threshold-value'>{N(threshold / 1000d)}</span></div></div>";
+        + $"<div class='threshold-row'><span>{E(SVCLang.Get("setting-voice-noise-gate"))}</span>{RmlControls.Slider(Id + "-gate", noiseGate, 0, 200)}<input id='{E(Id)}-gate-value' class='threshold-value' type='text' value='{N(noiseGate / 1000d)}'/></div>"
+        + $"<div class='threshold-row'><span>{E(SVCLang.Get("label-voice-trigger-threshold"))}</span>{RmlControls.Slider(Id + "-trigger", threshold, 0, 200)}<input id='{E(Id)}-trigger-value' class='threshold-value' type='text' value='{N(threshold / 1000d)}'/></div></div>";
     internal override void Bind(RmlDocument document, List<IDisposable> subscriptions)
     {
         base.Bind(document, subscriptions);
         var gateInput = document.GetElementById(Id + "-gate")!;
         var triggerInput = document.GetElementById(Id + "-trigger")!;
+        var gateValueInput = document.GetElementById(Id + "-gate-value")!;
+        var triggerValueInput = document.GetElementById(Id + "-trigger-value")!;
+        void SetGate(int next, bool updateValueInput)
+        {
+            next = Math.Clamp(next, 0, 200);
+            if (next == noiseGate)
+            {
+                if (updateValueInput) gateValueInput.Value = N(noiseGate / 1000d);
+                return;
+            }
+
+            noiseGate = next;
+            gateInput.Value = N(noiseGate);
+            if (updateValueInput) gateValueInput.Value = N(noiseGate / 1000d);
+            if (threshold < noiseGate)
+            {
+                threshold = noiseGate;
+                triggerInput.Value = N(threshold);
+                triggerValueInput.Value = N(threshold / 1000d);
+            }
+            gate(noiseGate);
+        }
+        void SetTrigger(int next, bool updateValueInput)
+        {
+            next = Math.Clamp(next, noiseGate, 200);
+            if (next == threshold)
+            {
+                if (updateValueInput) triggerValueInput.Value = N(threshold / 1000d);
+                return;
+            }
+
+            threshold = next;
+            triggerInput.Value = N(threshold);
+            if (updateValueInput) triggerValueInput.Value = N(threshold / 1000d);
+            trigger(threshold);
+        }
         subscriptions.Add(gateInput.On("change", e =>
         {
-            if (!int.TryParse(e.Value, out int number)) return;
-            number = Math.Clamp(number, 0, threshold);
-            gateInput.Value = N(number);
-            if (noiseGate == number) return;
-            noiseGate = number;
-            document.GetElementById(Id + "-gate-value")!.Text = N(number / 1000d);
-            gate(number);
+            if (!VoiceRmlSliderParsing.TryParse(e.Value, out int number)) return;
+            SetGate(number, updateValueInput: true);
         }));
         subscriptions.Add(triggerInput.On("change", e =>
         {
-            if (!int.TryParse(e.Value, out int number)) return;
-            number = Math.Clamp(number, noiseGate, 200);
-            triggerInput.Value = N(number);
-            if (threshold == number) return;
-            threshold = number;
-            document.GetElementById(Id + "-trigger-value")!.Text = N(number / 1000d);
-            trigger(number);
+            if (!VoiceRmlSliderParsing.TryParse(e.Value, out int number)) return;
+            SetTrigger(number, updateValueInput: true);
         }));
+        void BindValueInput(RmlElement valueInput, Action<int, bool> set, Func<string> currentValue)
+        {
+            void Apply(bool normalize)
+            {
+                if (VoiceRmlSliderParsing.TryParseDisplayed(valueInput.Value, 1000, out int number))
+                {
+                    set(number, normalize);
+                }
+                else if (normalize)
+                {
+                    valueInput.Value = currentValue();
+                }
+            }
+
+            subscriptions.Add(valueInput.On("change", _ => { if (Enabled) Apply(normalize: true); }));
+        }
+        BindValueInput(gateValueInput, SetGate, () => N(noiseGate / 1000d));
+        BindValueInput(triggerValueInput, SetTrigger, () => N(threshold / 1000d));
     }
     internal override void Update()
     { if (Element?.Document.IsDisposed == false) Element.Document.GetElementById(Id + "-level")!.SetProperty("width", N(Math.Clamp(level() * 500, 0, 100)) + "%"); }

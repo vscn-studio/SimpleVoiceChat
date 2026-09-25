@@ -668,15 +668,7 @@ public sealed class ClientVoiceController : IDisposable
                         return TextCommandResult.Error(SVCLang.Get("command-player-not-found", name));
                     }
 
-                    if (value == 100)
-                    {
-                        config.PlayerVolumeOverrides.Remove(player.PlayerUID);
-                    }
-                    else
-                    {
-                        config.PlayerVolumeOverrides[player.PlayerUID] = value / 100f;
-                    }
-                    SaveConfig();
+                    SetPlayerVolume(player.PlayerUID, value);
                     return TextCommandResult.Success(SVCLang.Get("command-set-player-volume-ok", player.PlayerName, value));
                 }
 
@@ -1393,14 +1385,9 @@ public sealed class ClientVoiceController : IDisposable
             return;
         }
         float normalized = Math.Clamp(value / 100f, 0f, 2f);
-        if (Math.Abs(normalized - 1f) < 0.001f)
-        {
-            config.PlayerVolumeOverrides.Remove(playerUid);
-        }
-        else
-        {
-            config.PlayerVolumeOverrides[playerUid] = normalized;
-        }
+        config.SetPlayerVolumeOverride(
+            playerUid,
+            Math.Abs(normalized - 1f) < 0.001f ? null : normalized);
         SaveConfig();
     }
 

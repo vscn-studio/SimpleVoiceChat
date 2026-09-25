@@ -803,6 +803,18 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void PlayerVolumeChangedBeforeServerProfileActivationIsPreserved()
+    {
+        SimpleVoiceChatClientConfig config = new();
+
+        config.SetPlayerVolumeOverride("player-a", 0.35f);
+
+        Assert.True(config.ActivateServer("current-world"));
+        Assert.Equal(0.35f, config.PlayerVolumeOverrides["player-a"]);
+        Assert.Equal(0.35f, config.ServerProfiles["current-world"].PlayerVolumeOverrides["player-a"]);
+    }
+
+    [Fact]
     public void ClientConfigurationMigratesLegacyContinuousTalkToVoiceActivation()
     {
         SimpleVoiceChatClientConfig config = new()

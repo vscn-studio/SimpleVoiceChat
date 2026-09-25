@@ -217,14 +217,41 @@ using (var settings = new VoiceSettingsDialog(api, controller))
     Check(Math.Abs(doc.GetElementById("content")!.Bounds.ScrollY - channelScroll) < 1, "closing a detail window restores the main scroll position");
     Click(doc, "window-close"); Click(doc, "open-settings");
     Check(doc.GetElementById("outputVolume-range")!.GetAttribute("max") == "200", "output gain range preserved");
+    var outputVolumeValue = doc.GetElementById("outputVolume-value")!;
+    Check(outputVolumeValue.GetAttribute("type") == "text", "output gain has an editable value input");
+    outputVolumeValue.Value = "125";
+    outputVolumeValue.DispatchEvent("change");
+    Check(Math.Abs(config.OutputVolume - 1.25f) < 0.0001f
+        && Math.Abs(double.Parse(doc.GetElementById("outputVolume-range")!.Value, System.Globalization.CultureInfo.InvariantCulture) - 125) < 0.001,
+        "output gain value input updates the slider");
     Check(doc.GetElementById("activationThresholds-gate")!.GetAttribute("max") == "200", "noise gate range preserved");
+    var gateThreshold = doc.GetElementById("activationThresholds-gate")!;
+    var gateThresholdValue = doc.GetElementById("activationThresholds-gate-value")!;
+    gateThresholdValue.Value = "0.095";
+    gateThresholdValue.DispatchEvent("change");
+    Check(Math.Abs(config.NoiseGate - 0.095f) < 0.0001f
+        && Math.Abs(double.Parse(doc.GetElementById("activationThresholds-gate")!.Value, System.Globalization.CultureInfo.InvariantCulture) - 95) < 0.001,
+        "noise gate value input updates the slider");
+    gateThreshold.Value = "95.0";
+    gateThreshold.DispatchEvent("change");
+    Check(Math.Abs(config.NoiseGate - 0.095f) < 0.0001f, "noise gate accepts a decimal range event");
+    Check(Math.Abs(config.VoiceActivationThreshold - 0.095f) < 0.0001f
+        && double.TryParse(doc.GetElementById("activationThresholds-trigger")!.Value, out double syncedTrigger)
+        && Math.Abs(syncedTrigger - 95) < 0.001,
+        "raising noise gate keeps trigger threshold in sync");
     controller.SetVoiceActivationThresholdFromSettings(123);
-    settings.RefreshConfiguration(); Pump();
     var triggerThreshold = doc.GetElementById("activationThresholds-trigger")!;
+    triggerThreshold.Value = "123.0";
+    triggerThreshold.DispatchEvent("change");
+    Check(Math.Abs(config.VoiceActivationThreshold - 0.123f) < 0.0001f, "trigger threshold accepts a decimal range event");
+    settings.RefreshConfiguration(); Pump();
+    triggerThreshold = doc.GetElementById("activationThresholds-trigger")!;
     Check(triggerThreshold.GetAttribute("value") == "123", "trigger threshold accepts a non-default value");
     settings.RefreshMicrophoneTestState();
     Check(doc.GetElementById("activationThresholds-trigger")!.GetAttribute("value") == "123",
         "microphone test state refresh preserves the configured trigger threshold");
+    config.NoiseGate = 0.015f;
+    config.VoiceActivationThreshold = 0.08f;
     Screenshot(doc, "rml-audio");
     CheckButtonLabel(doc, "recording-toggle");
     CheckSelectLabel(doc, "inputDevice"); CheckSelectLabel(doc, "opusBitrate");
@@ -358,7 +385,7 @@ using (var settings = new VoiceSettingsDialog(api, controller))
     settings.OnServerConfigRefreshed(); settings.RefreshData(); Pump(); Draw(doc);
     Check(doc.QuerySelector("#admin-config-enabled[checked]") is not null, "refresh shows the server values");
     ScrollTo(doc, "admin-config-max-range");
-    Check(doc.GetElementById("admin-config-max-range-value")!.InnerRml == "40 m", "server ranges display meters rather than tenths");
+    Check(doc.GetElementById("admin-config-max-range-value")!.Value == "40", "server ranges display meters rather than tenths");
     ScrollTo(doc, "admin-config-recorder-download");
     var finalConfigRow = doc.GetElementById("admin-config-recorder-download")!.Bounds;
     var configViewport = doc.GetElementById("content")!.Bounds;

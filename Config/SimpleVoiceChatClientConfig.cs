@@ -60,8 +60,34 @@ public sealed class SimpleVoiceChatClientConfig
     public bool NeedsServerProfileMigration { get; set; }
 
     private string activeServerId = string.Empty;
+    private Dictionary<string, float?> pendingPlayerVolumeOverrides = new(StringComparer.Ordinal);
 
     internal string ActiveServerId => activeServerId;
+
+    internal void SetPlayerVolumeOverride(string playerUid, float? value)
+    {
+        if (string.IsNullOrWhiteSpace(playerUid))
+        {
+            return;
+        }
+
+        PlayerVolumeOverrides ??= new Dictionary<string, float>(StringComparer.Ordinal);
+        if (value.HasValue)
+        {
+            PlayerVolumeOverrides[playerUid] = Math.Clamp(value.Value, 0f, 2f);
+        }
+        else
+        {
+            PlayerVolumeOverrides.Remove(playerUid);
+        }
+
+        // Settings can be changed while the first server snapshot is still in flight.
+        // Keep those edits when the server-specific profile is activated below.
+        if (activeServerId.Length == 0)
+        {
+            pendingPlayerVolumeOverrides[playerUid] = value;
+        }
+    }
 
     public void Normalize()
     {
@@ -312,6 +338,22 @@ public sealed class SimpleVoiceChatClientConfig
             SimpleVoiceChatServerProfile defaults = new();
             defaults.ApplyTo(this);
             ServerProfiles[serverId] = defaults;
+        }
+
+        if (pendingPlayerVolumeOverrides.Count > 0)
+        {
+            foreach ((string playerUid, float? value) in pendingPlayerVolumeOverrides)
+            {
+                if (value.HasValue)
+                {
+                    PlayerVolumeOverrides[playerUid] = Math.Clamp(value.Value, 0f, 2f);
+                }
+                else
+                {
+                    PlayerVolumeOverrides.Remove(playerUid);
+                }
+            }
+            pendingPlayerVolumeOverrides.Clear();
         }
 
         StoreActiveServerProfile();
