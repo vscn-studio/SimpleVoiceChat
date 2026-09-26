@@ -149,7 +149,7 @@
   "simplevoicechat:dropdown-no-matches": "No matching options",
   "simplevoicechat:dropdown-search-placeholder": "Search options...",
   "simplevoicechat:env-no": "No",
-  "simplevoicechat:env-summary": "Environment: underwater={0} storm={1}/{2} stability={3} poisoned={4} lowpass={5}; indoor/cave reverb is not added to voice",
+  "simplevoicechat:env-summary": "Environment: underwater={0} storm={1}/{2} stability={3} poisoned={4} propagation lowpass={5} cave reverb={6}",
   "simplevoicechat:env-unavailable": "Environment: unavailable ({0})",
   "simplevoicechat:env-unreadable": "Unreadable",
   "simplevoicechat:env-yes": "Yes",

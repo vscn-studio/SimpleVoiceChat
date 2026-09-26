@@ -74,6 +74,22 @@ public sealed class EquipmentVoiceEffectsTests
     }
 
     [Fact]
+    public void WornMaskAndHelmetBothAffectVoice()
+    {
+        InventoryGeneric equipment = new(2, "character-test", null,
+            (index, inventory) => new ItemSlotCharacter(
+                index == 0 ? EnumCharacterDressType.ArmorHead : EnumCharacterDressType.Face,
+                inventory));
+        equipment[0].Itemstack = new ItemStack(new Item { Code = new AssetLocation("game:armor-head-copper") });
+        equipment[1].Itemstack = new ItemStack(new Item { Code = new AssetLocation("game:clothes-face-leather-mask") });
+
+        VoiceSourceEffectFlags effects = ServerVoiceController.ResolveEquipmentEffects(
+            CreateManager(equipment), new SimpleVoiceChatServerConfig().EquipmentVoiceEffectRules, new());
+
+        Assert.Equal(VoiceSourceEffectFlags.Helmet | VoiceSourceEffectFlags.Mask, effects);
+    }
+
+    [Fact]
     public void MissingEquipmentInventoryDoesNotInterruptVoice()
     {
         Assert.Equal(VoiceSourceEffectFlags.None, ServerVoiceController.ResolveEquipmentEffects(

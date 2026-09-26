@@ -2992,9 +2992,10 @@ public sealed class ServerVoiceController : IDisposable
             }
         }
 
-        foreach (VoiceEquipmentEffectRule rule in rules)
+        VoiceSourceEffectFlags effects = VoiceSourceEffectFlags.None;
+        foreach (ItemSlotCharacter slot in equippedSlots)
         {
-            foreach (ItemSlotCharacter slot in equippedSlots)
+            foreach (VoiceEquipmentEffectRule rule in rules)
             {
                 if (!MatchesSlot(slot.Type, rule.Slot))
                 {
@@ -3014,13 +3015,14 @@ public sealed class ServerVoiceController : IDisposable
                     continue;
                 }
 
-                return rule.Effect == VoiceEquipmentVoiceEffect.Helmet
+                effects |= rule.Effect == VoiceEquipmentVoiceEffect.Helmet
                     ? VoiceSourceEffectFlags.Helmet
                     : VoiceSourceEffectFlags.Mask;
+                break;
             }
         }
 
-        return VoiceSourceEffectFlags.None;
+        return effects;
     }
 
     private bool IsEyeInLiquid(Vintagestory.API.Common.Entities.Entity entity)

@@ -149,7 +149,7 @@
   "simplevoicechat:dropdown-no-matches": "没有匹配的选项",
   "simplevoicechat:dropdown-search-placeholder": "搜索选项…",
   "simplevoicechat:env-no": "否",
-  "simplevoicechat:env-summary": "环境修正：水下={0} 风雨={1}/{2} 稳定={3} 中毒={4} 低通={5}；语音不额外叠加室内/洞穴回音",
+  "simplevoicechat:env-summary": "环境修正：水下={0} 风雨={1}/{2} 稳定={3} 中毒={4} 传播低通={5} 洞穴混响={6}",
   "simplevoicechat:env-unavailable": "环境：无法读取（{0}）",
   "simplevoicechat:env-unreadable": "不可读",
   "simplevoicechat:env-yes": "是",

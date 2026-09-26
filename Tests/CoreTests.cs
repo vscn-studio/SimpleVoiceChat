@@ -232,6 +232,93 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void UnderwaterVoiceProcessorAddsMovingShortReflections()
+    {
+        short[] frame = new short[VoiceConstants.SamplesPerFrame];
+        frame[0] = 20_000;
+        VoiceEffectsProcessor processor = new();
+
+        processor.Process(frame, new VoiceEnvironmentSnapshot(
+            1f, 1f, 0f, VoiceSourceEffectFlags.Underwater));
+
+        Assert.Contains(frame.Skip(350), sample => Math.Abs((int)sample) > 25);
+    }
+
+    [Fact]
+    public void CaveVoiceProcessorRingsAfterSpeechAndStopsAfterTail()
+    {
+        VoiceEffectsProcessor processor = new();
+        short[] impulse = new short[VoiceConstants.SamplesPerFrame];
+        impulse[0] = 20_000;
+        VoiceEnvironmentSnapshot cave = new(1f, 1f, 0f, caveReverb: 0.9f);
+        processor.Process(impulse, cave);
+
+        bool heardReflection = false;
+        for (int frame = 0; frame < 8; frame++)
+        {
+            short[] tail = new short[VoiceConstants.SamplesPerFrame];
+            processor.ProcessSilence(tail, cave);
+            heardReflection |= tail.Any(sample => Math.Abs((int)sample) > 25);
+        }
+
+        Assert.True(heardReflection);
+        Assert.True(processor.HasReverbTail);
+        for (int frame = 8; frame < 60; frame++)
+        {
+            processor.ProcessSilence(new short[VoiceConstants.SamplesPerFrame], cave);
+        }
+        Assert.False(processor.HasReverbTail);
+    }
+
+    [Fact]
+    public void CaveGeometryRequiresCoverAndRespondsToEnclosure()
+    {
+        Assert.Equal(0f, VoiceEnvironment.CalculateCaveReverb(1, 4, 4f));
+        Assert.Equal(0f, VoiceEnvironment.CalculateCaveReverb(4, 1, 4f));
+        Assert.True(VoiceEnvironment.CalculateCaveReverb(20, 4, 10f)
+            > VoiceEnvironment.CalculateCaveReverb(6, 2, 4f));
+    }
+
+    [Fact]
+    public void CaveTailFadesWhenListenerLeavesTheCave()
+    {
+        VoiceEffectsProcessor processor = new();
+        short[] impulse = new short[VoiceConstants.SamplesPerFrame];
+        impulse[0] = 20_000;
+        processor.Process(impulse, new VoiceEnvironmentSnapshot(1f, 1f, 0f, caveReverb: 0.9f));
+
+        short[] tail = new short[VoiceConstants.SamplesPerFrame];
+        for (int frame = 0; frame < 20; frame++)
+        {
+            tail = new short[VoiceConstants.SamplesPerFrame];
+            processor.ProcessSilence(tail, new VoiceEnvironmentSnapshot(1f, 1f, 0f));
+        }
+
+        Assert.All(tail, sample => Assert.InRange(Math.Abs((int)sample), 0, 5));
+    }
+
+    [Fact]
+    public void MaskVoiceProcessorAddsRoughHarmonics()
+    {
+        VoiceEffectsProcessor plain = new();
+        VoiceEffectsProcessor masked = new();
+        short[] input = Enumerable.Range(0, VoiceConstants.SamplesPerFrame)
+            .Select(index => (short)Math.Round(20_000d * Math.Sin(2d * Math.PI * 400d * index / VoiceConstants.SampleRate)))
+            .ToArray();
+        short[] dry = input.ToArray();
+        short[] wet = input.ToArray();
+
+        plain.Process(dry, new VoiceEnvironmentSnapshot(1f, 1f, 0.1f));
+        masked.Process(wet, new VoiceEnvironmentSnapshot(1f, 1f, 0f, VoiceSourceEffectFlags.Mask));
+
+        static double ThirdHarmonic(short[] samples) => Math.Abs(samples
+            .Select((sample, index) => sample * Math.Sin(2d * Math.PI * 1200d * index / VoiceConstants.SampleRate))
+            .Sum()) / samples.Length;
+
+        Assert.True(ThirdHarmonic(wet) > ThirdHarmonic(dry) + 25d);
+    }
+
+    [Fact]
     public void DirectorReplayCaptureRegionUsesChunkBoundaries()
     {
         Assert.True(DirectorVoiceCaptureRegion.Contains(159d, 159d, 0, 16d, 16d, 0, 4));
@@ -995,7 +1082,7 @@ public sealed class CoreTests
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
         JsonElement dependencies = document.RootElement.GetProperty("dependencies");
 
-        Assert.Equal("1.2.8-pre.1", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("1.2.8-pre.2", document.RootElement.GetProperty("version").GetString());
         Assert.True(dependencies.TryGetProperty("game", out _));
         Assert.False(dependencies.TryGetProperty("vsdirector", out _));
         Assert.DoesNotContain(

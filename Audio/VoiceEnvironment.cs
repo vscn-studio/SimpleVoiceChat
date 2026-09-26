@@ -15,13 +15,15 @@ public readonly struct VoiceEnvironmentSnapshot
         float pitch,
         float lowPass,
         VoiceSourceEffectFlags sourceEffects = VoiceSourceEffectFlags.None,
-        bool listenerUnderwater = false)
+        bool listenerUnderwater = false,
+        float caveReverb = 0f)
     {
         VolumeMultiplier = volumeMultiplier;
         Pitch = pitch;
         LowPass = lowPass;
         SourceEffects = sourceEffects;
         ListenerUnderwater = listenerUnderwater;
+        CaveReverb = caveReverb;
     }
 
     public float VolumeMultiplier { get; }
@@ -33,6 +35,7 @@ public readonly struct VoiceEnvironmentSnapshot
     public float LowPass { get; }
     public VoiceSourceEffectFlags SourceEffects { get; }
     public bool ListenerUnderwater { get; }
+    public float CaveReverb { get; }
 }
 
 public static class VoiceEnvironment
@@ -93,6 +96,15 @@ public static class VoiceEnvironment
             volume *= 0.92f;
         }
 
+        float caveReverb = 0f;
+        if (environmentalEffects && !listenerInLiquid && !speakerInLiquid)
+        {
+            IBlockAccessor blocks = capi.World.BlockAccessor;
+            caveReverb = Math.Max(
+                EstimateCaveReverb(blocks, listener.X, listener.Y, listener.Z),
+                0.8f * EstimateCaveReverb(blocks, speaker.X, speaker.Y, speaker.Z));
+        }
+
         if (serverConfig.EnableWeatherEffects)
         {
             WeatherSnapshot weather = EvaluateWeather(capi, listener, speaker);
@@ -122,7 +134,8 @@ public static class VoiceEnvironment
             Math.Clamp(pitch, 0.9f, 1.05f),
             Math.Clamp(lowPass, 0f, 0.92f),
             effectiveSourceEffects,
-            listenerInLiquid);
+            listenerInLiquid,
+            caveReverb);
     }
 
     private static VoiceEnvironmentSnapshot EvaluateChannelRelay(
@@ -199,7 +212,7 @@ public static class VoiceEnvironment
             double stability = TryReadTemporalStability(playerEntity);
             string stabilityText = stability < 0 ? SVCLang.Get("env-unreadable") : stability.ToString("0.00");
             string poisoned = IsLikelyPoisoned(playerEntity) ? SVCLang.Get("env-yes") : SVCLang.Get("env-no");
-            return SVCLang.Get("env-summary", inLiquid ? SVCLang.Get("env-yes") : SVCLang.Get("env-no"), weather.Storm.ToString("0.00"), weather.Wind.ToString("0.00"), stabilityText, poisoned, snapshot.LowPass.ToString("0.00"));
+            return SVCLang.Get("env-summary", inLiquid ? SVCLang.Get("env-yes") : SVCLang.Get("env-no"), weather.Storm.ToString("0.00"), weather.Wind.ToString("0.00"), stabilityText, poisoned, snapshot.LowPass.ToString("0.00"), snapshot.CaveReverb.ToString("0.00"));
         }
         catch (Exception ex)
         {
@@ -228,6 +241,56 @@ public static class VoiceEnvironment
         }
 
         return Math.Clamp(solidHits / 3f, 0f, 1f);
+    }
+
+    private static float EstimateCaveReverb(IBlockAccessor blocks, double x, double y, double z)
+    {
+        int centerX = (int)Math.Floor(x);
+        int centerY = (int)Math.Floor(y + 1.5);
+        int centerZ = (int)Math.Floor(z);
+        int coverDepth = blocks.GetRainMapHeightAt(centerX, centerZ) - centerY;
+        if (coverDepth < 3)
+        {
+            return 0f;
+        }
+
+        BlockPos probe = new(centerX, centerY, centerZ);
+        int wallHits = 0;
+        int totalWallDistance = 0;
+        ReadOnlySpan<int> dx = [1, -1, 0, 0];
+        ReadOnlySpan<int> dz = [0, 0, 1, -1];
+        for (int direction = 0; direction < 4; direction++)
+        {
+            for (int distance = 1; distance <= 16; distance++)
+            {
+                probe.Set(centerX + dx[direction] * distance, centerY, centerZ + dz[direction] * distance);
+                Block block = blocks.GetBlock(probe);
+                if (block.Id == 0 || !block.SideSolid.SidesAndBase || block.IsLiquid())
+                {
+                    continue;
+                }
+
+                wallHits++;
+                totalWallDistance += distance;
+                break;
+            }
+        }
+
+        float averageWallDistance = wallHits == 0 ? 16f : totalWallDistance / (float)wallHits;
+        return CalculateCaveReverb(coverDepth, wallHits, averageWallDistance);
+    }
+
+    internal static float CalculateCaveReverb(int coverDepth, int wallHits, float averageWallDistance)
+    {
+        if (coverDepth < 3 || (coverDepth < 8 && wallHits < 2))
+        {
+            return 0f;
+        }
+
+        float depth = Math.Clamp((coverDepth - 3) / 16f, 0f, 1f);
+        float enclosure = Math.Clamp(wallHits / 4f, 0f, 1f);
+        float size = Math.Clamp(averageWallDistance / 16f, 0f, 1f);
+        return Math.Clamp(0.34f + 0.34f * depth + 0.18f * enclosure + 0.12f * size, 0f, 0.95f);
     }
 
     internal static bool IsEyeInLiquid(IBlockAccessor blockAccessor, Entity entity)

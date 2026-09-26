@@ -570,19 +570,44 @@ public sealed class OpenAlPlaybackService : IDisposable
     {
         while (stream.QueuedBuffers < TargetQueuedBuffers && stream.FreeBuffers.Count > 0)
         {
+            bool reverbTail = false;
             if (!TryGetNextSamples(stream, serverConfig, out DecodedVoiceFrame decoded))
             {
-                break;
+                if (!stream.Effects.HasReverbTail
+                    || capi.World.ElapsedMilliseconds - stream.LastPacketMilliseconds < 120
+                    || stream.QueuedBuffers >= 2)
+                {
+                    break;
+                }
+
+                reverbTail = true;
+                decoded = new DecodedVoiceFrame(
+                    PcmFramePool.Shared.Rent(),
+                    stream.LastProcessedTimestampMilliseconds + VoiceConstants.FrameMilliseconds,
+                    true);
             }
             int buffer = stream.FreeBuffers.Dequeue();
             bool queued = false;
             try
             {
-                // Multi-track capture intentionally receives the unprocessed decoded speech.
-                CaptureRemoteFrame(stream, decoded.Samples);
-                VoiceEnvironmentSnapshot environment = GetEnvironment(stream, serverConfig);
-                stream.Effects.Process(decoded.Samples, environment);
-                CaptureProcessedRemoteFrame(stream, decoded.Samples);
+                if (reverbTail)
+                {
+                    VoiceEnvironmentSnapshot environment = GetEnvironment(stream, serverConfig);
+                    stream.Effects.ProcessSilence(decoded.Samples, environment);
+                }
+                else
+                {
+                    // Multi-track capture intentionally receives the unprocessed decoded speech.
+                    CaptureRemoteFrame(stream, decoded.Samples);
+                    VoiceEnvironmentSnapshot environment = GetEnvironment(stream, serverConfig);
+                    stream.Effects.Process(decoded.Samples, environment);
+                }
+                long processedTimestamp = !reverbTail && stream.LastProcessedTimestampMilliseconds > 0
+                    ? Math.Max(decoded.TimestampMilliseconds,
+                        stream.LastProcessedTimestampMilliseconds + VoiceConstants.FrameMilliseconds)
+                    : decoded.TimestampMilliseconds;
+                stream.LastProcessedTimestampMilliseconds = processedTimestamp;
+                CaptureProcessedRemoteFrame(stream, decoded.Samples, processedTimestamp);
                 CaptureOutputFrame(decoded.Samples);
                 AL.BufferData(buffer, ALFormat.Mono16, decoded.Samples, VoiceConstants.SampleRate);
                 AL.SourceQueueBuffer(stream.Source, buffer);
@@ -767,7 +792,7 @@ public sealed class OpenAlPlaybackService : IDisposable
         }
     }
 
-    private void CaptureProcessedRemoteFrame(RemoteVoiceStream stream, short[] samples)
+    private void CaptureProcessedRemoteFrame(RemoteVoiceStream stream, short[] samples, long timestampMilliseconds)
     {
         if (ProcessedRemoteFrameCaptured == null || samples.Length == 0)
         {
@@ -776,7 +801,7 @@ public sealed class OpenAlPlaybackService : IDisposable
 
         try
         {
-            ProcessedRemoteFrameCaptured(stream.EntityId, stream.SpeakerUid, samples, stream.LastDecodedTimestampMilliseconds);
+            ProcessedRemoteFrameCaptured(stream.EntityId, stream.SpeakerUid, samples, timestampMilliseconds);
         }
         catch (Exception ex)
         {
@@ -1130,6 +1155,7 @@ public sealed class OpenAlPlaybackService : IDisposable
         public int SessionId { get; private set; } = -1;
         public long LastPacketMilliseconds { get; set; }
         public long LastDecodedTimestampMilliseconds { get; set; }
+        public long LastProcessedTimestampMilliseconds { get; set; }
         public Vec3f Position { get; set; } = new();
         public VoiceMode Mode { get; set; } = VoiceMode.Talk;
         public bool ChannelRelay { get; set; }
@@ -1160,6 +1186,7 @@ public sealed class OpenAlPlaybackService : IDisposable
             SpeakerUid = string.Empty;
             LastPacketMilliseconds = 0;
             LastDecodedTimestampMilliseconds = 0;
+            LastProcessedTimestampMilliseconds = 0;
             Position = new Vec3f();
             Mode = VoiceMode.Talk;
             ChannelRelay = false;
@@ -1249,6 +1276,7 @@ public sealed class OpenAlPlaybackService : IDisposable
         public void ResetForSession(int sessionId)
         {
             SessionId = sessionId;
+            LastProcessedTimestampMilliseconds = 0;
             Buffer.Reset();
             EncodedBuffer.Reset();
             ClearDecodedFrames();

@@ -2,9 +2,9 @@
 
 Copyright © 2026 VSCN-Studio. `HansJack` is the founder of the VSCN-Studio team. See [LICENSE](LICENSE) for the project license.
 
-SimpleVoiceChat `1.2.8-pre.1` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, server-hosted multi-track recording, moderation, optional speech-to-chat, and optional VS Director capture. The separate `SimpleVoiceChatASR` client package supplies Whisper runtime dependencies for local speech-to-chat.
+SimpleVoiceChat `1.2.8-pre.2` is a client-and-server voice chat mod for Vintage Story `1.22.3`. It provides proximity voice, custom channels, server-hosted multi-track recording, moderation, optional speech-to-chat, and optional VS Director capture. The separate `SimpleVoiceChatASR` client package supplies Whisper runtime dependencies for local speech-to-chat.
 
-SimpleVoiceChat `1.2.8-pre.1` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、服务器托管多人分轨录音、管理功能、可选语音转文字以及可选 VS Director 录制集成。`SimpleVoiceChatASR` 客户端依赖包只提供本地语音识别所需的 Whisper 运行时文件。
+SimpleVoiceChat `1.2.8-pre.2` 是适用于 Vintage Story `1.22.3` 的客户端/服务端语音模组，提供接近度语音、自定义频道、服务器托管多人分轨录音、管理功能、可选语音转文字以及可选 VS Director 录制集成。`SimpleVoiceChatASR` 客户端依赖包只提供本地语音识别所需的 Whisper 运行时文件。
 
 - [中文说明](#中文说明)
 - [English](#english)
@@ -13,7 +13,7 @@ SimpleVoiceChat `1.2.8-pre.1` 是适用于 Vintage Story `1.22.3` 的客户端/�
 
 ### 功能清单
 
-以下清单按当前 `1.2.8-pre.1` 代码实现整理。默认值指新建配置；已有配置和服务器策略可能不同。OBS 插件、LauncherGo 和本地 Whisper 依赖包需要单独安装。
+以下清单按当前 `1.2.8-pre.2` 代码实现整理。默认值指新建配置；已有配置和服务器策略可能不同。OBS 插件、LauncherGo 和本地 Whisper 依赖包需要单独安装。
 
 #### 语音通话与播放
 
@@ -34,7 +34,7 @@ SimpleVoiceChat `1.2.8-pre.1` 是适用于 Vintage Story `1.22.3` 的客户端/�
 
 #### 环境效果与性能选项
 
-- 支持方块遮挡、水下、头盔/面具、天气，以及根据实体状态计算的低时间稳定度和中毒音效。
+- 支持方块遮挡、水下、洞穴回声、头盔/面具、天气，以及根据实体状态计算的低时间稳定度和中毒音效。
 - 水下与装备状态由服务器判定，装备匹配规则支持通配符；客户端可控制本机遮挡和环境效果，服务器可强制遮挡效果。
 - 性能模式默认关闭；启用后，遮挡采样由 9 次降为 5 次，环境状态缓存由 150 ms 延长为 250 ms。它不改变音频驱动、48 kHz 采样率或 Opus 编码复杂度，也不扩大设备兼容范围。
 
@@ -115,7 +115,7 @@ SimpleVoiceChat `1.2.8-pre.1` 是适用于 Vintage Story `1.22.3` 的客户端/�
 
 1. 关闭 Vintage Story 客户端和服务器。
 2. 删除 `Mods` 目录中的旧版 SimpleVoiceChat 压缩包，避免同时加载多个版本。
-3. 将 `SimpleVoiceChat-v1.2.8-pre.1.zip` 原样放入客户端和服务器的 `Mods` 目录，不要解压模组包。
+3. 将 `SimpleVoiceChat-v1.2.8-pre.2.zip` 原样放入客户端和服务器的 `Mods` 目录，不要解压模组包。
 4. 在客户端和服务器的 `Mods` 目录同时安装 `VSRmlUi (vsrmlui) 1.0.2` 或更新兼容版本。
 5. 启动服务器，然后启动客户端。首次按 `'` 会打开设置向导。
 
@@ -203,7 +203,7 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");
 
 ### 水下与装备语音效果
 
-水下状态和头盔/面具规则由服务器判定。装备规则只保存在服务器的 `ModConfig/SimpleVoiceChat.Server.json`，不会发送给客户端，也不能由普通玩家修改。服务器生成的默认规则如下；`Slot` 的 `0/1/2` 分别表示 `Head/Face/ArmorHead`，`Effect` 的 `0/1` 分别表示 `Helmet/Mask`，规则按顺序首个命中生效：
+水下状态和头盔/面具规则由服务器判定。装备规则只保存在服务器的 `ModConfig/SimpleVoiceChat.Server.json`，不会发送给客户端，也不能由普通玩家修改。服务器生成的默认规则如下；`Slot` 的 `0/1/2` 分别表示 `Head/Face/ArmorHead`，`Effect` 的 `0/1` 分别表示 `Helmet/Mask`，每个已穿戴栏位按顺序取首个命中规则：
 
 ```json
 {
@@ -216,7 +216,7 @@ voiceChat.ClientSettingsExtensions.ShowWindow("example.window");
 }
 ```
 
-物品代码支持 `*` 和 `?` 通配符；不写域名时会匹配任意域名下的物品路径。修改后执行 `/svc reload` 或重启服务器。水下默认只影响接近度语音；玩家设置中的“环境语音效果”只控制本机播放，不会改变服务器装备规则。多人分轨 WAV 保留未处理语音。
+物品代码支持 `*` 和 `?` 通配符；不写域名时会匹配任意域名下的物品路径。修改后执行 `/svc reload` 或重启服务器。水下默认只影响接近度语音；接近度语音会根据周围地形添加洞穴回声。水下有动态浑浊声，面具有粗闷腔体音色。玩家设置中的“环境语音效果”控制本机播放，不会改变服务器装备规则。多人分轨 WAV 保留未处理语音。
 
 ### 接近度距离渐变
 
@@ -312,7 +312,7 @@ SimpleVoiceChat 服务端会转发压缩语音帧，但本模组不提供端到�
 
 ### Features
 
-The list below describes the current `1.2.8-pre.1` implementation. Defaults refer to newly created configuration files; existing client settings and server policy may differ. The OBS plugin, LauncherGo web client, and local Whisper dependency package are installed separately.
+The list below describes the current `1.2.8-pre.2` implementation. Defaults refer to newly created configuration files; existing client settings and server policy may differ. The OBS plugin, LauncherGo web client, and local Whisper dependency package are installed separately.
 
 #### Voice communication and playback
 
@@ -333,7 +333,7 @@ The list below describes the current `1.2.8-pre.1` implementation. Defaults refe
 
 #### Environmental effects and performance
 
-- Supports block occlusion, underwater, helmet/mask, weather, low temporal stability, and poisoning effects based on entity state.
+- Supports block occlusion, underwater, cave reverb, helmet/mask, weather, low temporal stability, and poisoning effects based on entity state.
 - The server determines underwater and equipment states. Equipment matching supports wildcards; clients control local occlusion and environmental playback while the server can force occlusion.
 - Performance mode is off by default. When enabled, it reduces occlusion samples from 9 to 5 and extends the environmental-state cache from 150 ms to 250 ms. It does not change the audio driver, 48 kHz sample rate, or Opus complexity, and does not expand device compatibility.
 
@@ -404,7 +404,7 @@ The list below describes the current `1.2.8-pre.1` implementation. Defaults refe
 
 1. Stop the Vintage Story client and server.
 2. Remove older SimpleVoiceChat archives from each `Mods` directory so that only one version can load.
-3. Place `SimpleVoiceChat-v1.2.8-pre.1.zip` unchanged in the client and server `Mods` directories. Do not extract the mod archive.
+3. Place `SimpleVoiceChat-v1.2.8-pre.2.zip` unchanged in the client and server `Mods` directories. Do not extract the mod archive.
 4. Install `VSRmlUi (vsrmlui) 1.0.2` or a newer compatible version in both client and server `Mods` directories.
 5. Start the server and client. Press `'` to open the first-run setup wizard.
 
@@ -477,7 +477,7 @@ Microphone Test is memory-only and creates no files. Local device tests send no 
 
 ### Underwater and Equipment Voice Effects
 
-The server determines underwater state and helmet/mask rules. Equipment rules exist only in the server's `ModConfig/SimpleVoiceChat.Server.json`; they are not sent to clients and ordinary players cannot change them. The generated defaults are shown below. `Slot` values `0/1/2` mean `Head/Face/ArmorHead`, `Effect` values `0/1` mean `Helmet/Mask`, and the first matching rule wins:
+The server determines underwater state and helmet/mask rules. Equipment rules exist only in the server's `ModConfig/SimpleVoiceChat.Server.json`; they are not sent to clients and ordinary players cannot change them. The generated defaults are shown below. `Slot` values `0/1/2` mean `Head/Face/ArmorHead`, `Effect` values `0/1` mean `Helmet/Mask`, and the first matching rule wins for each worn slot:
 
 ```json
 {
@@ -490,7 +490,7 @@ The server determines underwater state and helmet/mask rules. Equipment rules ex
 }
 ```
 
-Item codes support `*` and `?` wildcards. A pattern without a domain matches the item path in any domain. Run `/svc reload` or restart the server after editing. Underwater effects apply only to proximity voice by default. The player's Environmental Voice Effects switch controls local playback only and cannot alter server equipment rules. Multi-track WAV files retain unprocessed speech.
+Item codes support `*` and `?` wildcards. A pattern without a domain matches the item path in any domain. Run `/svc reload` or restart the server after editing. Underwater effects apply only to proximity voice by default. Proximity voice gains cave reverb from the surrounding terrain; underwater voice has a moving, murky texture and masks add a rough cavity tone. The player's Environmental Voice Effects switch controls local playback only and cannot alter server equipment rules. Multi-track WAV files retain unprocessed speech.
 
 ### Proximity Fade
 

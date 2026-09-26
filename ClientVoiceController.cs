@@ -801,7 +801,7 @@ public sealed class ClientVoiceController : IDisposable
         controlChannel.SendPacket(new VoiceHelloPacket
         {
             ProtocolVersion = VoiceProtocol.CurrentVersion,
-            ModVersion = "1.2.8-pre.1",
+            ModVersion = "1.2.8-pre.2",
             SupportedCodecs = new[] { VoiceProtocol.CodecOpus },
             Capabilities = (int)(VoiceCapability.ProtocolV4
                 | VoiceCapability.ChannelDeltas
